@@ -273,6 +273,21 @@ def _classify(rel, fname):
         return "outils", "tool", {"px": 14, "tool": True,
                                   "meta": {"tool_kind": kind, "custom": True}}
 
+    # ------------------------------------------------------------------ vegetables (custom sprites extraits)
+    if "vegetable" in t or "vegetables" in t:
+        nutrition = 35.0
+        if "carotte" in f:
+            nutrition = 30.0
+        elif "tomate" in f:
+            nutrition = 25.0
+        elif "champignon" in f:
+            nutrition = 20.0
+        elif "oignon" in f:
+            nutrition = 22.0
+        elif "courgette" in f:
+            nutrition = 28.0
+        return "nourriture", "food", {"px": 16, "edible": nutrition}
+
     # ------------------------------------------------------------------ standalone environment sprites
     if fname.lower() == "sheep.png":
         return "animaux", "sheep", {"px": 22, "meta": {"state": "idle"}}
