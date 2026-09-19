@@ -217,7 +217,8 @@ TAB_MODES = {
     "decor":    [("place", "Poser"), ("erase", "Gommer"), ("floor", "Sol"),
                  ("block", "Bloc"),
                  ("water", "Eau"), ("land", "Terre"), ("wall", "Mur"),
-                 ("carve", "Sculpter"), ("restore", "Restaurer")],
+                 ("carve", "Sculpter"), ("restore", "Restaurer"),
+                 ("inspect", "Examiner")],
     "etre":     [("agent", "Être"), ("inspect", "Examiner")],
     "habitants": [("agent", "Créer"), ("inspect", "Examiner")],
     "societe":  [],
@@ -944,14 +945,21 @@ class Dashboard:
         if not modes:
             return
         avail = self.panel_r - 2 * T.S3
-        w = avail // len(modes)
-        for i, (mid, lbl) in enumerate(modes):
-            r = pygame.Rect(x0 + T.S3 + i * w, y, w - T.S1, T.H_BTN)
-            self._btn(screen, r, lbl, f"mode:{mid}",
-                      primary=(self.mode == mid))
+        min_btn_w = 72
+        per_row = max(1, avail // min_btn_w)
+        rows = [modes[i:i + per_row] for i in range(0, len(modes), per_row)]
+        cy = y
+        for row in rows:
+            w = avail // len(row)
+            for i, (mid, lbl) in enumerate(row):
+                r = pygame.Rect(x0 + T.S3 + i * w, cy, w - T.S1, T.H_BTN)
+                self._btn(screen, r, lbl, f"mode:{mid}",
+                          primary=(self.mode == mid))
+            cy += T.H_BTN + T.S1
         hint = TAB_HINTS.get(self.mode, "")
-        self._t(screen, T.F_MICRO, hint, T.FAINT, x0 + T.S4, y + T.H_BTN + 3,
-                max_w=self.panel_r - 2 * T.S4)
+        if hint:
+            self._t(screen, T.F_MICRO, hint, T.FAINT, x0 + T.S4, cy + 1,
+                    max_w=self.panel_r - 2 * T.S4)
 
     def _tabs(self, screen):
         x0, y = self.x0, 110
@@ -2189,7 +2197,7 @@ class Dashboard:
         tx, ty = int(wx // TILE), int(wy // TILE)
 
         if button == 2 or self.mode == "inspect":
-            pick_radius_world = max(TILE * 1.5, 40.0 / max(0.10, cam.zoom))
+            pick_radius_world = max(TILE * 2.0, 60.0 / max(0.10, cam.zoom))
             best, bd = None, pick_radius_world * pick_radius_world
             for ag in sim.agents:
                 if not getattr(ag, "alive", False):
@@ -2197,13 +2205,27 @@ class Dashboard:
                 d2 = (ag.x - wx) ** 2 + (ag.y - wy) ** 2
                 if d2 <= bd:
                     best, bd = ag, d2
+            if best is None:
+                for sh in sim.sheep:
+                    if not getattr(sh, "alive", False):
+                        continue
+                    d2 = (sh.x - wx) ** 2 + (sh.y - wy) ** 2
+                    if d2 <= bd:
+                        best, bd = sh, d2
             if best is not None:
-                sim.selected = best
-                self.tab = "etre"
-                self._scroll["etre"] = 0
-                self.follow = True
-                sim.log(f"Examen : {best.name}, {best.age_years:.1f} ans.",
-                        (59, 118, 214), "monde")
+                from .entities import Being, Sheep
+                if isinstance(best, Being):
+                    sim.selected = best
+                    self.tab = "etre"
+                    self._scroll["etre"] = 0
+                    self.follow = True
+                    sim.log(f"Examen : {best.name}, {best.age_years:.1f} ans.",
+                            (59, 118, 214), "monde")
+                elif isinstance(best, Sheep):
+                    self.tab = "etre"
+                    sim.log(f"Mouton en ({best.tx}, {best.ty}). "
+                            f"Energie : {best.energy:.0%}",
+                            (108, 208, 128), "monde")
                 return True
             return False
 
@@ -2271,16 +2293,20 @@ class Dashboard:
             old_len = len(w.items)
             w.items = [it for it in w.items
                        if not (int(it.x // TILE) == tx and int(it.y // TILE) == ty)]
-            return removed or len(w.items) != old_len
+            had_floor = w.floor[ty, tx] >= 0
+            w.floor[ty, tx] = -1
+            w.mark_dirty(tx, ty)
+            self._minimap_ver = -1
+            return removed or len(w.items) != old_len or had_floor
 
         if self.mode == "floor":
             aid = self.asset
-            if 0 <= aid < len(self.am.assets) and self.am.assets[aid].category == "sol":
-                w.set_floor(tx, ty, self.am.assets[aid].id * 216)
+            if aid in self.am.floors:
+                sheet_idx = self.am.floors.index(aid)
+                w.set_floor(tx, ty, sheet_idx * 216)
                 return True
-            floors = self.am.pool("sol")
-            if floors:
-                w.set_floor(tx, ty, int(floors[0]) * 216)
+            if self.am.floors:
+                w.set_floor(tx, ty, 0)
                 return True
             return False
 
