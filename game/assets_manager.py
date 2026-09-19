@@ -1,0 +1,826 @@
+"""Moteur d'assets : discover, dedup by content hash, classify by heuristics of path,
+slice sprite sheets, expose semantic pools for the simulation + dashboard.
+
+Every image file in /assets is catalogued (minus byte-identical repetitions) and can be
+placed from the dashboard; key ones get simulation semantics (edible, harvestable, solid...).
+"""
+import hashlib
+import os
+from collections import OrderedDict
+
+import numpy as np
+import pygame
+from PIL import Image
+
+from .affordance_definitions import render_asset, build_recipe_for
+from .config import ASSETS_DIR, CLAN_COLORS
+
+IMG_EXT = (".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif")
+
+# ----------------------------------------------------------------------------
+# asset record
+# ----------------------------------------------------------------------------
+class AssetDef:
+    __slots__ = ("id", "name", "label", "path", "pack", "category", "role", "kind",
+                 "frames", "fw", "fh", "px", "solid", "shelter", "edible", "harvest",
+                 "tool", "material", "color", "blocked_footprint", "meta", "afford",
+                 "flammable", "weight", "placable", "afford_details", "build_recipe",
+                 "_procedural_surface")
+
+    def __init__(self, **kw):
+        self.id = -1
+        self.name = ""
+        self.label = ""
+        self.path = ""
+        self.pack = ""
+        self.category = "divers"
+        self.role = ""
+        self.kind = "single"      # single | strip | grid44 | tiles
+        self.frames = 1
+        self.fw = 16
+        self.fh = 16
+        self.px = 16              # display size in world px (largest side)
+        self.solid = False
+        self.shelter = False
+        self.edible = 0.0         # nutrition (>0 = edible)
+        self.harvest = None       # dict(material=..., amount=..., hp=...)
+        self.tool = False
+        self.material = ""
+        self.color = ""
+        self.blocked_footprint = 1
+        self.meta = {}
+        self.afford = ["observe"]           # possibilites physiques exposees au cerveau
+        self.flammable = False
+        self.weight = 1.0
+        self.placable = True      # posable dans le monde via le panneau Decor
+        for k, v in kw.items():
+            setattr(self, k, v)
+
+    @property
+    def size_tiles(self):
+        return max(1, min(4, int(np.ceil(self.px / 16.0))))
+
+    @property
+    def world_rect(self):
+        s = self.px
+        ar = self.fw / max(1, self.fh)
+        w = s * ar if ar >= 1 else s
+        h = s if ar >= 1 else s / ar
+        return w, h
+
+
+CATEGORY_LABELS = [
+    ("ressources", "Ressources"),
+    ("nourriture", "Nourriture"),
+    ("batiments", "Batiments"),
+    ("outils", "Outils"),
+    ("animaux", "Animaux"),
+    ("props", "Props"),
+    ("vehicules", "Vehicules"),
+    ("tombe", "Tombes"),
+    ("decor", "Decors"),
+    ("sol", "Sols"),
+    ("unites", "Unites"),
+    ("effets", "Effets"),
+    ("interface", "Interface"),
+    ("atlas", "Atlas"),
+    ("rendus", "Rendus"),
+    ("divers", "Divers"),
+]
+
+# categories d'assets NON posables dans le monde : fichiers de travail de la
+# palette (feuilles de texture brutes, images promo, icones d'UI, frames de
+# skel persons) — pas des objets du monde.
+NON_PLACABLE = {"atlas", "rendus", "interface", "unites"}
+
+
+def _tokens(rel):
+    return rel.replace("\\", "/").lower()
+
+
+def _classify(rel, fname):
+    """Return (category, role, extra_kwargs) from path heuristics."""
+    t = _tokens(rel)
+    f = fname.lower()
+    kw = {}
+    in_tiny = "tiny swords" in t
+
+    # ------------------------------------------------------------------ tiny units
+    if in_tiny and "/units/" in t:
+        color = next((c for c in CLAN_COLORS if f"{c} units" in t), "")
+        cls = next((c for c in ("pawn", "archer", "lancer", "monk", "warrior") if f"/{c}/" in t), "")
+        if "arrow" in f:
+            return "effets", "projectile", {"px": 12}
+        if "effect" in f or "heal_effect" in f:
+            return "effets", "fx_heal", {"px": 28}
+        state = ""
+        for s in ("idle", "run", "attack", "shoot", "guard", "defence", "interact", "heal"):
+            if s in f:
+                state = "work" if s == "interact" else ("guard" if s == "defence" else s)
+                break
+        tool = next((x for x in ("axe", "pickaxe", "hammer", "knife", "meat", "gold", "wood") if x in f), "")
+        kw = dict(meta={"cls": cls, "state": state, "tool": tool, "color": color})
+        return "unites", "skin", dict(px=26, **kw)
+
+    # ------------------------------------------------------------------ tiny terrain
+    if in_tiny and "/terrain/" in t:
+        if "/resources/wood/trees" in t:
+            if "stump" in f:
+                return "ressources", "stump", {"px": 18}
+            return "ressources", "tree", {"px": 34, "solid": True,
+                                          "harvest": dict(material="bois", amount=2, hp=6)}
+        if "/resources/wood" in t and "wood resource" in f:
+            return "ressources", "item_wood", {"px": 14, "material": "bois"}
+        if "/resources/gold/gold stones" in t:
+            if "_highlight" in f:
+                return "ressources", "fx_highlight", {"px": 20}
+            return "ressources", "gold_stone", {"px": 22, "solid": True,
+                                                "harvest": dict(material="or", amount=2, hp=5)}
+        if "/resources/gold" in t:
+            return "ressources", "gold_pile", {"px": 14, "material": "or"}
+        if "/resources/meat/meat resource" in t:
+            return "nourriture", "meat_res", {"px": 14, "edible": 55.0}
+        if "/resources/meat/sheep" in t:
+            state = "grass" if "grass" in f else ("move" if "move" in f else "idle")
+            return "animaux", "sheep", {"px": 22, "meta": {"state": state}}
+        if "/resources/tools" in t:
+            return "outils", "tool", {"px": 12, "tool": True}
+        if "/decorations/bushes" in t:
+            return "nourriture", "bush", {"px": 20, "edible": 14.0}
+        if "/decorations/clouds" in t:
+            return "decor", "cloud", {"px": 90}
+        if "/decorations/rocks in the water" in t:
+            return "decor", "waterrock", {"px": 20, "solid": True}
+        if "/decorations/rocks" in t:
+            return "ressources", "stone_res", {"px": 20, "solid": True,
+                                               "harvest": dict(material="pierre", amount=2, hp=5)}
+        if "rubber duck" in t:
+            return "decor", "duck", {"px": 10}
+        if "/terrain/tileset" in t:
+            if "shadow" in f:
+                return "effets", "shadow", {"px": 20}
+            return "sol", "floor", {"kind": "tiles", "px": 16}
+        return "decor", "decor", {"px": 18}
+
+    # ------------------------------------------------------------------ tiny buildings
+    if in_tiny and "/buildings/" in t:
+        color = next((c for c in CLAN_COLORS if f"{c} buildings" in t), "")
+        big = any(x in f for x in ("castle", "barracks", "archery"))
+        return "batiments", "house", {"px": 56 if big else 36, "solid": True,
+                                      "shelter": True, "color": color}
+
+    # ------------------------------------------------------------------ tiny fx
+    if in_tiny and "particle fx" in t:
+        fxn = "dust" if "dust" in f else ("explosion" if "explosion" in f else "fire")
+        return "effets", "fx", {"px": 18, "meta": {"fx": fxn}}
+
+    # ------------------------------------------------------------------ tiny UI
+    if in_tiny and "ui element" in t:
+        sub = "buttons" if "/buttons/" in t else ("bars" if "/bars/" in t else
+              ("avatars" if "human avatars" in t else ("icons" if "/icons/" in t else
+              ("cursors" if "/cursors/" in t else ("ribbons" if "ribbons" in t else
+              ("banners" if "banners" in t or "banner" in f else ("papers" if "/papers/" in t else
+              ("table" if "wood table" in t else ("swords" if "swords" in t else "misc")))))))))
+        return "interface", "ui_" + sub, {"px": 32}
+
+    # ------------------------------------------------------------------ kenney previews
+    if "/previews/" in t and fname.lower().endswith(".png"):
+        kit = _tokens(rel).split("/")[0]
+        return _kenney(kit, f)
+
+    # ------------------------------------------------------------------ ultimate fantasy rts (rendus PNG 1024px a decoupe alpha)
+    if "ultimate fantasy rts" in t and "/png/" in t:
+        return _uf_rts(f[:-4].replace("_", " ").lower())
+
+    # ------------------------------------------------------------------ kaykit (3D : skip, pas utilisable en 2D)
+    if "kaykit" in t or "resource_bits" in t:
+        return None, None, None
+
+    # ------------------------------------------------------------------ craftpix top-down trees (AVANT atlas)
+    if "craftpix" in t and "top-down-trees" in t:
+        if "/trees_shadow" in t or "/trees_texture_shadow" in t:
+            return None, None, None
+        if "source" in f or f.endswith(".psd") or "coupon" in f:
+            return None, None, None
+        if "palm" in f:
+            return "decor", "tree", {"px": 48, "solid": True,
+                                     "harvest": dict(material="bois", amount=2, hp=4)}
+        return "ressources", "tree", {"px": 44, "solid": True,
+                                      "harvest": dict(material="bois", amount=3, hp=6),
+                                      "meta": {"trim": True}}
+
+    # ------------------------------------------------------------------ murals / atlases / samples
+    if any(x in t for x in ("/samples/", "preview", "sample", "contents_", "overview", "extra_")):
+        return "rendus", "mural", {"px": 120}
+    if any(x in t for x in ("/textures/", "texture", "atlas", "hexagons_medieval", "wild_animals_map")):
+        return "atlas", "mural", {"px": 140}
+
+    # ------------------------------------------------------------------ craftpix chibi sprites
+    if "craftpix" in t and ("chibi" in t or "sprites" in t):
+        is_female = "female" in t
+        is_male = "male" in t
+        if is_female or is_male:
+            # extraire le nom du personnage (ex: Enchantress, Knight...)
+            parts = t.replace("\\", "/").split("/")
+            char_name = ""
+            for p in parts:
+                if p.startswith("craftpix"):
+                    continue
+                if "sprite" in p or "free" in p or "fantasy" in p or "chibi" in p or "pixel" in p:
+                    continue
+                if p and not p.endswith(".png"):
+                    char_name = p.capitalize()
+                    break
+            CRAFTPIX_MAP = {
+                "enchantress": ("purple", "enchantress"),
+                "knight":      ("blue",   "knight"),
+                "musketeer":   ("red",    "musketeer"),
+                "archer":      ("yellow", "archer"),
+                "swordsman":   ("black",  "swordsman"),
+                "wizard":      ("purple", "wizard"),
+            }
+            # skip non-usable frames
+            if any(x in f for x in ("dead.png", "hurt.png", "jump.png")):
+                return None, None, None
+            state = ""
+            if "idle" in f:
+                state = "idle"
+            elif "run" in f:
+                state = "run"
+            elif "walk" in f:
+                state = "run"
+            elif "attack" in f:
+                state = "attack"
+            elif "contruire" in f or "build" in f:
+                state = "build"
+            else:
+                return None, None, None
+            cn = char_name.lower()
+            color, cls = CRAFTPIX_MAP.get(cn, ("blue", cn))
+            return "unites", "skin", dict(px=26, meta={"cls": cls, "state": state, "tool": "", "color": color})
+
+    # ------------------------------------------------------------------ craftpix portraits
+    if "portraits" in t and fname.lower().endswith(".png"):
+        return "interface", "ui_portraits", {"px": 44}
+
+    # ------------------------------------------------------------------ standalone environment sprites
+    if fname.lower() == "sheep.png":
+        return "animaux", "sheep", {"px": 22, "meta": {"state": "idle"}}
+
+    return "divers", "decor", {"px": 20}
+
+
+def _kenney(kit, f):
+    name = f[:-4].replace("-", " ").replace("_", " ")
+    FOOD_HI = ("meat", "fish", "chicken", "ham", "turkey", "bacon", "pork", "cheese", "bread",
+               "egg", "soup", "dish", "meal", "drumstick", "boar", "steak", "ribs", "sushi",
+               "pie", "cake", "cookie")
+    if kit == "kenney_food-kit":
+        n = 40.0 if any(x in name for x in FOOD_HI) else 22.0
+        if "half" in name or "slice" in name:
+            n = 16.0
+        return "nourriture", "food", {"px": 13, "edible": n}
+    SOLID = ("wall", "barricade", "tower", "castle", "house", "hut", "gate", "door", "roof",
+             "chimney", "pillar", "column", "bridge", "coffin", "barrel", "box", "crate",
+             "well", "forge", "machine", "arcade", "jukebox", "hockey", "basketball",
+             "sarcophagus", "statue", "fence")
+    shelter = any(x in name for x in ("house", "hut", "tent", "bed", "bedroll"))
+    solid = any(x in name for x in SOLID) or shelter
+    if kit == "kenney_graveyard-kit":
+        return "tombe", "grave", {"px": 16, "solid": solid}
+    if kit == "kenney_castle-kit":
+        return "batiments", "fort", {"px": 22, "solid": True, "shelter": "house" in name or "barracks" in name}
+    if kit == "kenney_building-kit":
+        cat = "batiments" if any(x in name for x in ("house", "wall", "roof", "door", "barricade", "tower", "chimney")) else "props"
+        return cat, "prop", {"px": 20, "solid": solid, "shelter": shelter}
+    if kit == "kenney_car-kit":
+        return "vehicules", "vehicle", {"px": 30, "solid": True}
+    if kit == "kenney_survival-kit":
+        ed = 0.0
+        if any(x in name for x in FOOD_HI):
+            ed = 34.0
+        return "props", "prop", {"px": 18, "solid": solid, "shelter": shelter, "edible": ed}
+    if kit == "kenney_mini-arcade":
+        return "props", "prop", {"px": 24, "solid": solid}
+    return "props", "prop", {"px": 18, "solid": solid}
+
+
+def _uf_rts(n):
+    """Ultimate Fantasy RTS : rendus 1024x1024 avec transparence, a rogner (trim)."""
+    def T(px_, **kw):
+        meta = kw.pop("meta", {})
+        meta["trim"] = True
+        return dict(px=px_, meta=meta, **kw)
+    if "_cut" in n or "group cut" in n:
+        return "ressources", "stump", T(44)
+    if n.startswith("resource tree") or n.startswith("resource pine") or n.startswith("resource tree group"):
+        return "ressources", "tree", T(52, solid=True,
+                                        harvest=dict(material="bois", amount=3, hp=7))
+    if n.startswith("resource gold"):
+        return "ressources", "gold_stone", T(32, solid=True,
+                                             harvest=dict(material="or", amount=3, hp=6))
+    if n.startswith("resource rock") or n in ("rock", "rock group"):
+        return "ressources", "stone_res", T(34, solid=True,
+                                            harvest=dict(material="pierre", amount=3, hp=6))
+    if "mountain" in n:
+        return "decor", "boulder", T(110, solid=True)
+    if n == "logs":
+        return "ressources", "item_wood", T(30, material="bois")
+    if "wheat" in n:
+        return "nourriture", "bush", T(58, edible=26.0)
+    if "barrel" in n or "crate" in n:
+        return "props", "prop", T(30, solid=True, material="bois")
+    if "mine" in n:
+        return "batiments", "fort", T(60, solid=True)
+    big_dwelling = any(x in n for x in ("town center", "temple", "wonder "))
+    if (n.startswith("houses") or "tower house" in n or big_dwelling):
+        return "batiments", "house", T(84 if big_dwelling else 64, solid=True, shelter=True)
+    if any(n.startswith(x) for x in ("farm", "windmill", "barracks", "archery", "watch tower",
+                                     "watchtower", "market", "storage", "port", "dock",
+                                     "wall", "wonderwalls")):
+        return "batiments", "fort", T(76 if not (n.startswith("wall") or n.startswith("port")
+                                                 or n.startswith("dock")) else 48, solid=True)
+    return "batiments", "fort", T(56, solid=True)
+
+
+def _apply_afford(a):
+    """Affordances : ce que le monde PERMET de faire avec cet objet.
+    Le cerveau recoit ces possibilites, jamais une etiquette de role."""
+    r = a.role
+    af = ["observe"]
+    if r == "tree":
+        af += ["harvest", "burn", "block"]
+        a.flammable = True
+    elif r == "stump":
+        af += ["burn"]
+        a.flammable = True
+    elif r in ("stone_res", "gold_stone"):
+        af += ["harvest", "carry", "throw", "hit", "block"]
+    elif r in ("food", "bush", "meat_res"):
+        af += ["eat", "carry", "give", "burn"]
+        a.flammable = True
+    elif r in ("item_wood", "gold_pile"):
+        af += ["carry", "place", "give", "burn"]
+        a.flammable = True
+    elif r == "tool":
+        af += ["use", "carry", "hit"]
+    elif r in ("house", "fort"):
+        af += ["shelter", "sleep", "burn", "block"]
+        a.flammable = True
+    elif r == "grave":
+        af += ["mourn", "mark"]
+    elif r in ("prop", "vehicle"):
+        af += ["block", "hit", "sit"]
+    elif r in ("waterrock", "boulder"):
+        af += ["block", "climb"]
+    elif r == "sheep":
+        af += ["chase", "hit", "shear"]
+    elif r == "mural":
+        af += ["lean", "decorate"]
+    elif r == "duck":
+        af += ["follow"]
+    a.afford = af
+
+
+# ----------------------------------------------------------------------------
+# manager
+# ----------------------------------------------------------------------------
+class AssetManager:
+    def __init__(self, headless=False):
+        self.headless = headless
+        self.assets: list[AssetDef] = []
+        self.by_role: dict[str, list[int]] = {}
+        self.by_cat: dict[str, list[int]] = {}
+        self.skins: dict[tuple, list[int]] = {}     # (color, cls, state) -> [aid]
+        self.sheep: dict[str, int] = {}
+        self.fx: dict[str, list[int]] = {}
+        self.ui: dict[str, list[int]] = {}
+        self.floors: list[int] = []
+        self.projectile = None
+        self.shadow = None
+        self.flammable = set()
+        self._surf_cache = OrderedDict()
+        self._thumb_cache = OrderedDict()
+        self._tile_cache = {}
+        self._avatar_cache = OrderedDict()
+        self.discovered = 0
+        self.deduped = 0
+
+    # ------------------------------------------------------------------ scan
+    def discover(self):
+        seen = {}
+        recs = []
+        # collect craftpix attack frames for merging
+        _attack_buf = {}  # (pack, char_name, color, cls) -> [(p, f), ...]
+        for dp, _dn, fn in os.walk(ASSETS_DIR):
+            if "__MACOSX" in dp or "_merged" in dp:
+                continue
+            for f in sorted(fn):
+                if f.startswith("._") or not f.lower().endswith(IMG_EXT):
+                    continue
+                p = os.path.join(dp, f)
+                try:
+                    with open(p, "rb") as fh:
+                        head = fh.read(65536)
+                        fh.seek(0, 2)
+                        size = fh.tell()
+                    h = hashlib.sha1(head).hexdigest() + f"|{size}"
+                except OSError:
+                    continue
+                self.discovered += 1
+                if h in seen:
+                    continue
+                seen[h] = p
+                self.deduped += 1
+                rel = os.path.relpath(p, ASSETS_DIR)
+                pack = rel.replace("\\", "/").split("/")[0]
+                cat, role, kw = _classify(rel, f)
+                # skip files that _classify marked as unusable
+                if cat is None:
+                    continue
+                try:
+                    with Image.open(p) as im:
+                        w, hh = im.size
+                except Exception:
+                    continue
+                # collect craftpix attack frames for later merge
+                if (cat == "unites" and role == "skin"
+                        and kw.get("meta", {}).get("state") == "attack"
+                        and "craftpix" in rel.replace("\\", "/").lower()):
+                    mk = (pack, kw["meta"].get("cls", ""), kw["meta"].get("color", ""))
+                    _attack_buf.setdefault(mk, []).append(p)
+                    continue
+                kind = kw.pop("kind", "single")
+                frames = 1
+                fw, fh_ = w, hh
+                if kind == "strip" or (w > hh and w % hh == 0 and hh >= 48 and cat in
+                                       ("unites", "ressources", "animaux", "decor", "effets")):
+                    frames = max(1, w // hh)
+                    fw, fh_ = hh, hh
+                    kind = "strip"
+                    # detect grid spritesheets (frames too large for a strip)
+                    if fw > 128 and hh > 128 and w >= 48 and hh >= 48:
+                        # treat as grid: assume 48x48 frames
+                        fw, fh_ = 48, 48
+                        cols = max(1, w // 48)
+                        rows = max(1, hh // 48)
+                        frames = cols * rows
+                        kind = "grid"
+                elif cat == "interface" and "avatars" in role:
+                    frames, fw, fh_, kind = 16, w // 4, hh // 4, "grid44"
+                meta = kw.get("meta") or {}
+                if meta.get("trim") and kind == "single":
+                    try:
+                        with Image.open(p) as im:
+                            bb = im.convert("RGBA").split()[3].getbbox()
+                        if bb and bb[2] - bb[0] > 8 and bb[3] - bb[1] > 8:
+                            meta["_bb"] = bb
+                            fw, fh_ = bb[2] - bb[0], bb[3] - bb[1]
+                        else:
+                            meta.pop("trim")
+                    except Exception:
+                        meta.pop("trim")
+                aid = len(self.assets)
+                a = AssetDef(id=aid, name=f, label=f[:-4].replace("_", " ").replace("-", " "),
+                             path=p, pack=pack, category=cat, role=role, kind=kind,
+                             frames=frames, fw=fw, fh=fh_, **kw)
+                a.placable = cat not in NON_PLACABLE
+                a.blocked_footprint = a.size_tiles if a.solid else 1
+                _apply_afford(a)
+                a.afford_details = render_asset(a)
+                a.build_recipe = build_recipe_for(a)
+                self.assets.append(a)
+                if a.flammable:
+                    self.flammable.add(aid)
+                self.by_role.setdefault(role, []).append(aid)
+                self.by_cat.setdefault(cat, []).append(aid)
+
+        # merge craftpix attack frames into strips
+        for (pack, cls, color), paths in _attack_buf.items():
+            if not paths:
+                continue
+            imgs = []
+            for pp in sorted(paths):
+                try:
+                    with Image.open(pp) as im:
+                        imgs.append(im.convert("RGBA"))
+                except Exception:
+                    continue
+            if not imgs:
+                continue
+            fw, fh_ = imgs[0].size
+            merged = Image.new("RGBA", (fw * len(imgs), fh_), (0, 0, 0, 0))
+            for i, im in enumerate(imgs):
+                merged.paste(im, (i * fw, 0))
+            merged_path = os.path.join(ASSETS_DIR, "_merged", f"{pack}_{cls}_attack.png")
+            os.makedirs(os.path.dirname(merged_path), exist_ok=True)
+            merged.save(merged_path)
+            aid = len(self.assets)
+            a = AssetDef(id=aid, name=f"{cls}_attack.png",
+                         label=f"{cls} attack", path=merged_path, pack=pack,
+                         category="unites", role="skin", kind="strip",
+                         frames=len(imgs), fw=fw, fh=fh_, px=26,
+                         meta={"cls": cls, "state": "attack", "tool": "", "color": color})
+            a.placable = False
+            a.blocked_footprint = 1
+            _apply_afford(a)
+            a.afford_details = render_asset(a)
+            a.build_recipe = build_recipe_for(a)
+            self.assets.append(a)
+            self.by_role.setdefault("skin", []).append(aid)
+            self.by_cat.setdefault("unites", []).append(aid)
+
+        # indices
+        for a in self.assets:
+            m = a.meta
+            if a.role == "skin":
+                st = m.get("state") or "idle"
+                st = {"shoot": "attack", "guard": "idle"}.get(st, st)
+                if st not in ("idle", "run", "attack", "work", "heal", "build"):
+                    st = "idle"
+                key = (m.get("color", "blue"), m.get("cls", "pawn"), st)
+                self.skins.setdefault(key, []).append(a.id)
+            elif a.role == "sheep":
+                self.sheep[m["state"]] = a.id
+            elif a.role == "fx":
+                self.fx.setdefault(m["fx"], []).append(a.id)
+            elif a.role.startswith("ui_"):
+                self.ui.setdefault(a.role[3:], []).append(a.id)
+            elif a.role == "floor":
+                self.floors.append(a.id)
+            elif a.role == "projectile":
+                self.projectile = a.id
+            elif a.role == "shadow":
+                self.shadow = a.id
+
+        # copy build sprites to all characters (they share the same animation)
+        build_ids = [a.id for a in self.assets if a.role == "skin"
+                     and a.meta.get("state") == "build"]
+        if build_ids:
+            all_chars = {(k[0], k[1]) for k in self.skins
+                         if k[2] == "idle"}
+            for color, cls in all_chars:
+                key = (color, cls, "build")
+                if key not in self.skins:
+                    self.skins[key] = list(build_ids)
+        for k in self.skins:
+            self.skins[k].sort()
+        return self
+
+    # ------------------------------------------------------------------ pixel io
+    def _pil_frame(self, a: AssetDef, frame=0):
+        with Image.open(a.path) as im:
+            im = im.convert("RGBA")
+            if a.kind == "strip":
+                x = frame * a.fw
+                im = im.crop((x, 0, x + a.fw, a.fh))
+            elif a.kind == "grid" or a.kind == "grid44":
+                cols = max(1, im.width // a.fw)
+                i, j = frame % cols, frame // cols
+                im = im.crop((i * a.fw, j * a.fh, (i + 1) * a.fw, (j + 1) * a.fh))
+            elif a.kind == "tiles":
+                raise ValueError("use tile_cells")
+            else:
+                if a.meta.get("_bb"):
+                    im = im.crop(a.meta["_bb"])
+                else:
+                    im = im.copy()
+            return im
+
+    def _to_surf(self, pil, w, h):
+        if (pil.width, pil.height) != (w, h):
+            pil = pil.resize((max(1, int(w)), max(1, int(h))), Image.LANCZOS)
+        if self.headless:
+            return pil
+        return pygame.image.fromstring(pil.tobytes(), pil.size, "RGBA").convert_alpha()
+
+    def surface(self, aid, frame=0, scale=1.0):
+        a = self.assets[aid]
+        if getattr(a, "_procedural_surface", None) is not None:
+            base = a._procedural_surface
+            if abs(scale - 1.0) < 1e-6:
+                return base
+            w = max(1, int(base.get_width() * scale))
+            h = max(1, int(base.get_height() * scale))
+            return pygame.transform.scale(base, (w, h))
+        k = (aid, frame, round(scale, 2))
+        hit = self._surf_cache.get(k)
+        if hit is not None:
+            self._surf_cache.move_to_end(k)
+            return hit
+        try:
+            if a.kind == "tiles":
+                pil = self._tile_pil(aid, (aid * 7 + 3) % 216)   # carreau representatif
+            else:
+                pil = self._pil_frame(a, frame)
+        except Exception:
+            pil = Image.new("RGBA", (8, 8), (255, 0, 255, 255))
+        ar = a.fw / max(1, a.fh)
+        if ar >= 1:
+            ww, hh = a.px, a.px / ar
+        else:
+            ww, hh = a.px * ar, a.px
+        surf = self._to_surf(pil, ww * scale, hh * scale)
+        self._surf_cache[k] = surf
+        if len(self._surf_cache) > 2600:
+            self._surf_cache.popitem(last=False)
+        return surf
+
+    def display_size(self, aid, scale=1.0):
+        a = self.assets[aid]
+        ar = a.fw / max(1, a.fh)
+        if ar >= 1:
+            return int(a.px * scale), int(a.px / ar * scale) or 2
+        return int(a.px * ar * scale) or 2, int(a.px * scale)
+
+    def thumbnail(self, aid, size=54):
+        k = (aid, size)
+        hit = self._thumb_cache.get(k)
+        if hit is not None:
+            self._thumb_cache.move_to_end(k)
+            return hit
+        a = self.assets[aid]
+        try:
+            if a.kind == "tiles":
+                pil = self._tile_pil(aid, (aid * 7 + 3) % 216)
+            else:
+                pil = self._pil_frame(a, 0)
+            pil.thumbnail((size, size), Image.LANCZOS)
+            surf = self._to_surf(pil, pil.width, pil.height)
+        except Exception:
+            surf = pygame.Surface((size, size), pygame.SRCALPHA)
+            surf.fill((60, 40, 70, 255))
+        self._thumb_cache[k] = surf
+        if len(self._thumb_cache) > 1400:
+            self._thumb_cache.popitem(last=False)
+        return surf
+
+    # ------------------------------------------------------------------ tileset floors
+    def _tile_pil(self, sheet_aid, cell):
+        a = self.assets[sheet_aid]
+        with Image.open(a.path) as im:
+            im = im.convert("RGBA")
+            cols = im.width // 32
+            i, j = cell % cols, cell // cols
+            i %= max(1, cols)
+            j = min(j, max(0, im.height // 32 - 1))
+            return im.crop((i * 32, j * 32, i * 32 + 32, j * 32 + 32))
+
+    def tile_cells(self, sheet_aid):
+        a = self.assets[sheet_aid]
+        return (a.fw // 32) * (a.fh // 32) if a.kind == "tiles" else 0
+
+    def floor_tile(self, sheet_aid, cell, scale=1.0):
+        k = (sheet_aid, cell, round(scale, 2))
+        hit = self._tile_cache.get(k)
+        if hit is not None:
+            return hit
+        pil = self._tile_pil(sheet_aid, cell).resize((int(16 * scale), int(16 * scale)), Image.LANCZOS)
+        surf = self._to_surf(pil, pil.width, pil.height)
+        self._tile_cache[k] = surf
+        return surf
+
+    def random_floor_tile(self, sheet_aid, rng):
+        return self.floor_tile(sheet_aid, int(rng.integers(self.tile_cells(sheet_aid) or 1)))
+
+    # ------------------------------------------------------------------ avatars (UI)
+    def avatar(self, idx, size=44):
+        sheets = self.ui.get("avatars", [])
+        if not sheets:
+            s = pygame.Surface((size, size), pygame.SRCALPHA)
+            return s
+        k = (idx % (len(sheets) * 16), size)
+        hit = self._avatar_cache.get(k)
+        if hit is not None:
+            self._avatar_cache.move_to_end(k)
+            return hit
+        sheet = sheets[(idx // 16) % len(sheets)]
+        frame = idx % 16
+        a = self.assets[sheet]
+        i, j = frame % 4, frame // 4
+        with Image.open(a.path) as im:
+            im = im.convert("RGBA")
+            cw, ch = im.width // 4, im.height // 4
+            pil = im.crop((i * cw, j * ch, i * cw + cw, j * ch + ch))
+        pil.thumbnail((size, size), Image.LANCZOS)
+        surf = self._to_surf(pil, pil.width, pil.height)
+        self._avatar_cache[k] = surf
+        if len(self._avatar_cache) > 500:
+            self._avatar_cache.popitem(last=False)
+        return surf
+
+    # ------------------------------------------------------------------ helpers
+    def pool(self, role):
+        return self.by_role.get(role, [])
+
+    def pick(self, pool_ids, rng, default=None):
+        if not pool_ids:
+            return default
+        return int(rng.choice(pool_ids))
+
+    def skin_states(self, color, cls):
+        out = {}
+        for st in ("idle", "run", "attack", "work", "heal", "build"):
+            ids = self.skins.get((color, cls, st))
+            if ids:
+                out[st] = ids
+        if not out.get("idle"):
+            pawn_ids = self.skins.get((color, "pawn", "idle"))
+            if not pawn_ids:
+                for c in CLAN_COLORS:
+                    pawn_ids = self.skins.get((c, "pawn", "idle"))
+                    if pawn_ids:
+                        break
+            out["idle"] = pawn_ids or []
+        out.setdefault("run", out["idle"])
+        return out
+
+    def unit_colors(self):
+        if getattr(self, "_colors", None) is None:
+            self._colors = [c for c in CLAN_COLORS if any(k[0] == c for k in self.skins)]
+        return self._colors
+
+    def unit_classes(self, color):
+        if getattr(self, "_classes", None) is None:
+            self._classes = {}
+        if color not in self._classes:
+            self._classes[color] = sorted({k[1] for k in self.skins if k[0] == color})
+        return self._classes[color]
+
+    def stats(self):
+        return dict(discovered=self.discovered, deduped=self.deduped,
+                    per_cat={lbl: len(self.by_cat.get(c, [])) for c, lbl in CATEGORY_LABELS})
+
+    def plans_for(self, inv):
+        """Retourne la liste des assets constructibles avec l'inventaire donné."""
+        from .affordance_definitions import plans_for as _plans_for
+        return _plans_for(self, inv)
+
+    def ensure_procedural_blocks(self):
+        specs = [
+            ("block_wood", (150, 108, 62), (110, 78, 44)),
+            ("block_stone", (150, 150, 156), (108, 108, 114)),
+        ]
+        for role, fill, edge in specs:
+            if self.by_role.get(role):
+                continue
+            surf = pygame.Surface((16, 16), pygame.SRCALPHA)
+            surf.fill(fill)
+            pygame.draw.rect(surf, edge, surf.get_rect(), 2)
+            aid = len(self.assets)
+            a = AssetDef(
+                id=aid, name=f"{role}.png",
+                label="Bloc de bois" if role == "block_wood" else "Bloc de pierre",
+                path="", pack="procedural", category="batiments", role=role,
+                kind="single", frames=1, fw=16, fh=16, px=16,
+                solid=True, blocked_footprint=1, placable=True,
+                meta={"procedural": True},
+            )
+            a.afford = ("block", "hit")
+            a._procedural_surface = surf
+            self.assets.append(a)
+            self.by_role.setdefault(role, []).append(aid)
+            self.by_cat.setdefault("batiments", []).append(aid)
+
+    def ensure_procedural_tools(self):
+        shapes = {
+            "hache": (168, 118, 68),
+            "pioche": (148, 148, 156),
+            "marteau": (120, 120, 130),
+        }
+        for kind, color in shapes.items():
+            role_key = f"tool_{kind}"
+            if self.by_role.get(role_key):
+                continue
+            surf = pygame.Surface((14, 14), pygame.SRCALPHA)
+            pygame.draw.polygon(surf, color, [(2, 12), (10, 2), (12, 4), (4, 14)])
+            pygame.draw.polygon(surf, (40, 40, 44), [(2, 12), (10, 2), (12, 4), (4, 14)], 1)
+            aid = len(self.assets)
+            a = AssetDef(
+                id=aid, name=f"{kind}.png", label=kind.capitalize(), path="",
+                pack="procedural", category="outils", role="tool",
+                kind="single", frames=1, fw=14, fh=14, px=14, tool=True,
+                placable=True, meta={"tool_kind": kind, "procedural": True},
+            )
+            a.afford = ("use", "carry", "hit")
+            a._procedural_surface = surf
+            self.assets.append(a)
+            self.by_role.setdefault("tool", []).append(aid)
+            self.by_role.setdefault(role_key, []).append(aid)
+            self.by_cat.setdefault("outils", []).append(aid)
+
+    def register_custom_tool(self, path, tool_kind, label=None):
+        img = pygame.image.load(path).convert_alpha()
+        aid = len(self.assets)
+        a = AssetDef(
+            id=aid, name=os.path.basename(path), label=label or tool_kind,
+            path=path, pack="custom_tools", category="outils", role="tool",
+            kind="single", frames=1, fw=img.get_width(), fh=img.get_height(),
+            px=20, tool=True, meta={"tool_kind": tool_kind}, placable=True,
+        )
+        a.afford = ("use", "carry", "hit")
+        self.assets.append(a)
+        self.by_role.setdefault("tool", []).append(aid)
+        self.by_role.setdefault(f"tool_{tool_kind}", []).append(aid)
+        self.by_cat.setdefault("outils", []).append(aid)
+        return aid
