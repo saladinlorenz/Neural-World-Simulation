@@ -1708,6 +1708,8 @@ class Sim:
             cx, cy = q.popleft()
             if goal_fn(cx, cy):
                 curr = (cx, cy)
+                if curr == (start_tx, start_ty):
+                    return 0, 0
                 while came_from[curr] != (start_tx, start_ty):
                     curr = came_from[curr]
                 return curr[0] - start_tx, curr[1] - start_ty
