@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, asdict
 from typing import Dict, Tuple
+import numpy as np
 
 FACT_TTL = 12_000
 MIN_CONFIRMATIONS = 2
