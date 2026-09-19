@@ -22,7 +22,7 @@ from .brain_api import (ATTACK, BUILD, DRINK, DROP, EAT, EXPLORE, FLEE, GIVE,
                      TALK, ACTION_NAMES_EXP as ACTION_NAMES, ACTION_TRAIT_EXP as ACTION_TRAIT)
 from .brain import Brain
 from .clock import Clock
-from .config import (GRID, MAX_POP, MAX_SHEEP, TILE, WORLD_PX,
+from .config import (CLAN_COLORS, GRID, MAX_POP, MAX_SHEEP, TILE, WORLD_PX,
                      DEFAULT_SPAWN_AGE_TICKS, TICKS_PER_YEAR, AGE_ELDER_TICKS,
                      AGE_MAX_NATURAL_DEATH_TICKS, DAY_TICKS)
 from .entities import Being, Sheep, ClanKnowledge
