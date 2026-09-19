@@ -179,7 +179,7 @@ class Renderer:
             rr = max(4, k[0])
             g = pygame.Surface((rr * 2, rr * 2), pygame.SRCALPHA)
             for r in range(rr, 0, -3):
-                a = int(6 * (1.0 - r / rr) * alpha / 3)
+                a = min(255, int(6 * (1.0 - r / rr) * alpha / 3))
                 if a > 0:
                     pygame.draw.circle(g, (255, 180, 90, a), (rr, rr), r)
             if len(self._glow_cache) > 64:
