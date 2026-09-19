@@ -288,6 +288,21 @@ def _classify(rel, fname):
             nutrition = 28.0
         return "nourriture", "food", {"px": 16, "edible": nutrition}
 
+    # ------------------------------------------------------------------ retro rpg animals (extracted singles)
+    if "animals" in t and "retro" not in t:
+        if "_attack" in f:
+            kind = f.split("_attack")[0]
+            return "animaux", "monster_attack", {"px": 22,
+                                                  "meta": {"kind": kind, "state": "attack"}}
+        kind = f.replace(".png", "")
+        px = {"bear": 24, "wolf": 22, "snake": 18, "beatle": 14}.get(kind, 20)
+        return "animaux", "monster", {"px": px,
+                                      "meta": {"kind": kind, "state": "idle"}}
+
+    # ------------------------------------------------------------------ retro rpg animals (original sheets = ignored, use extracted singles)
+    if "retro rpg" in t and "animal" in t:
+        return "divers", "ignored", {}
+
     # ------------------------------------------------------------------ standalone environment sprites
     if fname.lower() == "sheep.png":
         return "animaux", "sheep", {"px": 22, "meta": {"state": "idle"}}
