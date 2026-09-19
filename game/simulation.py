@@ -25,7 +25,7 @@ from .clock import Clock
 from .config import (CLAN_COLORS, GRID, MAX_POP, MAX_SHEEP, TILE, WORLD_PX,
                      DEFAULT_SPAWN_AGE_TICKS, TICKS_PER_YEAR, AGE_ELDER_TICKS,
                      AGE_MAX_NATURAL_DEATH_TICKS, DAY_TICKS)
-from .entities import Being, Sheep, ClanKnowledge
+from .entities import Being, Sheep, Monster, ClanKnowledge
 from .world import Item
 from .universal_knowledge import UniversalKnowledge
 from .academy import Academy
@@ -61,6 +61,7 @@ class Sim:
         self.clock = Clock(np.random.default_rng(seed + 1))
         self.agents: list[Being] = []
         self.sheep: list[Sheep] = []
+        self.monsters: list[Monster] = []
         self.effects: list[dict] = []
         self.sounds: deque = deque(maxlen=40)
         self.next_eid = 1
@@ -166,6 +167,27 @@ class Sim:
         self.grid_bucket.setdefault((cx, cy), []).append(s)
         self._entity_cells[s.eid] = (cx, cy)
 
+    def spawn_monster(self, x=None, y=None, kind=None):
+        if len(self.monsters) >= 20:
+            return
+        kinds = ["bear", "wolf", "snake", "beatle"]
+        for _ in range(30):
+            if x is None:
+                tx = int(self.rng.integers(6, GRID - 6))
+                ty = int(self.rng.integers(6, GRID - 6))
+            else:
+                tx = min(GRID - 2, max(1, int(x // TILE)))
+                ty = min(GRID - 2, max(1, int(y // TILE)))
+            if self.w.land[ty, tx] and not self.w.blocked[ty, tx]:
+                break
+        k = kind or self.rng.choice(kinds)
+        m = Monster(self.next_eid, tx * TILE + 8, ty * TILE + 8, kind=k)
+        self.next_eid += 1
+        self.monsters.append(m)
+        cx, cy = int(m.x // 32), int(m.y // 32)
+        self.grid_bucket.setdefault((cx, cy), []).append(m)
+        self._entity_cells[m.eid] = (cx, cy)
+
     def remove_agent(self, a, name="le gardien"):
         """Retrait manuel depuis le tableau de bord : l'habitant quitte le monde
         sans laisser de cadavre. Les liens sociaux sont nettoyés."""
@@ -220,12 +242,17 @@ class Sim:
         for s in self.sheep:
             if s.alive:
                 self._sheep(s)
+        for m in self.monsters:
+            if m.alive:
+                self._monster(m)
         self.agents = [a for a in self.agents if a.alive]
         self.sheep = [s for s in self.sheep if s.alive]
+        self.monsters = [m for m in self.monsters if m.alive]
         # nettoyage grid_bucket : entités mortes
         for dead_eid in [eid for eid, cell in list(self._entity_cells.items())
                          if not any(a.eid == eid for a in self.agents)
-                         and not any(s.eid == eid for s in self.sheep)]:
+                         and not any(s.eid == eid for s in self.sheep)
+                         and not any(m.eid == eid for m in self.monsters)]:
             cell = self._entity_cells.pop(dead_eid, None)
             if cell is not None:
                 bucket = self.grid_bucket.get(cell)
@@ -350,6 +377,7 @@ class Sim:
         # ====== VISION COURTE PORTÉE : Moore neighborhood (actions physiques) ======
         near_agents = []
         near_sheep = []
+        near_monsters = []
         R_near_chunks = max(1, int(R_near * TILE / 32))
         cx_a, cy_a = int(a.x // 32), int(a.y // 32)
         R_near_px = R_near * TILE
@@ -364,6 +392,10 @@ class Sim:
                         d2 = (e.x - a.x) ** 2 + (e.y - a.y) ** 2
                         if d2 < R_near_px ** 2:
                             near_sheep.append(e)
+                    elif isinstance(e, Monster) and getattr(e, "alive", False):
+                        d2 = (e.x - a.x) ** 2 + (e.y - a.y) ** 2
+                        if d2 < R_near_px ** 2:
+                            near_monsters.append(e)
         # mémoriser agents vus en longue portée aussi
         for e in near_agents:
             a.remember("agent", e.tx, e.ty)
@@ -392,6 +424,7 @@ class Sim:
         a._loc = loc
         a._near_agents = near_agents
         a._near_sheep = near_sheep
+        a._near_monsters = near_monsters
 
     @staticmethod
     def _ring(tx, ty):
@@ -515,6 +548,12 @@ class Sim:
             bias[REST] += 0.5 * self.clock.rain
             bias[EXPLORE] -= 0.8 * self.clock.rain
             bias[HARVEST] -= 0.4 * self.clock.rain
+        if a._near_monsters:
+            nearest = min(a._near_monsters,
+                          key=lambda m: (m.x - a.x)**2 + (m.y - a.y)**2)
+            if nearest.hostile:
+                bias[FLEE] += 1.2
+                bias[ATTACK] += 0.3 * e[2]
         return bias
 
     def _feasible(self, a: Being):
@@ -534,9 +573,9 @@ class Sim:
                      or a.inv.get("graine", 0) > 0) and not a.child
         f[GIVE] = bool(a._near_agents) and a.carry() > 1
         f[TAKE] = bool(a._near_agents) and not a.child
-        f[ATTACK] = (bool(a._near_agents) or bool(a._near_sheep)) and a.energy > 0.25 \
+        f[ATTACK] = (bool(a._near_agents) or bool(a._near_sheep) or bool(a._near_monsters)) and a.energy > 0.25 \
             and not a.child
-        f[FLEE] = a.emotions[0] > 0.35 and bool(a._near_agents or a._near_sheep)
+        f[FLEE] = a.emotions[0] > 0.35 and bool(a._near_agents or a._near_sheep or a._near_monsters)
         f[TALK] = bool(a._near_agents) and \
             self.w.tick - a.talk_cd.get(a._near_agents[0].eid, -999) > 240
         f[SOCIAL] = bool(a.recall("agent", a.tx, a.ty)) or bool(a._near_agents)
@@ -622,6 +661,9 @@ class Sim:
                 g["x"], g["y"], g["ref"] = e.tx, e.ty, e
             elif act == ATTACK and a._near_sheep:
                 e = a._near_sheep[0]
+                g["x"], g["y"], g["ref"] = e.tx, e.ty, e
+            elif act == ATTACK and a._near_monsters:
+                e = max(a._near_monsters, key=lambda m: m.health)
                 g["x"], g["y"], g["ref"] = e.tx, e.ty, e
             elif act == SOCIAL and a.bonded is not None:
                 t = self._by_eid(a.bonded)
@@ -1078,10 +1120,10 @@ class Sim:
 
     def _do_attack(self, a, ref, gx, gy):
         w = self.w
-        target = ref if isinstance(ref, (Being, Sheep)) and getattr(ref, "alive", False) else None
+        target = ref if isinstance(ref, (Being, Sheep, Monster)) and getattr(ref, "alive", False) else None
         if target is None:
             near = [e for e in self._near(a.x, a.y,
-                     lambda e: isinstance(e, (Being, Sheep)) and e is not a, r=1)]
+                     lambda e: isinstance(e, (Being, Sheep, Monster)) and e is not a, r=1)]
             target = max(near, key=lambda t: t.health) if near else None
         if target is None:
             a.goal = None
@@ -1111,6 +1153,13 @@ class Sim:
         if isinstance(target, Sheep):
             if target.health <= 0:
                 self._kill_sheep(target, killer=a)
+                a.goal = None
+            return
+        if isinstance(target, Monster):
+            if target.health <= 0:
+                target.alive = False
+                self.monsters = [x for x in self.monsters if x.alive]
+                self._entity_cells.pop(target.eid, None)
                 a.goal = None
             return
         # consequences sociales
@@ -1714,6 +1763,47 @@ class Sim:
         if s.energy > 0.95 and len(self.sheep) < MAX_SHEEP:
             s.energy = 0.55
             self.spawn_sheep(x=s.x + 10, y=s.y)
+
+    def _monster(self, m: Monster):
+        w = self.w
+        m.energy -= 0.00018
+        near_humans = self._near(m.x, m.y,
+                                 lambda e: isinstance(e, Being) and e.alive,
+                                 r=m.sight)
+        near_sheep = self._near(m.x, m.y,
+                                lambda e: isinstance(e, Sheep) and e.alive,
+                                r=m.sight)
+        target = None
+        if near_humans:
+            target = min(near_humans, key=lambda e: (e.x - m.x)**2 + (e.y - m.y)**2)
+        elif near_sheep:
+            target = min(near_sheep, key=lambda e: (e.x - m.x)**2 + (e.y - m.y)**2)
+
+        if m.hostile and target and m.energy > 0.1:
+            dx = target.x - m.x
+            dy = target.y - m.y
+            dist = math.sqrt(dx*dx + dy*dy)
+            if dist < 14:
+                target.health -= m.damage
+                m.state = "attack" if hasattr(m, "state") else "idle"
+            elif dist > 0:
+                mvx = dx / dist
+                mvy = dy / dist
+                self._move(m, mvx * 0.6, mvy * 0.6, sheep=True)
+        else:
+            mvx = self.rng.uniform(-1, 1)
+            mvy = self.rng.uniform(-1, 1)
+            self._move(m, mvx * 0.3, mvy * 0.3, sheep=True)
+
+        m.anim_t += 1
+        if m.anim_t % 7 == 0:
+            m.frame += 1
+        if m.energy <= 0:
+            m.health -= 0.002
+        if m.health <= 0:
+            m.alive = False
+            self.monsters = [x for x in self.monsters if x.alive]
+            self._entity_cells.pop(m.eid, None)
 
     # ------------------------------------------------------------------ pathfinding local
     def _local_bfs(self, start_tx, start_ty, goal_fn, max_r=15):

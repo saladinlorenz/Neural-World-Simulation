@@ -28,6 +28,7 @@ class LabRecorder:
             "day": sim.clock.day,
             "population": len(alive),
             "sheep": len(sim.sheep),
+            "monsters": len(sim.monsters),
             "births": sim.stats.get("births", 0),
             "deaths": sim.stats.get("deaths", 0),
             "mean_age": sum(a.age_years for a in alive) / max(1, len(alive)),

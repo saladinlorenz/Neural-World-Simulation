@@ -140,6 +140,7 @@ class Being:
         self._loc = np.zeros(8)
         self._near_agents = []
         self._near_sheep = []
+        self._near_monsters = []
         self._last_heard = -1
         # ---- Relations (directionnelles)
         self.rel = {}                                # eid -> [confiance, affection]
@@ -319,6 +320,38 @@ class Sheep:
         self.anim_t = 0
         self.frame = 0
         self.fear = 0.0
+
+    @property
+    def tx(self):
+        return int(self.x // TILE)
+
+    @property
+    def ty(self):
+        return int(self.y // TILE)
+
+
+class Monster:
+    __slots__ = ("eid", "x", "y", "vx", "vy", "energy", "health", "kind",
+                 "alive", "anim_t", "frame", "hostile", "damage", "sight")
+
+    def __init__(self, eid, x, y, kind="wolf"):
+        self.eid = eid
+        self.x, self.y = x, y
+        self.vx = self.vy = 0.0
+        self.energy = 0.8
+        self.health = 1.0
+        self.kind = kind
+        self.alive = True
+        self.anim_t = 0
+        self.frame = 0
+        stats = {"bear": {"hostile": True, "damage": 0.18, "sight": 6},
+                 "wolf": {"hostile": True, "damage": 0.12, "sight": 8},
+                 "snake": {"hostile": True, "damage": 0.10, "sight": 5},
+                 "beatle": {"hostile": False, "damage": 0.0, "sight": 3}}
+        s = stats.get(kind, stats["wolf"])
+        self.hostile = s["hostile"]
+        self.damage = s["damage"]
+        self.sight = s["sight"]
 
     @property
     def tx(self):

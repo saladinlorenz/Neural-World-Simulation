@@ -28,7 +28,7 @@ import pygame
 
 from . import config
 from .config import CLAN_COLORS, GRID, TILE
-from .entities import Inhabitant, Sheep
+from .entities import Inhabitant, Sheep, Monster
 from .world import Item
 
 _blank_mode = False
@@ -265,6 +265,9 @@ class Renderer:
         for s in sim.sheep:
             if x0 - 1 <= s.x / TILE <= x1 + 1 and y0 - 1 <= s.y / TILE <= y1 + 1:
                 draws.append((s.y, 1, self._draw_sheep, (s,)))
+        for m in sim.monsters:
+            if x0 - 1 <= m.x / TILE <= x1 + 1 and y0 - 1 <= m.y / TILE <= y1 + 1:
+                draws.append((m.y, 1, self._draw_monster, (m,)))
         for a in sim.agents:
             if a.alive and x0 - 1 <= a.x / TILE <= x1 + 1 and y0 - 1 <= a.y / TILE <= y1 + 1:
                 draws.append((a.y, 2, self._draw_agent, (a, ui)))
@@ -458,6 +461,19 @@ class Renderer:
         surf = am.surface(aid, (s.anim_t // 8) % frames, _zq(cam.zoom))
         sx, sy = cam.to_screen(s.x, s.y)
         if getattr(s, "vx", 0) < -0.05:
+            surf = pygame.transform.flip(surf, True, False)
+        screen.blit(surf, (sx - surf.get_width() / 2, sy - surf.get_height() + 3))
+
+    def _draw_monster(self, screen, cam, m: Monster):
+        am = self.am
+        kind = m.kind
+        state = getattr(m, "state", "idle")
+        aid = am.monsters.get(kind, {}).get(state) or am.monsters.get(kind, {}).get("idle")
+        if aid is None:
+            return
+        surf = am.surface(aid, 0, _zq(cam.zoom))
+        sx, sy = cam.to_screen(m.x, m.y)
+        if getattr(m, "vx", 0) < -0.05:
             surf = pygame.transform.flip(surf, True, False)
         screen.blit(surf, (sx - surf.get_width() / 2, sy - surf.get_height() + 3))
 

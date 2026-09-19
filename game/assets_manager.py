@@ -433,6 +433,7 @@ class AssetManager:
         self.by_cat: dict[str, list[int]] = {}
         self.skins: dict[tuple, list[int]] = {}     # (color, cls, state) -> [aid]
         self.sheep: dict[str, int] = {}
+        self.monsters: dict[str, dict[str, int]] = {}
         self.fx: dict[str, list[int]] = {}
         self.ui: dict[str, list[int]] = {}
         self.floors: list[int] = []
@@ -582,6 +583,10 @@ class AssetManager:
                 self.skins.setdefault(key, []).append(a.id)
             elif a.role == "sheep":
                 self.sheep[m["state"]] = a.id
+            elif a.role in ("monster", "monster_attack"):
+                kind = m.get("kind", "unknown")
+                state = m.get("state", "idle")
+                self.monsters.setdefault(kind, {})[state] = a.id
             elif a.role == "fx":
                 self.fx.setdefault(m["fx"], []).append(a.id)
             elif a.role.startswith("ui_"):

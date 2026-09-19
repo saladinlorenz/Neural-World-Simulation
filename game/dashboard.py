@@ -204,7 +204,8 @@ CARD_REGISTRY = [
 
 MODES = [("place", "Poser"), ("erase", "Gommer"), ("floor", "Sol"),
          ("block", "Bloc"),
-         ("agent", "Être"), ("sheep", "Mouton"), ("inspect", "Examiner"),
+         ("agent", "Être"), ("sheep", "Mouton"), ("monster", "Monstre"),
+         ("inspect", "Examiner"),
          ("water", "Eau"), ("land", "Terre"), ("wall", "Mur"),
          ("carve", "Sculpter"), ("restore", "Restaurer")]
 
@@ -228,6 +229,7 @@ TAB_HINTS = {
     "floor": "clic = peindre le sol sélectionné",
     "agent": "clic = insérer l'être défini dans le gabarit",
     "sheep": "clic = ajouter un mouton",
+    "monster": "clic = ajouter un monstre aléatoire",
     "inspect": "clic = examiner un être",
     "water": "glisser = transformer terre en eau (pinceau)",
     "land": "glisser = transformer eau en terre (pinceau)",
@@ -1924,7 +1926,8 @@ class Dashboard:
                                   ("Paroles", st.get("talks", 0)),
                                   ("Attaques", st.get("attacks", 0))]),
             ("Monde", C_COG, [("Feux", st.get("fires", 0)),
-                              ("Moutons", len(getattr(sim, "sheep", [])))]),
+                              ("Moutons", len(getattr(sim, "sheep", []))),
+                              ("Monstres", len(getattr(sim, "monsters", [])))]),
         ]
         self._t(screen, T.F_SUB, "SOCIÉTÉ", T.TEXT, x0 + T.S4, y, bold=True)
         self._t(screen, T.F_SMALL, "motifs observés, jamais imposés", T.MUTED,
@@ -2317,6 +2320,10 @@ class Dashboard:
             sim.spawn_sheep(x=wx, y=wy)
             return True
 
+        if self.mode == "monster":
+            sim.spawn_monster(x=wx, y=wy)
+            return True
+
         return False
 
     # ══════════════════════════════════════════════════════════════════
@@ -2561,6 +2568,7 @@ class Dashboard:
             self.left_open = not self.left_open
         elif fid == "only_favs":
             self.only_favs = not self.only_favs
+            self._filter_sig = None
         elif fid == "home":
             self.tab = "etre"
         elif fid == "search":

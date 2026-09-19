@@ -87,6 +87,9 @@ def save_game(sim, cam=None, slot=0):
         # --- sheep ---
         "n_sheep": len(sim.sheep),
         "sheep": [_serialize_sheep(s) for s in sim.sheep],
+        # --- monsters ---
+        "n_monsters": len(sim.monsters),
+        "monsters": [_serialize_monster(m) for m in sim.monsters],
     }
     if w.gen is not None:
         data["gen_height_base"] = w.gen.height_base
@@ -222,6 +225,10 @@ def load_game(am, slot=0):
     sim.sheep = []
     for sd in data.get("sheep", []):
         sim.sheep.append(_deserialize_sheep(sd))
+    # --- monsters ---
+    sim.monsters = []
+    for md in data.get("monsters", []):
+        sim.monsters.append(_deserialize_monster(md))
 
     # --- camera ---
     cam = Camera()
@@ -367,5 +374,22 @@ def _deserialize_sheep(d):
     return s
 
 
+def _serialize_monster(m):
+    return {
+        "eid": m.eid, "x": m.x, "y": m.y,
+        "vx": m.vx, "vy": m.vy,
+        "energy": m.energy, "health": m.health,
+        "kind": m.kind, "alive": m.alive,
+    }
+
+
+def _deserialize_monster(d):
+    m = Monster(d["eid"], d["x"], d["y"], kind=d["kind"])
+    m.vx = d["vx"]; m.vy = d["vy"]
+    m.energy = d["energy"]; m.health = d["health"]
+    m.alive = d["alive"]
+    return m
+
+
 # --- import circular ---
-from .entities import Being, Sheep
+from .entities import Being, Sheep, Monster
