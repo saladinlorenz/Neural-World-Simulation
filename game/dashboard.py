@@ -656,6 +656,15 @@ class Dashboard:
         x = T.RAIL_W + self.left_w()
         return pygame.Rect(x, 0, self.x0 - x, SCREEN_H)
 
+    def set_ghost(self, cam):
+        mx, my = pygame.mouse.get_pos()
+        vr = self.view_rect()
+        if not vr.collidepoint((mx, my)):
+            self.hover_tile = (-1, -1)
+            return
+        wx, wy = cam.to_world(mx - vr.x, my)
+        self.hover_tile = (int(wx // TILE), int(wy // TILE))
+
     def minimap_rect(self):
         s = self._mm()
         return pygame.Rect(self.x0 + T.S3, self.footer_top(), s, s)
