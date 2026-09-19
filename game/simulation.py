@@ -178,6 +178,8 @@ class Sim:
             other.rel.pop(a.eid, None)
             if other.bonded == a.eid:
                 other.bonded = None
+                other.married = False
+                other.partner_id = None
                 other.life.append("a perdu son partenaire")
             other.children[:] = [c for c in other.children if c != a.eid]
         self.stats["deaths"] += 1
