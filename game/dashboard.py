@@ -2716,6 +2716,7 @@ class Dashboard:
                         if self._sim_ref.selected is a:
                             self._sim_ref.selected = None
                         self.hdel_pending = None
+                        self._needs_save = True
                         break
             else:
                 # 1er clic : armer la confirmation

@@ -2,6 +2,7 @@
 regles, decident avec leur reseau de neurones, et s'auto-organisent (ou se
 destruisent)."""
 import argparse
+import atexit
 import os
 import sys
 
@@ -196,6 +197,10 @@ def main():
                         sim.log("Aucune sauvegarde.", (228, 98, 98), "monde")
             elif ev.type == pygame.MOUSEBUTTONDOWN:
                 if dash.handle_event(ev, sim):
+                    if getattr(dash, '_needs_save', False):
+                        dash._needs_save = False
+                        from game.save import save_game as _auto_save
+                        _auto_save(sim, cam, slot=0)
                     continue
                 vr = dash.view_rect()
                 mx = ev.pos[0]
