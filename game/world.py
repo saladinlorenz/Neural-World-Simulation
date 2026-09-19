@@ -99,8 +99,9 @@ class World:
                         nx, ny = x + dx + int(wind[0] * 2), y + dy + int(wind[1] * 2)
                         if not self.inb(nx, ny) or self.water[ny, nx] or self.fire[ny, nx]:
                             continue
-                        if flammable and self.content[ny, nx] >= 0 \
-                           and int(self.content[ny, nx]) in flammable \
+                        naid = self.content_at(nx, ny)
+                        if flammable and naid >= 0 \
+                           and naid in flammable \
                            and self.rng_fire.random() < 0.16:
                             self.fire[ny, nx] = 200
         return int(burning[0].size)

@@ -263,6 +263,16 @@ def _classify(rel, fname):
     if "portraits" in t and fname.lower().endswith(".png"):
         return "interface", "ui_portraits", {"px": 44}
 
+    # ------------------------------------------------------------------ outils custom (tools_custom/)
+    if "tools_custom" in t or "custom_tools" in t:
+        kind = "hache"
+        for k in ("hache", "pioche", "marteau"):
+            if k in f:
+                kind = k
+                break
+        return "outils", "tool", {"px": 14, "tool": True,
+                                  "meta": {"tool_kind": kind, "custom": True}}
+
     # ------------------------------------------------------------------ standalone environment sprites
     if fname.lower() == "sheep.png":
         return "animaux", "sheep", {"px": 22, "meta": {"state": "idle"}}

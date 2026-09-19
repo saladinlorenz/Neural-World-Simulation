@@ -177,12 +177,12 @@ def populate(w, am, rng, dense=True):
              lambda x, y: place(golds, x, y, hp=5, solid=True))
 
     # ── broussailles et rochers, partout ──────────────────────────────
-    for _ in range(220 if dense else 30):
+    for _ in range(1200 if dense else 150):
         x, y = int(rng.integers(4, GRID - 4)), int(rng.integers(4, GRID - 4))
         place(bushes + rocks, x, y)
 
     # ── fruits sauvages : prairies et lisières ────────────────────────
-    for x, y in _biome_sites(w, rng, 900 if dense else 90,
+    for x, y in _biome_sites(w, rng, 2500 if dense else 250,
                              (B.BIOME_GRASS, B.BIOME_FOREST, B.BIOME_MARSH),
                              margin=4):
         place(foods, x, y, hp=1)

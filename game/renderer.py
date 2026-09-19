@@ -272,8 +272,11 @@ class Renderer:
             csub = w.content[y0:y1 + 1, x0:x1 + 1]
             cys, cxs = np.nonzero(csub >= 0)
             for j, i in zip(cys, cxs):
-                draws.append(((y0 + j) * TILE + 15, 3, self._draw_asset,
-                              (int(i) + x0, int(j) + y0, int(csub[j, i]), w)))
+                aid = int(csub[j, i])
+                a_def = self.am.assets[aid]
+                bottom_y = ((y0 + j) + a_def.size_tiles) * TILE
+                draws.append((bottom_y, 3, self._draw_asset,
+                              (int(i) + x0, int(j) + y0, aid, w)))
         for eff in sim.effects:
             draws.append((eff["y"] + 1, 4, self._draw_fx, (eff, sim.w.tick)))
         # cimetière : pierres tombales neutres

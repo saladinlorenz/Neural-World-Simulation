@@ -34,18 +34,18 @@ from .lab import LabRecorder
 MAT_AIDS = {"bois": "item_wood", "pierre": "stone_res", "or": "gold_pile"}
 
 # --- metabolisme (lois biologiques, pas des comportements)
-HUNGER_RATE = 0.00026
-THIRST_RATE = 0.00012
-SLEEP_RATE_D = 0.00014
-SLEEP_RATE_N = 0.00040
-E_DRAIN = 0.00010
+HUNGER_RATE = 0.00012
+THIRST_RATE = 0.00008
+SLEEP_RATE_D = 0.00006
+SLEEP_RATE_N = 0.00020
+E_DRAIN = 0.00004
 MOVE_DRAIN = 0.00018
 REST_GAIN = 0.00180
 SLEEP_GAIN = 0.00420
 SHELTER_BONUS = 1.9
-STARVE_HP = 0.00095
-THIRST_HP = 0.00090
-LOWE_HP = 0.00030
+STARVE_HP = 0.00012
+THIRST_HP = 0.00012
+LOWE_HP = 0.00008
 INV_CAP = 8
 ATTACK_DMG = 0.16
 ATTACK_DMG_TOOL = 0.30
@@ -501,6 +501,11 @@ class Sim:
                 d = max(abs(t.tx - a.tx), abs(t.ty - a.ty))
                 if d > 10:
                     bias[SOCIAL] += 0.4 * e[7]
+        if self.clock.rain > 0.6:
+            bias[SLEEP] += 0.6 * self.clock.rain
+            bias[REST] += 0.5 * self.clock.rain
+            bias[EXPLORE] -= 0.8 * self.clock.rain
+            bias[HARVEST] -= 0.4 * self.clock.rain
         return bias
 
     def _feasible(self, a: Being):
@@ -516,7 +521,7 @@ class Sim:
         f[HARVEST] = bool(a.recall("wood", a.tx, a.ty) or a.recall("stone", a.tx, a.ty))
         f[DRINK] = a.needs[2] > 0.32 and (a._loc[4] > 0 or bool(a.recall("water", a.tx, a.ty)))
         f[DROP] = a.carry() > 0
-        f[BUILD] = ((a.inv["bois"] >= 3 and a.inv["pierre"] >= 1)
+        f[BUILD] = ((a.inv.get("bois", 0) >= 6 and a.inv.get("pierre", 0) >= 2)
                      or a.inv.get("graine", 0) > 0) and not a.child
         f[GIVE] = bool(a._near_agents) and a.carry() > 1
         f[TAKE] = bool(a._near_agents) and not a.child
