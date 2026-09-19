@@ -220,6 +220,17 @@ class Sim:
                 self._sheep(s)
         self.agents = [a for a in self.agents if a.alive]
         self.sheep = [s for s in self.sheep if s.alive]
+        # nettoyage grid_bucket : entités mortes
+        for dead_eid in [eid for eid, cell in list(self._entity_cells.items())
+                         if not any(a.eid == eid for a in self.agents)
+                         and not any(s.eid == eid for s in self.sheep)]:
+            cell = self._entity_cells.pop(dead_eid, None)
+            if cell is not None:
+                bucket = self.grid_bucket.get(cell)
+                if bucket:
+                    self.grid_bucket[cell] = [e for e in bucket if getattr(e, "eid", None) != dead_eid]
+                    if not self.grid_bucket[cell]:
+                        del self.grid_bucket[cell]
         self.effects = [e for e in self.effects if w.tick - e["t0"] < e["ttl"]]
         # odeurs des objets
         if w.tick % 20 == 0:
@@ -337,24 +348,20 @@ class Sim:
         # ====== VISION COURTE PORTÉE : Moore neighborhood (actions physiques) ======
         near_agents = []
         near_sheep = []
-        for dy in range(-R_near, R_near + 1):
-            for dx in range(-R_near, R_near + 1):
-                if dx == 0 and dy == 0:
-                    continue
-                nx, ny = tx + dx, ty + dy
-                if not (0 <= nx < w.g and 0 <= ny < w.g):
-                    continue
-                for e in self.grid_bucket.get((nx, ny), ()):
-                    if isinstance(e, Being) and e.eid != a.eid:
+        R_near_chunks = max(1, int(R_near * TILE / 32))
+        cx_a, cy_a = int(a.x // 32), int(a.y // 32)
+        R_near_px = R_near * TILE
+        for j in range(cy_a - R_near_chunks, cy_a + R_near_chunks + 1):
+            for i in range(cx_a - R_near_chunks, cx_a + R_near_chunks + 1):
+                for e in self.grid_bucket.get((i, j), ()):
+                    if isinstance(e, Being) and e.eid != a.eid and getattr(e, "alive", False):
                         d2 = (e.x - a.x) ** 2 + (e.y - a.y) ** 2
-                        if d2 < (R_near * TILE) ** 2:
-                            if e not in near_agents:
-                                near_agents.append(e)
-                    elif isinstance(e, Sheep):
+                        if d2 < R_near_px ** 2:
+                            near_agents.append(e)
+                    elif isinstance(e, Sheep) and getattr(e, "alive", False):
                         d2 = (e.x - a.x) ** 2 + (e.y - a.y) ** 2
-                        if d2 < (R_near * TILE) ** 2:
-                            if e not in near_sheep:
-                                near_sheep.append(e)
+                        if d2 < R_near_px ** 2:
+                            near_sheep.append(e)
         # mémoriser agents vus en longue portée aussi
         for e in near_agents:
             a.remember("agent", e.tx, e.ty)
@@ -559,6 +566,10 @@ class Sim:
         personal = a.recall(category, tx, ty)
         if personal is not None:
             return personal
+        clan_places = self.clan_knowledge.nearby_places(category, tx, ty, max_dist=100)
+        if clan_places:
+            best = clan_places[0]
+            return best[0], best[1], best[3]
         fact = self.universal_knowledge.nearest(category, tx, ty, tick=self.w.tick)
         if fact is None:
             return None
@@ -1446,6 +1457,8 @@ class Sim:
                 other.emotions[3] = min(1.0, other.emotions[3] + 0.35 * r[1])
                 if other.bonded == a.eid:
                     other.bonded = None
+                    other.married = False
+                    other.partner_id = None
         if a.bonded:
             b = self._by_eid(a.bonded)
             if b and b.alive:

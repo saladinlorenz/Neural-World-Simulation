@@ -145,7 +145,7 @@ def load_game(am, slot=0):
     w.items = []
     for (ix, iy, iaid, ikind, ilife) in data.get("items", []):
         from .world import Item
-        w.items.append(Item(ix, iy, iaid, ikind, ilife))
+        w.items.append(Item(ikind, iaid, ix, iy, life=ilife))
 
     # --- worldgen ---
     if data.get("has_gen", False):

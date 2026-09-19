@@ -237,9 +237,9 @@ class Brain:
                 break
             d = (np.arange(N_OUT) == act) - probs
             d = d * (adv * eff_lr * w)
+            dh = (d @ self._Wo) * (1.0 - h_prev ** 2)
             self._b2 += d
             self._Wo += np.outer(d, self.h if i == 0 else h_prev)
-            dh = (d @ self._Wo) * (1.0 - h_prev ** 2)
             self._b1 += dh * 0.5
             self._Wd += dh * h_prev * 0.5
             self._Wx += np.outer(dh, x) * 0.5
