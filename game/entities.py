@@ -155,6 +155,7 @@ class Being:
         self.goal_t = 0
         self.commitment = 0.0                        # engagement dans le but courant
         self.stuck = 0
+        self.failed_targets = {}                     # {(act,tx,ty): (count, until_tick)}
         self.mood_phase = float(rng.uniform(0, math.tau))
         self.mood_freq = float(rng.uniform(0.004, 0.02))
         self.home = None

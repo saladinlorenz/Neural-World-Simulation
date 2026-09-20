@@ -41,7 +41,7 @@ def save_game(sim, cam=None, slot=0):
                 "origin_ty": s.origin_ty,
                 "blueprint_name": s.blueprint_name,
                 "tasks": [{"tx": t.tx, "ty": t.ty, "material": t.material,
-                           "phase": t.phase, "solid": t.solid}
+                           "phase": t.phase, "layer": t.layer, "solid": t.solid}
                           for t in s.tasks],
                 "placed": list(s.placed),
                 "contributors": dict(s.contributors),
@@ -313,6 +313,7 @@ def _serialize_agent(a):
         "state": a.state, "alive": a.alive,
         "avatar": a.avatar, "col_idx": a.col_idx,
         "commitment": a.commitment, "stuck": a.stuck,
+        "failed_targets": {f"{k[0]}|{k[1]}|{k[2]}": list(v) for k, v in a.failed_targets.items()},
         "mood_phase": a.mood_phase, "mood_freq": a.mood_freq,
         "home": a.home, "work_t": a.work_t, "atk_t": a.atk_t,
         "repro_cd": a.repro_cd,
@@ -377,6 +378,9 @@ def _deserialize_agent(d):
     a.state = d["state"]; a.alive = d["alive"]
     a.avatar = d["avatar"]; a.col_idx = d["col_idx"]
     a.commitment = d["commitment"]; a.stuck = d["stuck"]
+    ft_raw = d.get("failed_targets", {})
+    a.failed_targets = {(k.split("|")[0], int(k.split("|")[1]), int(k.split("|")[2])): tuple(v)
+                        for k, v in ft_raw.items()}
     a.mood_phase = d["mood_phase"]; a.mood_freq = d["mood_freq"]
     a.home = d["home"]; a.work_t = d["work_t"]; a.atk_t = d["atk_t"]
     a.repro_cd = d["repro_cd"]

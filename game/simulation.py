@@ -578,9 +578,15 @@ class Sim:
                      or a.inv.get("graine", 0) > 0) and not a.child
         f[GIVE] = bool(a._near_agents) and a.carry() > 1
         f[TAKE] = bool(a._near_agents) and not a.child
-        f[ATTACK] = (bool(a._near_agents) or bool(a._near_sheep) or bool(a._near_monsters)) and a.energy > 0.25 \
+        f[ATTACK] = (
+            (bool(a._near_agents) or bool(a._near_sheep) or bool(a._near_monsters))
+            and a.energy > 0.25
             and not a.child
-        f[FLEE] = a.emotions[0] > 0.35 and bool(a._near_agents or a._near_sheep or a._near_monsters)
+        )
+        f[FLEE] = (
+            a.emotions[0] > 0.35
+            and (bool(a._near_agents) or bool(a._near_sheep) or bool(a._near_monsters))
+        )
         f[TALK] = bool(a._near_agents) and \
             self.w.tick - a.talk_cd.get(a._near_agents[0].eid, -999) > 240
         f[SOCIAL] = bool(a.recall("agent", a.tx, a.ty)) or bool(a._near_agents)
@@ -722,10 +728,29 @@ class Sim:
             m = self._known_or_universal(a, "shelter", tx, ty)
             if m and m[2] < 14 and self.rng.random() < 0.7:
                 g["x"], g["y"] = m[0], m[1]
+        if self.target_is_blocked(a, act, g["x"], g["y"]):
+            a.goal = None
+            return
         a.goal = g
         a.goal_t = 0
         a.stuck = 0
         a._last_px, a._last_py = a.x, a.y
+
+    def register_goal_failure(self, a, reason="blocked"):
+        goal = a.goal or {}
+        key = (goal.get("act"), goal.get("x"), goal.get("y"))
+        count, until = a.failed_targets.get(key, (0, 0))
+        count += 1
+        cooldown = min(1800, 180 * count)
+        a.failed_targets[key] = (count, self.w.tick + cooldown)
+        a.goal = None
+        a.stuck = 0
+        a.emotions[3] = min(1.0, a.emotions[3] + 0.04)
+        self._reward(a, -0.03)
+
+    def target_is_blocked(self, a, act, tx, ty):
+        count, until = a.failed_targets.get((act, tx, ty), (0, 0))
+        return self.w.tick < until
 
     # ------------------------------------------------------------------ agent
     def _agent(self, a: Being):
@@ -847,7 +872,7 @@ class Sim:
                     a.forget(cat, gx, gy)
                     if cat == "wood":
                         a.forget("stone", gx, gy)
-                a.goal = None
+                self.register_goal_failure(a, "path")
                 return
             d = math.hypot(dx, dy) or 1
             sp = a.speed(self.clock.light)
@@ -1391,7 +1416,7 @@ class Sim:
 
     def place_site_block(self, a, site, task):
         w = self.w
-        if (task.tx, task.ty) in site.placed:
+        if task.key in site.placed:
             return False
         if task.material not in ("bois", "pierre"):
             return False
