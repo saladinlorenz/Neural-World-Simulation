@@ -22,6 +22,7 @@ def save_game(sim, cam=None, slot=0):
         # --- world arrays ---
         "land": w.land,
         "water": w.water,
+        "mountains": w.mountains,
         "floor": w.floor,
         "content": w.content,
         "owner": w.owner,
@@ -162,6 +163,7 @@ def load_game(am, slot=0):
     w.g = g
     w.land = data["land"]
     w.water = data["water"]
+    w.mountains = data.get("mountains", w.blocked.copy())
     w.floor = data["floor"]
     w.content = data["content"]
     w.owner = data["owner"]

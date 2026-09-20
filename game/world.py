@@ -32,6 +32,7 @@ class World:
         self.cemetery = []  # list of (tx, ty, name, death_tick, color_rgb)
         self.storages = {}  # (tx, ty) -> Storage
         self.sites = {}     # (tx, ty) -> BuildingSite
+        self.mountains = np.zeros((g, g), dtype=np.uint8)  # terrain montagnes ( jamais modifie)
         # index de connaissance : ou est chaque categorie de ressource
         self.kidx = {k: {} for k in ("food", "wood", "stone", "gold", "tool", "shelter")}
         self._kcell = 8
@@ -337,6 +338,33 @@ class World:
 
     def remove_site(self, site):
         self.sites.pop(site.key, None)
+
+    def save_mountains(self):
+        """Sauvegarde le masque de montagnes (terrain) apres worldgen."""
+        self.mountains = self.blocked.copy()
+
+    def reset_content(self):
+        """Reinitialise tout le contenu place (objets, ressources, batiments)
+        mais garde le terrain (land, water, mountains)."""
+        g = self.g
+        self.content[:] = -1
+        self.owner[:] = -1
+        self.blocked[:] = self.mountains.copy()
+        self.shelter[:] = 0
+        self.hp[:] = 0
+        self.marker[:] = 0
+        self.marker_col[:] = 0
+        self.regrow[:] = 0
+        self.fire[:] = 0
+        self.smell[:] = 0
+        self.heat[:] = 0
+        self.floor[:] = -1
+        self.items.clear()
+        self.cemetery.clear()
+        self.storages.clear()
+        self.sites.clear()
+        self.kidx = {k: {} for k in ("food", "wood", "stone", "gold", "tool", "shelter")}
+        self.dirty_chunks.clear()
 
     def burn_out(self, am, y, x):
         """Le feu a fini de bruler la tuile : ce qu'elle contenait est detruit."""

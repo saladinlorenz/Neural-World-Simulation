@@ -2748,6 +2748,9 @@ class Dashboard:
             return False
 
         if ev.type == pygame.KEYDOWN and (self.focus_search or self.hab_focus or self.creator_focus):
+            arrow_keys = {pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN}
+            if ev.key in arrow_keys:
+                return False
             if self.creator_focus:
                 cur = self.tool_editor.name
                 if ev.key == pygame.K_BACKSPACE:

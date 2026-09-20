@@ -251,6 +251,7 @@ def build_world(am, seed, procedural=False, *, populate_dense=True,
     else:
         w.set_land(np.ones((GRID, GRID), dtype=np.uint8))
         w.gen = None
+    w.save_mountains()
 
     sim = Sim(w, am, seed=seed)
 

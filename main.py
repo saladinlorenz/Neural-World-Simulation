@@ -169,18 +169,31 @@ def main():
                     dash.follow = not dash.follow
                 elif ev.key == pygame.K_v:
                     show_legend[0] = not show_legend[0]
+                elif ev.key == pygame.K_r:
+                    sim.w.reset_content()
+                    sim.agents.clear()
+                    sim.sheep.clear()
+                    sim.monsters.clear()
+                    sim.grid_bucket.clear()
+                    sim.item_bucket.clear()
+                    sim._entity_cells.clear()
+                    sim.log("Carte reinitialisee (montagnes gardees).", (108, 208, 128), "monde")
                 elif ev.key == pygame.K_LEFTBRACKET:
                     cam.tilt = max(40.0, cam.tilt - 5)
                 elif ev.key == pygame.K_RIGHTBRACKET:
                     cam.tilt = min(70.0, cam.tilt + 5)
                 elif ev.key in (pygame.K_w, pygame.K_UP):
                     cam.y -= 140 / (cam.zoom * cam.ys)
+                    cam.clamp()
                 elif ev.key in (pygame.K_s, pygame.K_DOWN):
                     cam.y += 140 / (cam.zoom * cam.ys)
+                    cam.clamp()
                 elif ev.key in (pygame.K_a, pygame.K_LEFT):
                     cam.x -= 140 / cam.zoom
+                    cam.clamp()
                 elif ev.key in (pygame.K_d, pygame.K_RIGHT):
                     cam.x += 140 / cam.zoom
+                    cam.clamp()
                 elif ev.key == pygame.K_F5:
                     from game.save import save_game as _save
                     path, sz = _save(sim, cam, slot=0)
