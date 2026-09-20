@@ -44,6 +44,8 @@ from collections import deque
 
 N_IN = 128
 N_OUT = 15
+N_STRATEGIES = 6
+N_TARGETS = 8
 
 # vocabulaire d'actions elementaires (composables par le monde, jamais des roles)
 (REST, SLEEP, EAT, DRINK, HARVEST, DROP, BUILD, GIVE, TAKE, ATTACK,
@@ -58,7 +60,24 @@ ACTION_COLORS = {REST: (140, 140, 160), SLEEP: (120, 110, 180), EAT: (236, 150, 
                  DRINK: (90, 180, 230), HARVEST: (110, 200, 120), DROP: (170, 140, 100),
                  BUILD: (236, 190, 86), GIVE: (160, 230, 200), TAKE: (200, 160, 90),
                  ATTACK: (222, 96, 96), FLEE: (150, 150, 200), EXPLORE: (96, 168, 222),
-                 TALK: (255, 180, 220), MARK: (255, 120, 200), SOCIAL: (200, 160, 255)}
+                  TALK: (255, 180, 220), MARK: (255, 120, 200), SOCIAL: (200, 160, 255)}
+
+# strategies
+(IMMEDIAT, PRUDENT, ECONOMIQUE, COOPERATIF, EXPLORATION, DEFENSIF) = range(N_STRATEGIES)
+STRATEGY_NAMES = {IMMEDIAT: "Immédiat", PRUDENT: "Prudent", ECONOMIQUE: "Économique",
+                  COOPERATIF: "Coopératif", EXPLORATION: "Exploration", DEFENSIF: "Défensif"}
+STRATEGY_COLORS = {IMMEDIAT: (220, 120, 80), PRUDENT: (120, 180, 120),
+                   ECONOMIQUE: (180, 180, 80), COOPERATIF: (120, 180, 220),
+                   EXPLORATION: (100, 160, 220), DEFENSIF: (200, 140, 140)}
+
+# types de cible
+(SOI, NOURRITURE, EAU, BOIS, PIERRE, ABRI, DEPOT_CHANTIER, ETRE_VIVANT) = range(N_TARGETS)
+TARGET_NAMES = {SOI: "Soi", NOURRITURE: "Nourriture", EAU: "Eau", BOIS: "Bois",
+                PIERRE: "Pierre", ABRI: "Abri", DEPOT_CHANTIER: "Dépôt/Chantier",
+                ETRE_VIVANT: "Être vivant"}
+TARGET_COLORS = {SOI: (180, 180, 180), NOURRITURE: (236, 150, 86), EAU: (90, 180, 230),
+                 BOIS: (150, 108, 62), PIERRE: (150, 150, 156), ABRI: (170, 140, 100),
+                 DEPOT_CHANTIER: (200, 160, 90), ETRE_VIVANT: (200, 160, 255)}
 
 # personnalite : 0 sociabilite 1 agressivite 2 curiosite 3 prudence 4 patience
 # 5 empathie 6 impulsivite 7 confiance 8 perseverance 9 ambition 10 generosite
@@ -139,6 +158,16 @@ class Brain:
         # trace multi-pas : chaque decision recente reste renforçable un moment
         self._trace = deque(maxlen=max(1, int(elig_len)))
         self._trace_decay = float(elig_decay)
+        # têtes supplémentaires : stratégie + cible (Lot 7.2)
+        scale = 0.4 / np.sqrt(self.n)
+        self._Wo_strat = rng.normal(0, scale, (N_STRATEGIES, self.n)).astype(np.float64)
+        self._b2_strat = rng.normal(0, 0.15, N_STRATEGIES).astype(np.float64)
+        self._Wo_targ = rng.normal(0, scale, (N_TARGETS, self.n)).astype(np.float64)
+        self._b2_targ = rng.normal(0, 0.15, N_TARGETS).astype(np.float64)
+        self._strat_probs = np.full(N_STRATEGIES, 1.0 / N_STRATEGIES)
+        self._targ_probs = np.full(N_TARGETS, 1.0 / N_TARGETS)
+        self._strategy = IMMEDIAT
+        self._target = SOI
         self._sync()
 
     def _sync(self):
@@ -184,8 +213,28 @@ class Brain:
         self.last_out = probs
         self.probs = probs
         act = int(self.rng_choice(probs))
+
+        # tete strategie
+        strat_logits = (self.h @ self._Wo_strat.T + self._b2_strat) * 0.35
+        sz = (strat_logits - strat_logits.max()) / eff_temp
+        se = np.exp(sz)
+        self._strat_probs = se / se.sum()
+        if not np.all(np.isfinite(self._strat_probs)):
+            self._strat_probs = np.full(N_STRATEGIES, 1.0 / N_STRATEGIES)
+        self._strategy = int(self.rng_choice(self._strat_probs))
+
+        # tete cible
+        targ_logits = (self.h @ self._Wo_targ.T + self._b2_targ) * 0.35
+        tz = (targ_logits - targ_logits.max()) / eff_temp
+        te2 = np.exp(tz)
+        self._targ_probs = te2 / te2.sum()
+        if not np.all(np.isfinite(self._targ_probs)):
+            self._targ_probs = np.full(N_TARGETS, 1.0 / N_TARGETS)
+        self._target = int(self.rng_choice(self._targ_probs))
+
         self._has_thought = True
-        self._trace.append((x.copy(), h_prev.copy(), act, probs.copy()))
+        self._trace.append((x.copy(), h_prev.copy(), act, probs.copy(),
+                            self._strategy, self._targ_probs.copy()))
         return act, probs
 
     def rng_choice(self, probs):
@@ -231,10 +280,17 @@ class Brain:
         # decision la plus recente en premier (poids plein), puis les
         # precedentes avec decroissance geometrique
         n = len(self._trace)
-        for i, (x, h_prev, act, probs) in enumerate(reversed(self._trace)):
+        for i, entry in enumerate(reversed(self._trace)):
             w = self._trace_decay ** i
             if w < 0.02:
                 break
+            # compat : ancien format (x,h,act,probs) vs nouveau (x,h,act,probs,strat,targ_probs)
+            if len(entry) == 4:
+                x, h_prev, act, probs = entry
+                strat, targ_probs = None, None
+            else:
+                x, h_prev, act, probs, strat, targ_probs = entry
+            # gradient sur l'action
             d = (np.arange(N_OUT) == act) - probs
             d = d * (adv * eff_lr * w)
             dh = (d @ self._Wo) * (1.0 - h_prev ** 2)
@@ -243,12 +299,28 @@ class Brain:
             self._b1 += dh * 0.5
             self._Wd += dh * h_prev * 0.5
             self._Wx += np.outer(dh, x) * 0.5
+            # gradient sur la strategie
+            if strat is not None:
+                ds = (np.arange(N_STRATEGIES) == strat) - self._strat_probs
+                ds = ds * (adv * eff_lr * w * 0.5)
+                self._b2_strat += ds
+                self._Wo_strat += np.outer(ds, self.h if i == 0 else h_prev)
+            # gradient sur la cible
+            if targ_probs is not None:
+                dt = (np.arange(N_TARGETS) == self._target) - targ_probs
+                dt = dt * (adv * eff_lr * w * 0.5)
+                self._b2_targ += dt
+                self._Wo_targ += np.outer(dt, self.h if i == 0 else h_prev)
 
         # garde-fou anti-divergence sur une vie simulee longue
         if not np.all(np.isfinite(self._Wx)):
             np.nan_to_num(self._Wx, copy=False, nan=0.0, posinf=2.0, neginf=-2.0)
         if not np.all(np.isfinite(self._Wo)):
             np.nan_to_num(self._Wo, copy=False, nan=0.0, posinf=2.0, neginf=-2.0)
+        if not np.all(np.isfinite(self._Wo_strat)):
+            np.nan_to_num(self._Wo_strat, copy=False, nan=0.0, posinf=2.0, neginf=-2.0)
+        if not np.all(np.isfinite(self._Wo_targ)):
+            np.nan_to_num(self._Wo_targ, copy=False, nan=0.0, posinf=2.0, neginf=-2.0)
         self._sync()
 
     # ------------------------------------------------------------------ evolution
@@ -280,5 +352,14 @@ class Brain:
         b._trace = deque(maxlen=self._trace.maxlen)
         b._trace_decay = self._trace_decay
         b.rng = np.random.default_rng(self.rng.bit_generator.state["state"]["state"])
+        # têtes strategie + cible
+        b._Wo_strat = self._Wo_strat.copy()
+        b._b2_strat = self._b2_strat.copy()
+        b._Wo_targ = self._Wo_targ.copy()
+        b._b2_targ = self._b2_targ.copy()
+        b._strat_probs = self._strat_probs.copy()
+        b._targ_probs = self._targ_probs.copy()
+        b._strategy = self._strategy
+        b._target = self._target
         b._sync()
         return b

@@ -382,6 +382,11 @@ def _serialize_agent(a):
         "brain_base": a.brain.base,
         "brain_rng": a.brain.rng.bit_generator.state if hasattr(a.brain, 'rng') else None,
         "brain_trace": list(a.brain._trace),
+        # brain tete strategie + cible (Lot 7.2)
+        "brain_Wo_strat": a.brain._Wo_strat.copy(),
+        "brain_b2_strat": a.brain._b2_strat.copy(),
+        "brain_Wo_targ": a.brain._Wo_targ.copy(),
+        "brain_b2_targ": a.brain._b2_targ.copy(),
         # memory
         "seen": {k: list(v) for k, v in a.seen.items()},
         "belief_places": dict(a.belief_places),
@@ -408,6 +413,12 @@ def _deserialize_agent(d):
         brain.rng.bit_generator.state = d["brain_rng"]
     if d.get("brain_trace"):
         brain._trace = _dq(d["brain_trace"], maxlen=brain._trace.maxlen)
+    # tete strategie + cible (fallback: aleatoire pour anciens saves)
+    if d.get("brain_Wo_strat") is not None:
+        brain._Wo_strat = d["brain_Wo_strat"]
+        brain._b2_strat = d["brain_b2_strat"]
+        brain._Wo_targ = d["brain_Wo_targ"]
+        brain._b2_targ = d["brain_b2_targ"]
 
     a = Being(
         eid=d["eid"], x=d["x"], y=d["y"], color=d["color"], cls=d["cls"],

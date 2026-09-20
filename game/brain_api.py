@@ -23,6 +23,10 @@ from game.brain import (
     REST, SLEEP, EAT, DRINK, HARVEST, DROP, BUILD, GIVE, TAKE, ATTACK,
     FLEE, EXPLORE, TALK, MARK, SOCIAL,
     ACTION_NAMES, ACTION_COLORS, N_IN, N_OUT,
+    N_STRATEGIES, N_TARGETS, STRATEGY_NAMES, STRATEGY_COLORS,
+    TARGET_NAMES, TARGET_COLORS, IMMEDIAT, PRUDENT, ECONOMIQUE,
+    COOPERATIF, EXPLORATION, DEFENSIF,
+    SOI, NOURRITURE, EAU, BOIS, PIERRE, ABRI, DEPOT_CHANTIER, ETRE_VIVANT,
 )
 
 # Import lightweight de la structure Brain (sans dépendre de pygame ou du monde)
@@ -38,15 +42,26 @@ class Intention:
     raw_probs   : (optionnel) tableau numpy des probabilités brutes — utile
                    pour le debug ou l'analyse, jamais utilisé par la simulation
                    directement (celle-ci n'a que l'intention choisie).
+    strategy    : index de la stratégie choisie (0..5).
+    strat_probs : probabilités brutes des stratégies.
+    target_type : index du type de cible choisi (0..7).
+    targ_probs  : probabilités brutes des types de cible.
     """
-    __slots__ = ("action", "target_aid", "intensity", "raw_probs")
+    __slots__ = ("action", "target_aid", "intensity", "raw_probs",
+                 "strategy", "strat_probs", "target_type", "targ_probs")
 
     def __init__(self, action: int, target_aid: Optional[int],
-                 intensity: float, raw_probs: Optional[np.ndarray] = None):
+                 intensity: float, raw_probs: Optional[np.ndarray] = None,
+                 strategy: int = 0, strat_probs: Optional[np.ndarray] = None,
+                 target_type: int = 0, targ_probs: Optional[np.ndarray] = None):
         self.action = action
         self.target_aid = target_aid
         self.intensity = float(intensity)
         self.raw_probs = raw_probs
+        self.strategy = strategy
+        self.strat_probs = strat_probs
+        self.target_type = target_type
+        self.targ_probs = targ_probs
 
     def __repr__(self) -> str:
         tgt = f"target={self.target_aid}" if self.target_aid is not None else "pas de cible"
@@ -90,6 +105,10 @@ def think(brain: Brain, perception: Dict[str, Any]) -> Intention:
         target_aid=target_aid,
         intensity=brain.probs[act],
         raw_probs=brain.last_out.copy() if hasattr(brain, "last_out") else None,
+        strategy=getattr(brain, '_strategy', 0),
+        strat_probs=getattr(brain, '_strat_probs', None),
+        target_type=getattr(brain, '_target', 0),
+        targ_probs=getattr(brain, '_targ_probs', None),
     )
 
 
@@ -115,7 +134,25 @@ def explain(brain: Brain, top: int = 5) -> List[Dict[str, Any]]:
     triée par probabilité décroissante — aucune connaissance du réseau
     n'est requise côté UI.
     """
-    return brain.explain(top=top)
+    result = brain.explain(top=top)
+    # ajouter strategie et cible courantes
+    strat = getattr(brain, '_strategy', 0)
+    target = getattr(brain, '_target', 0)
+    result.append({
+        "action": -1,
+        "nom": STRATEGY_NAMES.get(strat, "?"),
+        "couleur": STRATEGY_COLORS.get(strat, (180, 180, 180)),
+        "probabilite": float(getattr(brain, '_strat_probs', np.zeros(N_STRATEGIES))[strat]),
+        "type": "strategie",
+    })
+    result.append({
+        "action": -2,
+        "nom": TARGET_NAMES.get(target, "?"),
+        "couleur": TARGET_COLORS.get(target, (180, 180, 180)),
+        "probabilite": float(getattr(brain, '_targ_probs', np.zeros(N_TARGETS))[target]),
+        "type": "cible",
+    })
+    return result
 
 
 def new_brain(n_hid: int = 128,
@@ -179,8 +216,6 @@ def think_every(n: int) -> int:
 
 def params_size(n: int) -> int:
     """Taille totale des paramètres pour un cerveau de n neurones cachés."""
-    N_IN = 95
-    N_OUT = 15
     return N_IN * n + n + n + N_OUT * n + N_OUT
 
 
