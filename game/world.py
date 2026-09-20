@@ -1,6 +1,7 @@
 """WorldGrid : carte 312x312 tuiles de 16px (~5000x5000 px), contenu, blocage,
 abris, pv de ressource, pheromones, decors, elements laches."""
 import os
+from dataclasses import dataclass
 import numpy as np
 
 from .config import GRID, TILE, ROOT
@@ -32,6 +33,7 @@ class World:
         self.cemetery = []  # list of (tx, ty, name, death_tick, color_rgb)
         self.storages = {}  # (tx, ty) -> Storage
         self.sites = {}     # (tx, ty) -> BuildingSite
+        self.crop_plots = {}  # (tx, ty) -> CropPlot
         self.mountains = np.zeros((g, g), dtype=np.uint8)  # terrain montagnes ( jamais modifie)
         # index de connaissance : ou est chaque categorie de ressource
         self.kidx = {k: {} for k in ("food", "wood", "stone", "gold", "tool", "shelter")}
@@ -363,6 +365,7 @@ class World:
         self.cemetery.clear()
         self.storages.clear()
         self.sites.clear()
+        self.crop_plots.clear()
         self.kidx = {k: {} for k in ("food", "wood", "stone", "gold", "tool", "shelter")}
         self.dirty_chunks.clear()
 
@@ -387,3 +390,15 @@ class Item:
         self.life = life
         self.created_tick = 0
         self.spoil_tick = 0
+
+
+@dataclass
+class CropPlot:
+    tx: int
+    ty: int
+    owner_eid: int | None
+    planted_tick: int
+    growth: float = 0.0
+    water_need: float = 0.5
+    crop_type: str = "grain"
+    watered: bool = False

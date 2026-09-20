@@ -287,6 +287,32 @@ class Sim:
             self.universal_knowledge.sync_from_world(self.w, self.am, self.w.tick)
         if w.tick % 3600 == 0:
             self.social_memory.decay(self.w.tick)
+        if w.tick % 60 == 0:
+            self._grow_crops()
+
+    def _grow_crops(self):
+        w = self.w
+        for (tx, ty), plot in list(w.crop_plots.items()):
+            if not (0 <= tx < w.g and 0 <= ty < w.g):
+                continue
+            if w.water[ty, tx]:
+                plot.watered = True
+            elif self.clock.rain > 0.3:
+                plot.watered = True
+            else:
+                plot.watered = False
+            growth_rate = 0.001
+            if plot.watered:
+                growth_rate *= 2.0
+            if self.clock.is_night:
+                growth_rate *= 0.5
+            plot.growth = min(1.0, plot.growth + growth_rate)
+            if plot.growth >= 1.0 and w.content_at(tx, ty) < 0:
+                pool = self.am.pool("food")
+                if pool:
+                    aid = int(self.am.pick(pool, self.rng))
+                    w.place(tx, ty, aid, self.am, hp=3, solid=False, size=1)
+                    del w.crop_plots[(tx, ty)]
 
     # ------------------------------------------------------------------ messages
     def send_fact(self, sender, receiver, category, tx, ty, confidence=0.6):
@@ -1513,16 +1539,15 @@ class Sim:
                 return self.do_build_block(a, tx, ty)
 
         # ── agriculture : si l'être porte des graines et que la case est vide ──
-        if a.inv.get("graine", 0) > 0 and w.land[ty, tx] and w.content_at(tx, ty) < 0:
-            trees = am.pool("tree")
-            if trees:
-                seed_id = int(am.pick(trees, self.rng))
-                w.place(tx, ty, seed_id, am, hp=3, solid=True, size=1)
-                w.regrow[ty, tx] = 1200
-                a.inv["graine"] = max(0, a.inv["graine"] - 1)
-                self._reward(a, 0.18)
-                self.log(f"{a.name} a planté un arbre.", (108, 188, 98), "economie")
-                return True
+        if a.inv.get("graine", 0) > 0 and w.land[ty, tx] and w.content_at(tx, ty) < 0 \
+                and not w.water[ty, tx] and (tx, ty) not in w.crop_plots:
+            from .world import CropPlot
+            plot = CropPlot(tx=tx, ty=ty, owner_eid=a.eid, planted_tick=w.tick)
+            w.crop_plots[(tx, ty)] = plot
+            a.inv["graine"] = max(0, a.inv["graine"] - 1)
+            self._reward(a, 0.12)
+            self.log(f"{a.name} a plante une graine.", (108, 188, 98), "economie")
+            return True
 
         # ── construction brique par brique ──
         return self.do_build_block(a, tx, ty)

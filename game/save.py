@@ -63,6 +63,14 @@ def save_game(sim, cam=None, slot=0):
             }
             for (tx, ty), st in w.storages.items()
         },
+        "crop_plots": {
+            f"{tx},{ty}": {
+                "tx": cp.tx, "ty": cp.ty, "owner_eid": cp.owner_eid,
+                "planted_tick": cp.planted_tick, "growth": cp.growth,
+                "water_need": cp.water_need, "crop_type": cp.crop_type,
+            }
+            for (tx, ty), cp in w.crop_plots.items()
+        },
         "items": [(it.x, it.y, it.aid, it.kind, it.life) for it in w.items],
         "w_tick": w.tick,
         "g": w.g,
@@ -208,6 +216,18 @@ def load_game(am, slot=0):
             last_access_tick=int(raw_s.get("last_access_tick", 0)),
         )
         w.storages[st.tx, st.ty] = st
+    w.crop_plots = {}
+    from .world import CropPlot
+    for raw_cp in data.get("crop_plots", {}).values():
+        cp = CropPlot(
+            tx=raw_cp["tx"], ty=raw_cp["ty"],
+            owner_eid=raw_cp.get("owner_eid"),
+            planted_tick=int(raw_cp.get("planted_tick", 0)),
+            growth=float(raw_cp.get("growth", 0.0)),
+            water_need=float(raw_cp.get("water_need", 0.5)),
+            crop_type=raw_cp.get("crop_type", "grain"),
+        )
+        w.crop_plots[(cp.tx, cp.ty)] = cp
     w.tick = data["w_tick"]
     w.items = []
     for (ix, iy, iaid, ikind, ilife) in data.get("items", []):
