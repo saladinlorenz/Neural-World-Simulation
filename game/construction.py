@@ -111,8 +111,51 @@ class HouseBlueprint:
         tasks.append(BlockTask(tx + 1, ty + 2, "bois", "door", layer=1, solid=False))
         return tasks
 
+    @staticmethod
+    def coffre(tx, ty):
+        tasks = [BlockTask(tx, ty, "bois", "foundation", layer=0, solid=True)]
+        return tasks
+
+    @staticmethod
+    def grenier(tx, ty):
+        tasks = []
+        for y in range(ty, ty + 2):
+            for x in range(tx, tx + 2):
+                tasks.append(BlockTask(x, y, "bois", "wall", layer=1, solid=True))
+        tasks.append(BlockTask(tx, ty + 1, "bois", "door", layer=1, solid=False))
+        tasks.append(BlockTask(tx, ty, "bois", "roof", layer=2, solid=False))
+        tasks.append(BlockTask(tx + 1, ty, "bois", "roof", layer=2, solid=False))
+        return tasks
+
+    @staticmethod
+    def atelier(tx, ty):
+        tasks = []
+        for y in range(ty, ty + 3):
+            for x in range(tx, tx + 3):
+                edge = x in (tx, tx + 2) or y in (ty, ty + 2)
+                if edge:
+                    tasks.append(BlockTask(x, y, "pierre", "wall", layer=1, solid=True))
+        tasks.append(BlockTask(tx + 1, ty + 2, "pierre", "door", layer=1, solid=False))
+        tasks.append(BlockTask(tx, ty, "bois", "roof", layer=2, solid=False))
+        tasks.append(BlockTask(tx + 1, ty, "bois", "roof", layer=2, solid=False))
+        tasks.append(BlockTask(tx + 2, ty, "bois", "roof", layer=2, solid=False))
+        return tasks
+
+    @staticmethod
+    def puits(tx, ty):
+        tasks = [BlockTask(tx, ty, "pierre", "foundation", layer=0, solid=True)]
+        return tasks
+
 
 def blueprint_from_name(name, tx, ty):
     if name == "storage_hut":
         return HouseBlueprint.storage_hut(tx, ty)
+    if name == "coffre":
+        return HouseBlueprint.coffre(tx, ty)
+    if name == "grenier":
+        return HouseBlueprint.grenier(tx, ty)
+    if name == "atelier":
+        return HouseBlueprint.atelier(tx, ty)
+    if name == "puits":
+        return HouseBlueprint.puits(tx, ty)
     return HouseBlueprint.small_house(tx, ty)

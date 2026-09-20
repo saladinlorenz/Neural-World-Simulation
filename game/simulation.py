@@ -730,7 +730,7 @@ class Sim:
         f[HARVEST] = bool(a.recall("wood", a.tx, a.ty) or a.recall("stone", a.tx, a.ty))
         f[DRINK] = a.needs[2] > 0.32 and (a._loc[4] > 0 or bool(a.recall("water", a.tx, a.ty)))
         f[DROP] = a.carry() > 0
-        f[BUILD] = ((a.inv.get("bois", 0) >= 6 and a.inv.get("pierre", 0) >= 2)
+        f[BUILD] = ((a.inv.get("bois", 0) >= 3 or a.inv.get("pierre", 0) >= 1)
                      or a.inv.get("graine", 0) > 0) and not a.child
         f[GIVE] = bool(a._near_agents) and a.carry() > 1
         f[TAKE] = bool(a._near_agents) and not a.child
@@ -1672,6 +1672,48 @@ class Sim:
         self.log(f"{a.name} a commence le plan d'une maison.", (178, 228, 168), "batiment")
         return site
 
+    def _choose_blueprint(self, a):
+        w = self.w
+        bois = a.inv.get("bois", 0)
+        pierre = a.inv.get("pierre", 0)
+        has_house = a.home is not None
+        nearby_storages = sum(1 for s in w.storages.values()
+                              if abs(s.tx - a.tx) + abs(s.ty - a.ty) < 20)
+        has_well = any(s.role == "puits" for s in w.storages.values()
+                       if abs(s.tx - a.tx) + abs(s.ty - a.ty) < 20)
+        if not has_house:
+            return "small_house"
+        if nearby_storages == 0 and bois >= 4:
+            return "coffre"
+        if nearby_storages >= 1 and bois >= 6 and pierre >= 2:
+            return "grenier"
+        if not has_well and pierre >= 3:
+            return "puits"
+        if a.skills[1] > 0.4 and pierre >= 6 and bois >= 4:
+            return "atelier"
+        return "small_house"
+
+    def create_blueprint_site(self, a, blueprint="small_house", tx=None, ty=None):
+        if tx is None or ty is None:
+            pos = self.find_build_location(a)
+            if pos is None:
+                return None
+            tx, ty = pos
+        tasks = blueprint_from_name(blueprint, tx, ty)
+        if not self.can_place_blueprint(tasks):
+            return None
+        site = ConstructionSite(
+            origin_tx=tx, origin_ty=ty,
+            blueprint_name=blueprint, tasks=tasks,
+            created_tick=self.w.tick,
+            owner_eid=a.eid, owner_clan=a.color,
+        )
+        self.w.add_site(site)
+        if blueprint == "small_house":
+            a.home = (tx + 2, ty + 2)
+        self.log(f"{a.name} a commence un chantier ({blueprint}).", (178, 228, 168), "batiment")
+        return site
+
     def nearest_site(self, tx, ty, max_dist=15):
         best, best_dist = None, 10**9
         for site in self.w.sites.values():
@@ -1726,15 +1768,34 @@ class Sim:
 
     def complete_site(self, site, finisher):
         w = self.w
-        for ty in range(site.origin_ty + 1, site.origin_ty + 4):
-            for tx in range(site.origin_tx + 1, site.origin_tx + 4):
-                if 0 <= tx < w.g and 0 <= ty < w.g:
-                    w.shelter[ty, tx] = 1
-        storage_tx = site.origin_tx + 2
-        storage_ty = site.origin_ty + 2
-        if (storage_tx, storage_ty) not in w.storages:
-            self.create_storage(finisher, storage_tx, storage_ty, capacity=80)
-            self.log(f"Depot cree au centre de la maison.", (178, 228, 168), "batiment")
+        bp = site.blueprint_name
+        # shelter pour les maisons
+        if bp in ("small_house", "storage_hut", "atelier", "grenier"):
+            for ty in range(site.origin_ty + 1, site.origin_ty + 4):
+                for tx in range(site.origin_tx + 1, site.origin_tx + 4):
+                    if 0 <= tx < w.g and 0 <= ty < w.g:
+                        w.shelter[ty, tx] = 1
+        # depot pour les maisons et greniers
+        if bp in ("small_house", "storage_hut", "grenier"):
+            storage_tx = site.origin_tx + 2
+            storage_ty = site.origin_ty + 2
+            if bp == "grenier":
+                storage_tx = site.origin_tx + 1
+                storage_ty = site.origin_ty + 1
+            if (storage_tx, storage_ty) not in w.storages:
+                cap = 120 if bp == "grenier" else 80
+                self.create_storage(finisher, storage_tx, storage_ty, capacity=cap)
+                self.log(f"{bp} termine : depot cree.", (178, 228, 168), "batiment")
+        elif bp == "coffre":
+            storage_tx, storage_ty = site.origin_tx, site.origin_ty
+            if (storage_tx, storage_ty) not in w.storages:
+                self.create_storage(finisher, storage_tx, storage_ty, capacity=40)
+                self.log("Coffre termine.", (178, 228, 168), "batiment")
+        elif bp == "puits":
+            w.shelter[site.origin_ty, site.origin_tx] = 1
+            self.log("Puits termine.", (90, 180, 230), "batiment")
+        elif bp == "atelier":
+            self.log("Atelier termine.", (200, 160, 90), "batiment")
         w.remove_site(site)
         self._check_village(site.origin_tx + 2, site.origin_ty + 2)
         for eid in site.contributors:
@@ -1743,7 +1804,7 @@ class Sim:
                 c.skills[1] = min(1.0, c.skills[1] + 0.04)
                 c.needs[6] = max(0.0, c.needs[6] - 0.12)
                 self._reward(c, 0.25)
-        self.log(f"Maison terminee : {len(site.contributors)} contributeur(s).",
+        self.log(f"{bp} termine : {len(site.contributors)} contributeur(s).",
                  (108, 208, 128), "batiment")
 
     def do_build_block(self, a, tx, ty):
@@ -1753,7 +1814,9 @@ class Sim:
             task = site.next_task_for(a.inv)
             if task is not None:
                 return self.place_site_block(a, site, task)
-        site = self.create_house_site(a)
+        # choisir le plan selon le contexte
+        bp = self._choose_blueprint(a)
+        site = self.create_blueprint_site(a, bp)
         if site is not None:
             task = site.next_task_for(a.inv)
             if task is not None:
