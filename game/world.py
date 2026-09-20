@@ -30,6 +30,8 @@ class World:
         self.smell = np.zeros((g, g), dtype=np.float32)  # champ d'odeurs (feu, nourriture, mort)
         self.heat = np.zeros((g, g), dtype=np.float32)   # traces de présence (exploration)
         self.cemetery = []  # list of (tx, ty, name, death_tick, color_rgb)
+        self.storages = {}  # (tx, ty) -> Storage
+        self.sites = {}     # (tx, ty) -> BuildingSite
         # index de connaissance : ou est chaque categorie de ressource
         self.kidx = {k: {} for k in ("food", "wood", "stone", "gold", "tool", "shelter")}
         self._kcell = 8

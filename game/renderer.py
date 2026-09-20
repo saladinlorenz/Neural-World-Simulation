@@ -294,6 +294,9 @@ class Renderer:
         # 6) ligne de quête de l'habitant sélectionné
         self._goal_line(screen, cam, ui)
 
+        # 6.5) overlay de diagnostic
+        self._draw_diagnostic_overlay(screen, sim, cam, ui, (x0, y0, x1, y1))
+
         # 7) atmosphère
         box = (x0, y0, x1, y1)
         self._fires(screen, cam, w, box)
@@ -732,6 +735,140 @@ class Renderer:
         for y in range(max(0, int(y0)), min(GRID, int(y1) + 1)):
             _, sy = cam.to_screen(0, y * TILE)
             pygame.draw.line(screen, col, (view.left, sy), (view.right, sy), 1)
+
+    def _draw_diagnostic_overlay(self, screen, sim, cam, ui, box):
+        overlay = ui.get("overlay", "none")
+        if overlay == "none":
+            return
+
+        import math as _math
+        w = sim.w
+        x0, y0, x1, y1 = box
+        selected = ui.get("agent")
+
+        if overlay == "resources":
+            csub = w.content[y0:y1 + 1, x0:x1 + 1]
+            ys, xs = np.nonzero(csub >= 0)
+            for j, i in zip(ys, xs):
+                tx, ty = x0 + int(i), y0 + int(j)
+                aid = int(csub[j, i])
+                a = self.am.assets[aid]
+                if a.edible > 0:
+                    col = (96, 215, 114)
+                elif a.harvest:
+                    mat = a.harvest.get("material")
+                    col = {
+                        "bois": (139, 96, 55),
+                        "pierre": (150, 150, 164),
+                        "or": (240, 198, 60),
+                    }.get(mat, (220, 220, 220))
+                elif a.tool:
+                    col = (92, 164, 236)
+                else:
+                    continue
+                sx, sy = cam.to_screen(tx * TILE + TILE / 2, ty * TILE + TILE / 2)
+                pygame.draw.circle(screen, col, (int(sx), int(sy)),
+                                   max(2, int(4 * cam.zoom)))
+
+        elif overlay == "memory" and selected is not None:
+            colors = {
+                "food": (96, 215, 114),
+                "water": (72, 165, 235),
+                "wood": (139, 96, 55),
+                "stone": (150, 150, 164),
+                "shelter": (238, 194, 86),
+                "agent": (220, 154, 215),
+            }
+            for category, points in selected.seen.items():
+                col = colors.get(category, (230, 230, 230))
+                for tx, ty, force in points:
+                    sx, sy = cam.to_screen(tx * TILE + TILE / 2, ty * TILE + TILE / 2)
+                    radius = max(2, int((3 + 5 * force) * cam.zoom))
+                    pygame.draw.circle(screen, col, (int(sx), int(sy)), radius, 1)
+
+        elif overlay == "goal" and selected is not None:
+            goal = selected.goal or {}
+            if goal.get("x") is not None and goal.get("y") is not None:
+                sx, sy = cam.to_screen(selected.x, selected.y)
+                gx, gy = cam.to_screen(goal["x"] * TILE + TILE / 2,
+                                       goal["y"] * TILE + TILE / 2)
+                pygame.draw.line(screen, (255, 238, 104), (sx, sy), (gx, gy), 2)
+                pygame.draw.circle(screen, (255, 238, 104), (int(gx), int(gy)),
+                                   max(4, int(6 * cam.zoom)), 2)
+
+        elif overlay == "danger":
+            sub = w.fire[y0:y1 + 1, x0:x1 + 1]
+            ys, xs = np.nonzero(sub > 0)
+            for j, i in zip(ys, xs):
+                sx, sy = cam.to_screen((x0 + i) * TILE + TILE / 2,
+                                       (y0 + j) * TILE + TILE / 2)
+                pygame.draw.circle(screen, (235, 90, 68), (int(sx), int(sy)),
+                                   max(4, int(7 * cam.zoom)), 2)
+            if selected is not None:
+                for (cx, cy), value in selected.belief_places.items():
+                    tx, ty = cx * 8, cy * 8
+                    if not (x0 <= tx <= x1 and y0 <= ty <= y1):
+                        continue
+                    sx, sy = cam.to_screen(tx * TILE + TILE / 2, ty * TILE + TILE / 2)
+                    r = max(3, int(12 * cam.zoom * value))
+                    pygame.draw.circle(screen, (214, 84, 84), (int(sx), int(sy)), r, 1)
+
+        elif overlay == "exploration":
+            sub = w.heat[y0:y1 + 1, x0:x1 + 1]
+            ys, xs = np.nonzero(sub > 0.08)
+            for j, i in zip(ys, xs):
+                value = float(sub[j, i])
+                sx, sy = cam.to_screen((x0 + i) * TILE, (y0 + j) * TILE)
+                size = max(1, int(TILE * cam.zoom))
+                alpha = int(130 * min(1.0, value))
+                layer = pygame.Surface((size, max(1, int(size * cam.ys))), pygame.SRCALPHA)
+                layer.fill((92, 164, 236, alpha))
+                screen.blit(layer, (int(sx), int(sy)))
+
+        elif overlay == "territory":
+            sub = w.marker[y0:y1 + 1, x0:x1 + 1]
+            ys, xs = np.nonzero(sub > 0.06)
+            for j, i in zip(ys, xs):
+                value = float(sub[j, i])
+                col = self._clan_rgb(int(w.marker_col[y0 + j, x0 + i]))
+                sx, sy = cam.to_screen((x0 + i) * TILE + TILE / 2,
+                                       (y0 + j) * TILE + TILE / 2)
+                pygame.draw.circle(screen, col, (int(sx), int(sy)),
+                                   max(2, int(6 * cam.zoom * value)), 1)
+
+        elif overlay == "storage":
+            for (stx, sty), storage in getattr(w, "storages", {}).items():
+                if not (x0 <= stx <= x1 and y0 <= sty <= y1):
+                    continue
+                sx, sy = cam.to_screen(stx * TILE + TILE / 2, sty * TILE + TILE / 2)
+                r = max(4, int(8 * cam.zoom))
+                pygame.draw.rect(screen, (238, 194, 86),
+                                 pygame.Rect(int(sx - r), int(sy - r), 2 * r, 2 * r), 2)
+
+        elif overlay == "sites":
+            for (stx, sty), site in getattr(w, "sites", {}).items():
+                if not (x0 <= stx <= x1 and y0 <= sty <= y1):
+                    continue
+                sx, sy = cam.to_screen(stx * TILE + TILE / 2, sty * TILE + TILE / 2)
+                r = max(4, int(8 * cam.zoom))
+                pygame.draw.rect(screen, (92, 164, 236),
+                                 pygame.Rect(int(sx - r), int(sy - r), 2 * r, 2 * r), 2)
+                total_work = sum(site.recipe.values())
+                done_work = sum(site.stored.values())
+                prog = done_work / max(1, total_work)
+                pygame.draw.arc(screen, (96, 215, 114),
+                                pygame.Rect(int(sx - r - 2), int(sy - r - 2),
+                                            2 * r + 4, 2 * r + 4),
+                                -_math.pi / 2,
+                                -_math.pi / 2 + 2 * _math.pi * prog, 2)
+
+        elif overlay == "cemetery":
+            for tx, ty, name, death_tick, color in getattr(w, "cemetery", ()):
+                if not (x0 <= tx <= x1 and y0 <= ty <= y1):
+                    continue
+                sx, sy = cam.to_screen(tx * TILE + TILE / 2, ty * TILE + TILE / 2)
+                pygame.draw.circle(screen, (160, 155, 148), (int(sx), int(sy)),
+                                   max(4, int(7 * cam.zoom)), 2)
 
 
 def _wg():

@@ -327,7 +327,8 @@ def main():
         ui = {"tile": dash.hover_tile, "ghost": dash.hover_tile[0] > 0 and in_map,
               "asset": dash.asset, "mode": dash.mode, "agent": sim.selected,
               "legend": show_legend[0], "brush": dash.brush_radius(),
-              "view_rect": pygame.Rect(0, 0, vr.width, vr.height)}
+              "view_rect": pygame.Rect(0, 0, vr.width, vr.height),
+              "overlay": dash.active_overlay}
         view_surf = pygame.Surface((vr.width, vr.height))
         ren.draw(view_surf, sim, cam, ui)
         screen.fill((227, 232, 236))

@@ -291,6 +291,10 @@ class Sim:
                                  (88, 148, 228), "laboratoire")
         if w.tick % DAY_TICKS == 0:
             self.lab.snapshot(self)
+        if __debug__ and w.tick % 600 == 0:
+            from .invariants import validate_simulation
+            for error in validate_simulation(self):
+                self.log(f"INVARIANT: {error}", (214, 84, 84), "monde")
 
     def _bucket(self):
         self.item_bucket = {}

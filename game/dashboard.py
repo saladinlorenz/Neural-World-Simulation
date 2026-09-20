@@ -426,6 +426,9 @@ class Dashboard:
         self.action = None
         self.painting = None
         self.creator_focus = False
+        self.selected_tile = None    # (tx, ty) de la dernière tuile examinée
+        self.last_tile_snapshot = None
+        self.active_overlay = "none"
         from .tool_editor import ToolEditor
         self.tool_editor = ToolEditor()
         self.tool_editor_kind = "hache"
@@ -1709,10 +1712,176 @@ class Dashboard:
     # ══════════════════════════════════════════════════════════════════
     #  6. AUTRES ONGLETS
     # ══════════════════════════════════════════════════════════════════
+    def _draw_tile_inspector(self, screen, sim, rect):
+        from .diagnostics import tile_snapshot
+        if self.selected_tile is None:
+            return rect.y
+        tx, ty = self.selected_tile
+        data = tile_snapshot(sim, tx, ty)
+        y = rect.y
+        x0 = rect.x
+        w = rect.width
+
+        self._card(screen, pygame.Rect(x0, y, w, 0), T.R2, T.SURFACE, T.BORDER)
+        self._t(screen, T.F_SUB, f"TUILE {tx}, {ty}", T.TEXT, x0 + T.S3, y + T.S2, bold=True)
+        y += 28
+
+        rows = [
+            ("Terrain", "eau" if data["eau"] else "terre" if data["terre"] else "hors sol"),
+            ("Bloquée", "oui" if data["bloque"] else "non"),
+            ("Abri", "oui" if data["abri"] else "non"),
+            ("Feu", str(data["feu"])),
+            ("Odeur", f"{data['odeur']:.2f}"),
+            ("Exploration", f"{data['exploration']:.2f}"),
+            ("Phéromones", f"{data['pheromone']:.2f}"),
+        ]
+
+        if "biome" in data:
+            rows.extend([
+                ("Biome", str(data["biome"])),
+                ("Altitude", f"{data['altitude']:.2f}"),
+                ("Pente", f"{data['pente']:.2f}"),
+            ])
+
+        obj = data.get("objet")
+        if obj:
+            rows.extend([
+                ("Objet", obj["nom"]),
+                ("Rôle", obj["role"]),
+                ("PV", str(data["pv_objet"])),
+                ("Affordances", ", ".join(obj["affordances"][:4]) or "—"),
+            ])
+
+        if data.get("tombe"):
+            grave = data["tombe"]
+            rows.extend([
+                ("Tombe", grave["nom"]),
+                ("Décès tick", str(grave["tick_deces"])),
+            ])
+
+        storage = data.get("stockage")
+        if storage:
+            rows.extend([
+                ("Dépôt", storage.get("clan") or "commun"),
+                ("Remplissage", f"{storage['remplissage']:.0%}"),
+                ("Inventaire", str(storage["inventaire"])),
+            ])
+
+        site = data.get("chantier")
+        if site:
+            rows.extend([
+                ("Chantier", f"asset #{site['asset_id']}"),
+                ("Progression", f"{site['progression']:.0%}"),
+                ("Contributeurs", str(len(site["contributeurs"]))),
+            ])
+
+        for label, value in rows:
+            self._t(screen, T.F_MICRO, label, T.MUTED, x0 + T.S3, y, max_w=w * 0.38)
+            self._t(screen, T.F_MICRO, value, T.TEXT,
+                    x0 + w - T.S3, y, right=True, max_w=w * 0.56)
+            y += 20
+
+        return y + T.S2
+
+    def _draw_agent_diagnostics(self, screen, sim, rect):
+        from .diagnostics import agent_snapshot
+        agent = sim.selected
+        data = agent_snapshot(sim, agent)
+        if data is None:
+            return rect.y
+        y = rect.y
+        x0 = rect.x
+        w = rect.width
+
+        self._card(screen, pygame.Rect(x0, y, w, 0), T.R2, T.SURFACE, T.BORDER)
+        self._t(screen, T.F_SUB, data["nom"], T.TEXT, x0 + T.S3, y + T.S2, bold=True)
+        self._t(screen,
+                T.F_MICRO,
+                f"{data['sexe']} · {data['classe']} · {data['age_ans']:.1f} ans · "
+                f"gén. {data['generation']} · {data['cerveau']['neurones']} N",
+                T.MUTED,
+                x0 + T.S3, y + 23, max_w=w - 2 * T.S3)
+        y += 45
+
+        vital = (
+            ("Santé", data["sante"], C_CORPS),
+            ("Énergie", data["energie"], T.WARN),
+            ("Satiété", 1.0 - data["faim"], C_EMO),
+            ("Soif", 1.0 - data["soif"], T.ACCENT),
+        )
+        for label, value, color in vital:
+            self._t(screen, T.F_MICRO, label, T.MUTED, x0 + T.S3, y)
+            bar = pygame.Rect(x0 + 74, y - 2, w - 124, 9)
+            self._bar(screen, bar, value, color)
+            self._t(screen, T.F_MICRO, f"{value:.2f}", T.TEXT,
+                    x0 + w - T.S3, y, right=True)
+            y += 17
+        y += 6
+
+        goal = data["but"]
+        self._t(screen, T.F_BODY, "INTENTION ACTUELLE", T.ACCENT, x0 + T.S3, y, bold=True)
+        y += 19
+        self._t(screen, T.F_SMALL, goal["action_nom"], T.TEXT, x0 + T.S3, y)
+        target = "—"
+        if goal["cible_x"] is not None:
+            target = f"tuile {goal['cible_x']}, {goal['cible_y']}"
+        self._t(screen, T.F_SMALL, target, T.MUTED, x0 + w - T.S3, y, right=True)
+        y += 18
+        if goal["distance_px"] is not None:
+            self._t(screen, T.F_MICRO,
+                    f"distance {goal['distance_px'] / TILE:.1f} tuiles · "
+                    f"bloqué {goal['bloque_ticks']} ticks",
+                    T.FAINT, x0 + T.S3, y, max_w=w - 2 * T.S3)
+            y += 18
+
+        self._t(screen, T.F_BODY, "INVENTAIRE", C_EXP, x0 + T.S3, y, bold=True)
+        y += 19
+        inv = data["inventaire"]
+        self._t(screen, T.F_SMALL,
+                f"bois {inv.get('bois', 0)} · pierre {inv.get('pierre', 0)} · "
+                f"or {inv.get('or', 0)} · graines {inv.get('graine', 0)}",
+                T.TEXT, x0 + T.S3, y, max_w=w - 2 * T.S3)
+        y += 19
+
+        tool = data["outil"]
+        tool_label = "aucun"
+        if tool:
+            tool_label = f"{tool['nom']} · durabilité {data['durabilite_outil']}"
+        self._t(screen, T.F_SMALL, f"Outil : {tool_label}", T.MUTED,
+                x0 + T.S3, y, max_w=w - 2 * T.S3)
+        y += 23
+
+        self._t(screen, T.F_BODY, "CERVEAU", C_COG, x0 + T.S3, y, bold=True)
+        y += 19
+        for item in data["cerveau"]["classement_actions"]:
+            self._t(screen, T.F_SMALL, item.get("nom", "?"), T.TEXT, x0 + T.S3, y)
+            self._t(screen, T.F_SMALL, f"{item.get('probabilite', 0):.1%}", T.MUTED,
+                    x0 + w - T.S3, y, right=True)
+            y += 18
+
+        self._t(screen, T.F_BODY, "RELATIONS", C_MEM, x0 + T.S3, y + 4, bold=True)
+        y += 24
+        for relation in data["relations"][:5]:
+            self._t(screen, T.F_SMALL, relation["nom"], T.TEXT, x0 + T.S3, y)
+            self._t(screen, T.F_MICRO,
+                    f"confiance {relation['confiance']:+.2f} · "
+                    f"affection {relation['affection']:+.2f}",
+                    T.MUTED, x0 + w - T.S3, y, right=True, max_w=150)
+            y += 18
+
+        return y + T.S2
+
     def _tab_decor(self, screen, sim, y):
         x0 = self.x0
         r = pygame.Rect(x0 + T.S3, y, self.panel_r - 2 * T.S3, 0)
         cy = r.y
+
+        if self.selected_tile is not None:
+            cy = self._draw_tile_inspector(
+                screen, sim,
+                pygame.Rect(x0 + T.S3, cy, self.panel_r - 2 * T.S3, 0),
+            )
+            cy += T.S2
 
         # asset sélectionné — infos détaillées
         if self.asset >= 0 and self.asset < len(self.am.assets):
@@ -1826,6 +1995,38 @@ class Dashboard:
             self._t(screen, T.F_MICRO, s, T.MUTED, r.x + T.S4, cy)
             cy += 15
         cy += T.S2
+
+        OVERLAY_LABELS = (
+            ("none", "Normal"),
+            ("resources", "Ressources"),
+            ("memory", "Mémoire"),
+            ("goal", "But"),
+            ("danger", "Danger"),
+            ("exploration", "Exploration"),
+            ("territory", "Territoire"),
+            ("storage", "Dépôts"),
+            ("sites", "Chantiers"),
+            ("cemetery", "Cimetière"),
+        )
+        self._t(screen, T.F_SMALL, "COUCHE DE DIAGNOSTIC", T.MUTED, r.x + T.S4, cy, bold=True)
+        cy += 19
+        fx = r.x + T.S4
+        for key, label in OVERLAY_LABELS:
+            chip_w = self._tw(T.F_MICRO, label) + 16
+            if fx + chip_w > r.right - T.S4:
+                fx = r.x + T.S4
+                cy += 24
+            chip = pygame.Rect(fx, cy, chip_w, 20)
+            sel = self.active_overlay == key
+            pygame.draw.rect(screen, T.SELECT if sel else T.SURFACE, chip, border_radius=T.R1)
+            if sel:
+                pygame.draw.rect(screen, T.ACCENT, chip, 1, border_radius=T.R1)
+            self._t(screen, T.F_MICRO, label,
+                    T.ACCENT if sel else T.MUTED,
+                    chip.centerx, chip.centery, cx=True, cy=True)
+            self._push(chip, f"overlay:{key}")
+            fx += chip_w + 4
+        cy += 28
 
         self._content_h["decor"] = cy - r.y
 
@@ -2227,7 +2428,12 @@ class Dashboard:
                             f"Energie : {best.energy:.0%}",
                             (108, 208, 128), "monde")
                 return True
-            return False
+            from .diagnostics import tile_snapshot
+            self.selected_tile = (tx, ty)
+            self.last_tile_snapshot = tile_snapshot(sim, tx, ty)
+            self.tab = "decor"
+            self._scroll["decor"] = 0
+            return True
 
         if button != 1:
             return False
@@ -2721,6 +2927,8 @@ class Dashboard:
                     self.drag = fid
         elif fid.startswith("blockmat:"):
             self.block_material = fid[9:]
+        elif fid.startswith("overlay:"):
+            self.active_overlay = fid[8:]
         elif fid.startswith("tcolor:"):
             self.tpl_color = fid[7:]
             self.normalize_template_class()
