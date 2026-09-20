@@ -578,6 +578,11 @@ class Sim:
             if nearest.hostile:
                 bias[FLEE] += 1.2
                 bias[ATTACK] += 0.3 * e[2]
+        for event in list(getattr(a, "observed_actions", ())):
+            if self.w.tick - event["tick"] > 1800:
+                continue
+            if event["reward"] > 0:
+                bias[event["action"]] += min(0.08, 0.04 * event["reward"])
         return bias
 
     def _feasible(self, a: Being):
@@ -1019,6 +1024,20 @@ class Sim:
     # ------------------------------------------------------------------ primitives
     def _reward(self, a, r):
         a.brain.learn(r, lr=self._lr(a))
+        self.register_success_observation(a, (a.goal or {}).get("act", REST), r)
+
+    def register_success_observation(self, actor, action, reward):
+        if reward <= 0.05:
+            return
+        for observer in self._near(actor.x, actor.y,
+                                   lambda e: isinstance(e, Being) and e.eid != actor.eid, r=2):
+            if observer.child or observer.trust(actor.eid) > 0.2:
+                observer.observed_actions.append({
+                    "action": int(action),
+                    "reward": float(reward),
+                    "tick": self.w.tick,
+                    "actor": actor.eid,
+                })
 
     def _lr(self, a):
         """Taux d'apprentissage cohérent avec le calendrier biologique."""
