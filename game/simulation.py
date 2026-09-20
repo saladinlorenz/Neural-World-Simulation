@@ -315,6 +315,11 @@ class Sim:
             from .invariants import validate_simulation
             for error in validate_simulation(self):
                 self.log(f"INVARIANT: {error}", (214, 84, 84), "monde")
+        if w.tick % 1800 == 0:
+            for a in self.agents:
+                expired = [k for k, (_, until) in a.failed_targets.items() if w.tick > until]
+                for k in expired:
+                    del a.failed_targets[k]
 
     def _bucket(self):
         self.item_bucket = {}
@@ -1729,9 +1734,12 @@ class Sim:
 
     def _drop_food(self, pool, x, y, nutrition):
         aid = int(self.am.pick(pool or self.am.pool("food"), self.rng, default=0))
-        self.w.drop_item(Item("food", aid, x + self.rng.uniform(-6, 6),
-                              y + self.rng.uniform(-6, 6), nutrition=nutrition,
-                              life=60 * 60 * 4))
+        it = Item("food", aid, x + self.rng.uniform(-6, 6),
+                  y + self.rng.uniform(-6, 6), nutrition=nutrition,
+                  life=60 * 60 * 4)
+        it.created_tick = self.w.tick
+        it.spoil_tick = self.w.tick + 7200
+        self.w.drop_item(it)
 
     def _fx(self, name, x, y):
         ids = self.am.fx.get(name) or []

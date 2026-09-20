@@ -134,8 +134,12 @@ def save_game(sim, cam=None, slot=0):
         data["cam_tilt"] = cam.tilt
 
     path = _slot_path(slot)
-    with open(path, "wb") as f:
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
         pickle.dump(data, f, protocol=5)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
     size_mb = os.path.getsize(path) / (1024 * 1024)
     return path, size_mb
 
@@ -174,7 +178,10 @@ def load_game(am, slot=0):
     w.sites = {}
     from .construction import ConstructionSite, BlockTask
     for raw in data.get("sites", {}).values():
-        tasks = [BlockTask(**t) for t in raw.get("tasks", [])]
+        tasks = [BlockTask(tx=t["tx"], ty=t["ty"], material=t["material"],
+                           phase=t["phase"], layer=t.get("layer", 0),
+                           solid=t.get("solid", True))
+                 for t in raw.get("tasks", [])]
         site = ConstructionSite(
             origin_tx=raw["origin_tx"],
             origin_ty=raw["origin_ty"],

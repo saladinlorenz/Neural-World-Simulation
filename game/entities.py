@@ -242,8 +242,13 @@ class Being:
         else:
             age_factor = max(0.40, 0.75 * self.age_health_cap())
         hurt = max(0.35, 1.0 - 0.5 * self.pain - 0.4 * max(0.0, 0.2 - self.needs[1]))
+        load_weight = (self.inv.get("bois", 0) * 1.0 +
+                       self.inv.get("pierre", 0) * 1.5 +
+                       self.inv.get("or", 0) * 2.0 +
+                       self.inv.get("graine", 0) * 0.2)
+        load_factor = max(0.45, 1.0 - 0.04 * load_weight)
         return (2.7 * (0.6 + 0.7 * self.body[2]) * age_factor * hurt
-                * (0.8 + 0.2 * light))
+                * (0.8 + 0.2 * light) * load_factor)
 
     def drain_f(self):
         return (1.35 - 0.7 * self.body[1]) * (1.25 if self.child else 1.0)

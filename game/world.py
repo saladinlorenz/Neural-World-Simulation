@@ -262,6 +262,9 @@ class World:
     # ------------------------------------------------------------------ per tick
     def step(self, am, clock=None):
         self.tick += 1
+        if self.tick % 30 == 0:
+            self.items = [item for item in self.items
+                          if item.life > 0 and (item.kind != "food" or self.tick < item.spoil_tick)]
         if self.tick % 3 == 0:
             self.marker *= 0.992
             self.marker[self.marker < 0.01] = 0
@@ -344,7 +347,8 @@ class World:
 
 
 class Item:
-    __slots__ = ("kind", "aid", "x", "y", "material", "nutrition", "life")
+    __slots__ = ("kind", "aid", "x", "y", "material", "nutrition", "life",
+                 "created_tick", "spoil_tick")
 
     def __init__(self, kind, aid, x, y, material="", nutrition=0.0, life=1e9):
         self.kind = kind          # 'mat' | 'food'
@@ -353,3 +357,5 @@ class Item:
         self.material = material
         self.nutrition = nutrition
         self.life = life
+        self.created_tick = 0
+        self.spoil_tick = 0
