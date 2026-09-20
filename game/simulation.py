@@ -89,6 +89,8 @@ class Sim:
         self.universal_knowledge = UniversalKnowledge(omniscient=False)
         self.academy = Academy()
         self.lab = LabRecorder()
+        from .social_memory import SocialMemory
+        self.social_memory = SocialMemory()
 
     # ------------------------------------------------------------------ journal
     def log(self, text, color=None, cat="monde"):
@@ -283,6 +285,8 @@ class Sim:
             self._analyze_society()
         if w.tick % 300 == 0:
             self.universal_knowledge.sync_from_world(self.w, self.am, self.w.tick)
+        if w.tick % 3600 == 0:
+            self.social_memory.decay(self.w.tick)
         if w.tick % 1800 == 0:
             for a in self.agents:
                 if a.alive and not a.child:
@@ -1148,6 +1152,7 @@ class Sim:
                 self._trade.get((min(a.eid, e.eid), max(a.eid, e.eid)), 0) + 1
             self.emit_sound(a.x, a.y, "voice", 0.4)
             self._reward(a, 0.2)
+            self.social_memory.record(e.eid, a.eid, "help", 0.20, self.w.tick)
         return True
 
     def _do_take(self, a, ref):
@@ -1175,6 +1180,7 @@ class Sim:
         e.emotions[2] = min(1.0, e.emotions[2] + 0.4)
         a.belief_beings[e.eid] = max(-1.0, a.belief_beings.get(e.eid, 0) - 0.2)
         self._reward(a, 0.15)
+        self.social_memory.record(e.eid, a.eid, "theft", 0.45, self.w.tick)
         if e.personality[1] > 0.4 or e.health > a.health:
             e.hated = a.eid
         return True
@@ -1250,6 +1256,7 @@ class Sim:
         self._dominance[a.eid] = self._dominance.get(a.eid, 0) + 1
         self._dominance[target.eid] = self._dominance.get(target.eid, 0) - 1
         a.rep -= 1
+        self.social_memory.record(target.eid, a.eid, "violence", 0.55, self.w.tick)
         if target.child:
             # tabou emergent : frapper un enfant revolte les temoins
             a.rep -= 3
