@@ -157,6 +157,19 @@ class Being:
         self.stuck = 0
         self.failed_targets = {}                     # {(act,tx,ty): (count, until_tick)}
         self.observed_actions = deque(maxlen=32)     # actions observees chez autrui
+        self.context = {
+            "food_density": 0.0,
+            "wood_density": 0.0,
+            "stone_density": 0.0,
+            "sheep_count": 0.0,
+            "monster_count": 0.0,
+            "ally_count": 0.0,
+            "enemy_count": 0.0,
+            "storage_near": 0.0,
+            "site_near": 0.0,
+            "route_danger": 0.0,
+        }
+        self.prev_wellbeing = 0.0
         self.mood_phase = float(rng.uniform(0, math.tau))
         self.mood_freq = float(rng.uniform(0.004, 0.02))
         self.home = None
@@ -234,7 +247,7 @@ class Being:
     def mood(self, tick):
         return math.sin(tick * self.mood_freq + self.mood_phase)
 
-    def speed(self, light=1.0):
+    def speed(self, light=1.0, heat=0.0):
         if self.child:
             age_factor = 0.55
         elif self.age < AGE_ELDER_TICKS:
@@ -247,8 +260,9 @@ class Being:
                        self.inv.get("or", 0) * 2.0 +
                        self.inv.get("graine", 0) * 0.2)
         load_factor = max(0.45, 1.0 - 0.04 * load_weight)
+        road_bonus = min(0.18, heat * 0.08)
         return (2.7 * (0.6 + 0.7 * self.body[2]) * age_factor * hurt
-                * (0.8 + 0.2 * light) * load_factor)
+                * (0.8 + 0.2 * light) * load_factor * (1.0 + road_bonus))
 
     def drain_f(self):
         return (1.35 - 0.7 * self.body[1]) * (1.25 if self.child else 1.0)

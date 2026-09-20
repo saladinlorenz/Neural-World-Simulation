@@ -455,6 +455,40 @@ class Sim:
         a._near_sheep = near_sheep
         a._near_monsters = near_monsters
 
+        # ====== CONTEXTE LOCAL STRUCTURE ======
+        def local_density(category):
+            count = 0
+            radius = 5
+            for yy in range(max(0, ty - radius), min(w.g, ty + radius + 1)):
+                for xx in range(max(0, tx - radius), min(w.g, tx + radius + 1)):
+                    aid = w.content_at(xx, yy)
+                    if aid < 0:
+                        continue
+                    asset = self.am.assets[aid]
+                    if category == "food" and asset.edible > 0:
+                        count += 1
+                    elif category == "wood" and asset.harvest and asset.harvest.get("material") == "bois":
+                        count += 1
+                    elif category == "stone" and asset.harvest and asset.harvest.get("material") in ("pierre", "or"):
+                        count += 1
+            return min(1.0, count / 12.0)
+
+        ctx = a.context
+        ctx["food_density"] = local_density("food")
+        ctx["wood_density"] = local_density("wood")
+        ctx["stone_density"] = local_density("stone")
+        ctx["sheep_count"] = min(1.0, len(near_sheep) / 5.0)
+        ctx["monster_count"] = min(1.0, len(near_monsters) / 4.0)
+        ctx["ally_count"] = min(1.0, sum(1 for e in near_agents if a.trust(e.eid) > 0.2) / 5.0)
+        ctx["enemy_count"] = min(1.0, sum(1 for e in near_agents if a.trust(e.eid) < -0.2) / 5.0)
+        stor = self.nearest_storage(tx, ty, max_dist=12)
+        ctx["storage_near"] = 0.0 if stor is None else max(0.0, 1.0 - stor.total() / max(1, stor.capacity))
+        ctx["site_near"] = 1.0 if any(
+            abs(sx - tx) <= 8 and abs(sy - ty) <= 8
+            for sx, sy in w.sites
+        ) else 0.0
+        ctx["route_danger"] = min(1.0, float(w.smell[ty, tx]))
+
     @staticmethod
     def _ring(tx, ty):
         for dy in (-1, 0, 1):
@@ -852,10 +886,25 @@ class Sim:
 
         self._execute(a)
         self._metabolize(a)
+
+        after = self._wellbeing(a)
+        delta = after - getattr(a, 'prev_wellbeing', after)
+        if abs(delta) > 0.001:
+            self._reward(a, 0.08 * delta)
+        a.prev_wellbeing = after
+
         if a.age >= a.natural_death_age:
             self._die(a, cause="vieillesse")
         elif a.health <= 0:
             self._die(a)
+
+    def _wellbeing(self, a):
+        return (
+            0.30 * a.health
+            + 0.25 * a.energy
+            + 0.25 * (1.0 - a.hunger)
+            + 0.20 * (1.0 - a.needs[2])
+        )
 
     def _metabolize(self, a: Being):
         w = self.w
@@ -943,11 +992,11 @@ class Sim:
                 self.register_goal_failure(a, "path")
                 return
             d = math.hypot(dx, dy) or 1
-            sp = a.speed(self.clock.light)
-            if a.stuck > 5:
+            sp = a.speed(self.clock.light, float(w.heat[a.ty, a.tx]))
+            if a.stuck > 12:
                 def is_goal(tx, ty):
                     return (tx, ty) == (gx, gy) or (abs(tx - gx) <= 1 and abs(ty - gy) <= 1)
-                step_x, step_y = self._local_bfs(a.tx, a.ty, is_goal, max_r=15)
+                step_x, step_y = self._local_bfs(a.tx, a.ty, is_goal, max_r=20)
                 if step_x != 0 or step_y != 0:
                     target_wx = (a.tx + step_x) * TILE + 8
                     target_wy = (a.ty + step_y) * TILE + 8
@@ -956,7 +1005,27 @@ class Sim:
                     a.set_dir(ndx / nd * sp, ndy / nd * sp)
                     self._move(a, ndx / nd * sp, ndy / nd * sp)
                     a.energy -= MOVE_DRAIN * a.drain_f()
-                    a.state = "run" if not a.child else "run"
+                    a.state = "run"
+                    return
+            elif a.stuck > 4:
+                best_d, best_move = 1e9, (0, 0)
+                for ddx, ddy in ((1,0),(-1,0),(0,1),(0,-1),(1,1),(-1,1),(1,-1),(-1,-1)):
+                    ntx, nty = a.tx + ddx, a.ty + ddy
+                    if 0 <= ntx < w.g and 0 <= nty < w.g and not w.blocked[nty, ntx]:
+                        d2 = (ntx - gx)**2 + (nty - gy)**2
+                        if d2 < best_d:
+                            best_d = d2
+                            best_move = (ddx, ddy)
+                if best_move != (0, 0):
+                    bdx, bdy = best_move
+                    target_wx = (a.tx + bdx) * TILE + 8
+                    target_wy = (a.ty + bdy) * TILE + 8
+                    ndx, ndy = target_wx - a.x, target_wy - a.y
+                    nd = math.hypot(ndx, ndy) or 1
+                    a.set_dir(ndx / nd * sp, ndy / nd * sp)
+                    self._move(a, ndx / nd * sp, ndy / nd * sp)
+                    a.energy -= MOVE_DRAIN * a.drain_f()
+                    a.state = "run"
                     return
             a.set_dir(dx / d * sp, dy / d * sp)
             self._move(a, dx / d * sp, dy / d * sp)
@@ -1125,7 +1194,21 @@ class Sim:
         h = asd.harvest
         if w.hp[gy, gx] > 0 and a.inv[h["material"]] < INV_CAP:
             w.hp[gy, gx] -= 1
-            got = int(h["amount"] * (2 if a.tool >= 0 else 1) * (1 + 0.6 * a.skills[0]))
+            tool_kind = ""
+            if a.tool >= 0:
+                tool_kind = self.am.assets[a.tool].meta.get("tool_kind", "")
+            material = h["material"]
+            tool_bonus = 1.0
+            if material == "bois" and tool_kind == "hache":
+                tool_bonus = 1.8
+            elif material == "pierre" and tool_kind == "pioche":
+                tool_bonus = 1.8
+            elif material == "or" and tool_kind == "pioche":
+                tool_bonus = 1.5
+            elif a.tool >= 0:
+                tool_bonus = 1.4
+            base_amount = int(h.get("amount", 1))
+            got = max(1, int(round(base_amount * tool_bonus * (1.0 + 0.6 * a.skills[0]))))
             a.inv[h["material"]] = min(INV_CAP, a.inv[h["material"]] + got)
             # ── graine en sous-produit (10% si récolte de bois = arbres) ──
             if h["material"] == "bois" and self.rng.random() < 0.10:
@@ -1555,6 +1638,11 @@ class Sim:
             for tx in range(site.origin_tx + 1, site.origin_tx + 4):
                 if 0 <= tx < w.g and 0 <= ty < w.g:
                     w.shelter[ty, tx] = 1
+        storage_tx = site.origin_tx + 2
+        storage_ty = site.origin_ty + 2
+        if (storage_tx, storage_ty) not in w.storages:
+            self.create_storage(finisher, storage_tx, storage_ty, capacity=80)
+            self.log(f"Depot cree au centre de la maison.", (178, 228, 168), "batiment")
         w.remove_site(site)
         self._check_village(site.origin_tx + 2, site.origin_ty + 2)
         for eid in site.contributors:
