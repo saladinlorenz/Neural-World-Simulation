@@ -230,6 +230,22 @@ def load_game(am, slot=0):
     for md in data.get("monsters", []):
         sim.monsters.append(_deserialize_monster(md))
 
+    # --- rebuild spatial hash (grid_bucket + _entity_cells) ---
+    sim.grid_bucket = {}
+    sim._entity_cells = {}
+    for a in sim.agents:
+        cx, cy = int(a.x // 32), int(a.y // 32)
+        sim.grid_bucket.setdefault((cx, cy), []).append(a)
+        sim._entity_cells[a.eid] = (cx, cy)
+    for s in sim.sheep:
+        cx, cy = int(s.x // 32), int(s.y // 32)
+        sim.grid_bucket.setdefault((cx, cy), []).append(s)
+        sim._entity_cells[s.eid] = (cx, cy)
+    for m in sim.monsters:
+        cx, cy = int(m.x // 32), int(m.y // 32)
+        sim.grid_bucket.setdefault((cx, cy), []).append(m)
+        sim._entity_cells[m.eid] = (cx, cy)
+
     # --- camera ---
     cam = Camera()
     if "cam_zoom" in data:
