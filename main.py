@@ -182,15 +182,6 @@ def main():
                     dash.follow = not dash.follow
                 elif ev.key == pygame.K_v:
                     show_legend[0] = not show_legend[0]
-                elif ev.key == pygame.K_r:
-                    sim.w.reset_content()
-                    sim.agents.clear()
-                    sim.sheep.clear()
-                    sim.monsters.clear()
-                    sim.grid_bucket.clear()
-                    sim.item_bucket.clear()
-                    sim._entity_cells.clear()
-                    sim.log("Carte reinitialisee (montagnes gardees).", (108, 208, 128), "monde")
                 elif ev.key == pygame.K_LEFTBRACKET:
                     cam.tilt = max(40.0, cam.tilt - 5)
                 elif ev.key == pygame.K_RIGHTBRACKET:
