@@ -752,6 +752,45 @@ class Sim:
         count, until = a.failed_targets.get((act, tx, ty), (0, 0))
         return self.w.tick < until
 
+    # ------------------------------------------------------------------ depots
+    def nearest_storage(self, tx, ty, max_dist=12):
+        best, best_distance = None, 10**9
+        for storage in self.w.storages.values():
+            distance = max(abs(storage.tx - tx), abs(storage.ty - ty))
+            if distance <= max_dist and distance < best_distance:
+                best, best_distance = storage, distance
+        return best
+
+    def create_storage(self, a, tx, ty, capacity=80):
+        from .storage import SharedStorage
+        if (tx, ty) in self.w.storages:
+            return self.w.storages[(tx, ty)]
+        storage = SharedStorage(tx=tx, ty=ty, capacity=capacity, owner_clan=a.color)
+        self.w.storages[(tx, ty)] = storage
+        return storage
+
+    def deposit_to_storage(self, a, storage):
+        material = max(a.inv, key=a.inv.get)
+        if a.inv.get(material, 0) <= 0:
+            return False
+        moved = storage.deposit(a.eid, material, min(2, a.inv[material]), self.w.tick)
+        if moved <= 0:
+            return False
+        a.inv[material] -= moved
+        a.skills[3] = min(1.0, a.skills[3] + 0.01)
+        a.rep += 0.05
+        self._reward(a, 0.08)
+        return True
+
+    def withdraw_from_storage(self, a, storage, material):
+        if a.inv.get(material, 0) >= INV_CAP:
+            return False
+        moved = storage.withdraw(a.eid, material, min(2, INV_CAP - a.inv.get(material, 0)), self.w.tick)
+        if moved <= 0:
+            return False
+        a.inv[material] = a.inv.get(material, 0) + moved
+        return True
+
     # ------------------------------------------------------------------ agent
     def _agent(self, a: Being):
         w = self.w
@@ -1082,6 +1121,9 @@ class Sim:
             a.belief_places[key] = min(1.0, a.belief_places.get(key, 0) + strength * 0.3)
 
     def _do_give(self, a, ref):
+        storage = self.nearest_storage(a.tx, a.ty, max_dist=2)
+        if storage is not None:
+            return self.deposit_to_storage(a, storage)
         e = ref if isinstance(ref, Being) and ref.alive else None
         if e is None:
             return True
@@ -1109,6 +1151,10 @@ class Sim:
         return True
 
     def _do_take(self, a, ref):
+        storage = self.nearest_storage(a.tx, a.ty, max_dist=2)
+        if storage is not None:
+            needed = "food" if a.needs[0] > 0.65 else "bois"
+            return self.withdraw_from_storage(a, storage, needed)
         e = ref if isinstance(ref, Being) and ref.alive else None
         if e is None:
             return True

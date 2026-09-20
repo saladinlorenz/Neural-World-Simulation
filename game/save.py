@@ -51,6 +51,17 @@ def save_game(sim, cam=None, slot=0):
             }
             for (tx, ty), s in w.sites.items()
         },
+        "storages": {
+            f"{tx},{ty}": {
+                "tx": st.tx, "ty": st.ty, "capacity": st.capacity,
+                "owner_clan": st.owner_clan,
+                "inventory": dict(st.inventory),
+                "contributors": dict(st.contributors),
+                "withdrawals": dict(st.withdrawals),
+                "last_access_tick": st.last_access_tick,
+            }
+            for (tx, ty), st in w.storages.items()
+        },
         "items": [(it.x, it.y, it.aid, it.kind, it.life) for it in w.items],
         "w_tick": w.tick,
         "g": w.g,
@@ -176,6 +187,18 @@ def load_game(am, slot=0):
             owner_clan=raw.get("owner_clan"),
         )
         w.sites[site.key] = site
+    w.storages = {}
+    from .storage import SharedStorage
+    for raw_s in data.get("storages", {}).values():
+        st = SharedStorage(
+            tx=raw_s["tx"], ty=raw_s["ty"], capacity=raw_s.get("capacity", 80),
+            owner_clan=raw_s.get("owner_clan"),
+            inventory=raw_s.get("inventory", {}),
+            contributors={int(k): int(v) for k, v in raw_s.get("contributors", {}).items()},
+            withdrawals={int(k): int(v) for k, v in raw_s.get("withdrawals", {}).items()},
+            last_access_tick=int(raw_s.get("last_access_tick", 0)),
+        )
+        w.storages[st.tx, st.ty] = st
     w.tick = data["w_tick"]
     w.items = []
     for (ix, iy, iaid, ikind, ilife) in data.get("items", []):
