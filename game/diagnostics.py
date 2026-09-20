@@ -212,16 +212,16 @@ def tile_snapshot(sim, tx: int, ty: int) -> dict[str, Any]:
         }
 
     site = getattr(w, "sites", {}).get((tx, ty))
+    if site is None:
+        site = w.site_at(tx, ty)
     if site is not None:
-        total_work = sum(site.recipe.values())
-        done_work = sum(site.stored.values())
         result["chantier"] = {
-            "asset_id": int(site.asset_id),
-            "recette": dict(site.recipe),
-            "stock": dict(site.stored),
-            "travail": float(site.work),
+            "nom": site.blueprint_name,
+            "progression": site.progress(),
+            "manquant": site.missing_materials(),
             "contributeurs": list(site.contributors),
-            "progression": float(done_work / max(1, total_work)),
+            "blocs_poses": len(site.placed),
+            "blocs_total": len(site.tasks),
         }
 
     gen = getattr(w, "gen", None)

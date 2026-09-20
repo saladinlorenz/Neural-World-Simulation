@@ -339,6 +339,58 @@ def _kenney(kit, f):
         ed = 0.0
         if any(x in name for x in FOOD_HI):
             ed = 34.0
+        # outils
+        if name.startswith("tool "):
+            up = "upgraded" in name
+            tool_kind = name.replace(" upgraded", "").replace("tool ", "")
+            px = 14 if up else 12
+            return "outils", "tool", {"px": px, "tool": True,
+                                      "meta": {"tool_kind": tool_kind, "upgraded": up}}
+        # ressources
+        if name.startswith("resource "):
+            mat = "bois" if "wood" in name or "planks" in name else "pierre"
+            return "ressources", "stone_res" if mat == "pierre" else "item_wood", {
+                "px": 16, "material": mat}
+        # arbres
+        if name.startswith("tree"):
+            return "ressources", "tree", {"px": 32, "solid": True,
+                                          "harvest": dict(material="bois", amount=3, hp=6)}
+        # structures / bâtiments
+        if name.startswith("structure"):
+            sh = "roof" in name or "wall" in name
+            return "batiments", "house", {"px": 22, "solid": True, "shelter": sh}
+        if name.startswith("tent"):
+            return "batiments", "house", {"px": 24, "solid": True, "shelter": True}
+        # mobilier / craft
+        if name.startswith("workbench"):
+            return "batiments", "fort", {"px": 20, "solid": True}
+        if name.startswith("campfire"):
+            return "props", "prop", {"px": 18, "edible": 0.0,
+                                     "flammable": True}
+        # caisses / stockage
+        if any(name.startswith(x) for x in ("box", "chest", "barrel", "bucket")):
+            return "props", "prop", {"px": 18, "solid": True}
+        # clôtures
+        if name.startswith("fence"):
+            return "props", "prop", {"px": 18, "solid": True}
+        # poissons
+        if name.startswith("fish"):
+            return "nourriture", "food", {"px": 14, "edible": 40.0}
+        # nature
+        if name.startswith("rock") or name.startswith("patch") or name.startswith("grass"):
+            return "decor", "decor", {"px": 16}
+        # panneau
+        if name.startswith("signpost"):
+            return "props", "prop", {"px": 18}
+        # lits
+        if name.startswith("bedroll"):
+            return "props", "prop", {"px": 18, "shelter": True}
+        # bouteille
+        if name.startswith("bottle"):
+            return "props", "prop", {"px": 14}
+        # panneaux métal
+        if name.startswith("metal"):
+            return "props", "prop", {"px": 18, "solid": True}
         return "props", "prop", {"px": 18, "solid": solid, "shelter": shelter, "edible": ed}
     if kit == "kenney_mini-arcade":
         return "props", "prop", {"px": 24, "solid": solid}
@@ -803,22 +855,29 @@ class AssetManager:
 
     def ensure_procedural_blocks(self):
         specs = [
-            ("block_wood", (150, 108, 62), (110, 78, 44)),
-            ("block_stone", (150, 150, 156), (108, 108, 114)),
+            ("block_wood", "Bloc bois", (150, 108, 62), (110, 78, 44), True),
+            ("block_stone", "Bloc pierre", (150, 150, 156), (108, 108, 114), True),
+            ("block_roof", "Tuile toit", (125, 70, 55), (86, 45, 38), False),
+            ("block_door", "Porte", (108, 70, 38), (65, 42, 25), False),
         ]
-        for role, fill, edge in specs:
+        for role, label, fill, edge, solid in specs:
             if self.by_role.get(role):
                 continue
             surf = pygame.Surface((16, 16), pygame.SRCALPHA)
             surf.fill(fill)
             pygame.draw.rect(surf, edge, surf.get_rect(), 2)
+            if role == "block_door":
+                pygame.draw.circle(surf, (220, 190, 80), (12, 8), 1)
+            elif role == "block_roof":
+                pygame.draw.line(surf, edge, (1, 5), (15, 5), 1)
+                pygame.draw.line(surf, edge, (1, 10), (15, 10), 1)
             aid = len(self.assets)
             a = AssetDef(
                 id=aid, name=f"{role}.png",
-                label="Bloc de bois" if role == "block_wood" else "Bloc de pierre",
+                label=label,
                 path="", pack="procedural", category="batiments", role=role,
                 kind="single", frames=1, fw=16, fh=16, px=16,
-                solid=True, blocked_footprint=1, placable=True,
+                solid=solid, blocked_footprint=1, placable=True,
                 meta={"procedural": True},
             )
             a.afford = ("block", "hit")

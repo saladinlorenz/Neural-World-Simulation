@@ -291,6 +291,9 @@ class Renderer:
         for _, _, fn, arg in draws:
             fn(screen, cam, *arg)
 
+        # 5.5) chantiers en cours (blueprints translucides)
+        self._draw_sites(screen, cam, w, (x0, y0, x1, y1))
+
         # 6) ligne de quête de l'habitant sélectionné
         self._goal_line(screen, cam, ui)
 
@@ -735,6 +738,37 @@ class Renderer:
         for y in range(max(0, int(y0)), min(GRID, int(y1) + 1)):
             _, sy = cam.to_screen(0, y * TILE)
             pygame.draw.line(screen, col, (view.left, sy), (view.right, sy), 1)
+
+    def _draw_sites(self, screen, cam, world, box):
+        x0, y0, x1, y1 = box
+        for site in getattr(world, "sites", {}).values():
+            if not (x0 - 6 <= site.origin_tx <= x1 + 6
+                    and y0 - 6 <= site.origin_ty <= y1 + 6):
+                continue
+            for task in site.remaining_tasks():
+                sx, sy = cam.to_screen(task.tx * TILE, task.ty * TILE)
+                tw = max(2, int(TILE * cam.zoom))
+                th = max(2, int(TILE * cam.zoom * cam.ys))
+                if task.phase == "foundation":
+                    color = (145, 145, 155, 130)
+                elif task.phase == "door":
+                    color = (178, 120, 60, 150)
+                elif task.phase == "roof":
+                    color = (170, 88, 64, 140)
+                else:
+                    color = (142, 104, 68, 125) if task.material == "bois" else (145, 145, 155, 125)
+                ghost = pygame.Surface((tw, th), pygame.SRCALPHA)
+                ghost.fill(color)
+                pygame.draw.rect(ghost, (230, 230, 235, 170), ghost.get_rect(), 1)
+                screen.blit(ghost, (int(sx), int(sy)))
+            if cam.zoom >= 0.5:
+                import math as _m
+                sx, sy = cam.to_screen((site.origin_tx + 2.5) * TILE,
+                                       (site.origin_ty + 2.5) * TILE)
+                font = self._font(max(9, int(11 * cam.zoom)), True)
+                label = font.render(f"{site.progress():.0%}", True, (238, 194, 86))
+                screen.blit(label, (int(sx - label.get_width() / 2),
+                                    int(sy - 26 * cam.zoom)))
 
     def _draw_diagnostic_overlay(self, screen, sim, cam, ui, box):
         overlay = ui.get("overlay", "none")

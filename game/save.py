@@ -35,6 +35,22 @@ def save_game(sim, cam=None, slot=0):
         "smell": w.smell,
         "heat": w.heat,
         "cemetery": list(w.cemetery),
+        "sites": {
+            f"{tx},{ty}": {
+                "origin_tx": s.origin_tx,
+                "origin_ty": s.origin_ty,
+                "blueprint_name": s.blueprint_name,
+                "tasks": [{"tx": t.tx, "ty": t.ty, "material": t.material,
+                           "phase": t.phase, "solid": t.solid}
+                          for t in s.tasks],
+                "placed": list(s.placed),
+                "contributors": dict(s.contributors),
+                "created_tick": s.created_tick,
+                "owner_eid": s.owner_eid,
+                "owner_clan": s.owner_clan,
+            }
+            for (tx, ty), s in w.sites.items()
+        },
         "items": [(it.x, it.y, it.aid, it.kind, it.life) for it in w.items],
         "w_tick": w.tick,
         "g": w.g,
@@ -144,6 +160,22 @@ def load_game(am, slot=0):
     w.smell = data["smell"]
     w.heat = data["heat"]
     w.cemetery = data.get("cemetery", [])
+    w.sites = {}
+    from .construction import ConstructionSite, BlockTask
+    for raw in data.get("sites", {}).values():
+        tasks = [BlockTask(**t) for t in raw.get("tasks", [])]
+        site = ConstructionSite(
+            origin_tx=raw["origin_tx"],
+            origin_ty=raw["origin_ty"],
+            blueprint_name=raw.get("blueprint_name", "small_house"),
+            tasks=tasks,
+            placed={tuple(p) for p in raw.get("placed", [])},
+            contributors={int(k): int(v) for k, v in raw.get("contributors", {}).items()},
+            created_tick=int(raw.get("created_tick", 0)),
+            owner_eid=raw.get("owner_eid"),
+            owner_clan=raw.get("owner_clan"),
+        )
+        w.sites[site.key] = site
     w.tick = data["w_tick"]
     w.items = []
     for (ix, iy, iaid, ikind, ilife) in data.get("items", []):

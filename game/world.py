@@ -322,6 +322,19 @@ class World:
         """Enterre un habitant : enregistre la tombe (pas de bloc posé)."""
         self.cemetery.append((tx, ty, name, death_tick, color_rgb))
 
+    def site_at(self, tx, ty):
+        for site in self.sites.values():
+            for task in site.tasks:
+                if task.tx == tx and task.ty == ty:
+                    return site
+        return None
+
+    def add_site(self, site):
+        self.sites[site.key] = site
+
+    def remove_site(self, site):
+        self.sites.pop(site.key, None)
+
     def burn_out(self, am, y, x):
         """Le feu a fini de bruler la tuile : ce qu'elle contenait est detruit."""
         aid = self.content_at(x, y)

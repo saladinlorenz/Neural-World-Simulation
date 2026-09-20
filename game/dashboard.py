@@ -1770,9 +1770,10 @@ class Dashboard:
         site = data.get("chantier")
         if site:
             rows.extend([
-                ("Chantier", f"asset #{site['asset_id']}"),
-                ("Progression", f"{site['progression']:.0%}"),
-                ("Contributeurs", str(len(site["contributeurs"]))),
+                ("Chantier", site.get("nom", "?")),
+                ("Progression", f"{site.get('progression', 0):.0%}"),
+                ("Blocs", f"{site.get('blocs_poses', 0)} / {site.get('blocs_total', 0)}"),
+                ("Contributeurs", str(len(site.get("contributeurs", [])))),
             ])
 
         for label, value in rows:

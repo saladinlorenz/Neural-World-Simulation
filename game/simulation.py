@@ -30,6 +30,7 @@ from .world import Item
 from .universal_knowledge import UniversalKnowledge
 from .academy import Academy
 from .lab import LabRecorder
+from .construction import ConstructionSite, blueprint_from_name
 
 MAT_AIDS = {"bois": "item_wood", "pierre": "stone_res", "or": "gold_pile"}
 
@@ -1390,7 +1391,125 @@ class Sim:
         self._reward(a, 0.35)
         return True
 
+    def can_place_blueprint(self, tasks):
+        w = self.w
+        for task in tasks:
+            if not (0 <= task.tx < w.g and 0 <= task.ty < w.g):
+                return False
+            if not w.land[task.ty, task.tx]:
+                return False
+            if w.water[task.ty, task.tx]:
+                return False
+            if w.content_at(task.tx, task.ty) >= 0:
+                return False
+        return True
+
+    def find_build_location(self, a, radius=8):
+        for r in range(2, radius + 1):
+            for dy in range(-r, r + 1):
+                for dx in range(-r, r + 1):
+                    if abs(dx) != r and abs(dy) != r:
+                        continue
+                    tx, ty = a.tx + dx, a.ty + dy
+                    tasks = blueprint_from_name("small_house", tx, ty)
+                    if self.can_place_blueprint(tasks):
+                        return tx, ty
+        return None
+
+    def create_house_site(self, a, tx=None, ty=None):
+        if tx is None or ty is None:
+            pos = self.find_build_location(a)
+            if pos is None:
+                return None
+            tx, ty = pos
+        tasks = blueprint_from_name("small_house", tx, ty)
+        if not self.can_place_blueprint(tasks):
+            return None
+        site = ConstructionSite(
+            origin_tx=tx, origin_ty=ty,
+            blueprint_name="small_house", tasks=tasks,
+            created_tick=self.w.tick,
+            owner_eid=a.eid, owner_clan=a.color,
+        )
+        self.w.add_site(site)
+        a.home = (tx + 2, ty + 2)
+        self.log(f"{a.name} a commence le plan d'une maison.", (178, 228, 168), "batiment")
+        return site
+
+    def nearest_site(self, tx, ty, max_dist=15):
+        best, best_dist = None, 10**9
+        for site in self.w.sites.values():
+            d = max(abs(site.origin_tx - tx), abs(site.origin_ty - ty))
+            if d <= max_dist and d < best_dist:
+                best, best_dist = site, d
+        return best
+
+    def role_for_block_task(self, task):
+        if task.phase == "door":
+            return "block_door"
+        if task.phase == "roof":
+            return "block_roof"
+        if task.material == "pierre":
+            return "block_stone"
+        return "block_wood"
+
+    def place_site_block(self, a, site, task):
+        w = self.w
+        if (task.tx, task.ty) in site.placed:
+            return False
+        if task.material not in ("bois", "pierre"):
+            return False
+        if a.inv.get(task.material, 0) <= 0:
+            return False
+        if w.content_at(task.tx, task.ty) >= 0:
+            return False
+        role = self.role_for_block_task(task)
+        pool = self.am.pool(role)
+        if not pool:
+            return False
+        aid = int(self.am.pick(pool, self.rng))
+        w.place(task.tx, task.ty, aid, self.am, hp=6,
+                solid=task.solid, shelter=False, size=1)
+        a.inv[task.material] -= 1
+        site.mark_placed(a.eid, task)
+        a.skills[1] = min(1.0, a.skills[1] + 0.012)
+        self.stats["builds"] += 1
+        self._fx("dust", task.tx * TILE + TILE / 2, task.ty * TILE + TILE / 2)
+        self._reward(a, 0.10)
+        if site.complete():
+            self.complete_site(site, a)
+        return True
+
+    def complete_site(self, site, finisher):
+        w = self.w
+        for ty in range(site.origin_ty + 1, site.origin_ty + 4):
+            for tx in range(site.origin_tx + 1, site.origin_tx + 4):
+                if 0 <= tx < w.g and 0 <= ty < w.g:
+                    w.shelter[ty, tx] = 1
+        w.remove_site(site)
+        self._check_village(site.origin_tx + 2, site.origin_ty + 2)
+        for eid in site.contributors:
+            c = next((x for x in self.agents if x.eid == eid), None)
+            if c and c.alive:
+                c.skills[1] = min(1.0, c.skills[1] + 0.04)
+                c.needs[6] = max(0.0, c.needs[6] - 0.12)
+                self._reward(c, 0.25)
+        self.log(f"Maison terminee : {len(site.contributors)} contributeur(s).",
+                 (108, 208, 128), "batiment")
+
     def do_build_block(self, a, tx, ty):
+        """BUILD : contribuer a un chantier existant ou placer un bloc."""
+        site = self.nearest_site(a.tx, a.ty, max_dist=14)
+        if site is not None:
+            task = site.next_task_for(a.inv)
+            if task is not None:
+                return self.place_site_block(a, site, task)
+        site = self.create_house_site(a)
+        if site is not None:
+            task = site.next_task_for(a.inv)
+            if task is not None:
+                return self.place_site_block(a, site, task)
+            return True
         w, am = self.w, self.am
         if w.blocked[ty, tx] or w.content_at(tx, ty) >= 0 or not w.land[ty, tx]:
             tx, ty = self._free_near(tx, ty)
