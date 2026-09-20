@@ -287,6 +287,21 @@ class Sim:
             self.universal_knowledge.sync_from_world(self.w, self.am, self.w.tick)
         if w.tick % 3600 == 0:
             self.social_memory.decay(self.w.tick)
+
+    # ------------------------------------------------------------------ messages
+    def send_fact(self, sender, receiver, category, tx, ty, confidence=0.6):
+        trust = receiver.trust(sender.eid)
+        if trust < -0.3:
+            return False
+        receiver.remember(category, tx, ty)
+        receiver.episodes.append((self.w.tick, "message", {
+            "from": sender.eid,
+            "category": category,
+            "tx": tx,
+            "ty": ty,
+            "confidence": confidence,
+        }))
+        return True
         if w.tick % 1800 == 0:
             for a in self.agents:
                 if a.alive and not a.child:
@@ -1307,6 +1322,8 @@ class Sim:
             msg = "menace"
         elif a.emotions[7] > 0.38 and a.bonded != e.eid and not e.child and not a.child:
             msg = "cour"
+        elif self.rng.random() < 0.15:
+            msg = "fait"
         r1 = a.rel.setdefault(e.eid, [0, 0])
         r2 = e.rel.setdefault(a.eid, [0, 0])
         if msg == "salut":
@@ -1340,6 +1357,12 @@ class Sim:
                 e.life.append(("mariage", a.name))
                 self.log(f"{a.name} et {e.name} se sont mariés.",
                          (248, 178, 218), "social")
+        elif msg == "fait":
+            for cat in ("food", "water", "wood"):
+                memory = a.recall(cat, a.tx, a.ty)
+                if memory is not None:
+                    self.send_fact(a, e, cat, memory[0], memory[1])
+                    break
         else:
             r1[0] = min(1, r1[0] + 0.03)
             r2[0] = min(1, r2[0] + 0.03)
