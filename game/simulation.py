@@ -648,6 +648,18 @@ class Sim:
                 continue
             if event["reward"] > 0:
                 bias[event["action"]] += min(0.08, 0.04 * event["reward"])
+
+        # Territoire doux : pheromones modulent peur, securite, retour foyer
+        w = self.w
+        phero = float(w.marker[a.ty, a.tx])
+        if phero > 0.2:
+            bias[REST] += 0.3 * phero
+            bias[EXPLORE] -= 0.2 * phero
+            bias[SOCIAL] += 0.15 * phero
+        if phero > 0.5:
+            bias[FLEE] -= 0.3 * phero
+            bias[ATTACK] -= 0.2 * phero
+
         return bias
 
     def _feasible(self, a: Being):
