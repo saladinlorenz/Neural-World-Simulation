@@ -72,7 +72,6 @@ class AssetDef:
 CATEGORY_LABELS = [
     ("ressources", "Ressources"),
     ("nourriture", "Nourriture"),
-    ("batiments", "Batiments"),
     ("outils", "Outils"),
     ("animaux", "Animaux"),
     ("props", "Props"),
@@ -862,7 +861,7 @@ class AssetManager:
                 label=label,
                 path="", pack="procedural", category="batiments", role=role,
                 kind="single", frames=1, fw=16, fh=16, px=16,
-                solid=solid, blocked_footprint=1, placable=True,
+                solid=solid, blocked_footprint=1, placable=False,
                 meta={"procedural": True},
             )
             a.afford = ("block", "hit")
@@ -983,3 +982,51 @@ class AssetManager:
             self.assets.append(a)
             self.by_role.setdefault(role, []).append(aid)
             self.by_cat.setdefault(cat, []).append(aid)
+
+    def register_grid_items(self, path, category, role, cell_w, cell_h,
+                            labels=None, edible=0.0, tool_item=False,
+                            solid=False, harvest=None):
+        from PIL import Image as _Img
+        with _Img.open(path) as source:
+            image = source.convert("RGBA")
+        columns = max(1, image.width // cell_w)
+        rows = max(1, image.height // cell_h)
+        gen_dir = os.path.join(ASSETS_DIR, "generated")
+        os.makedirs(gen_dir, exist_ok=True)
+        base = os.path.splitext(os.path.basename(path))[0]
+        created = []
+        for row in range(rows):
+            for col in range(columns):
+                index = row * columns + col
+                x0, y0 = col * cell_w, row * cell_h
+                tile = image.crop((x0, y0, x0 + cell_w, y0 + cell_h))
+                alpha = tile.split()[3]
+                if alpha.getbbox() is None:
+                    continue
+                tile_path = os.path.join(gen_dir, f"{base}_{index}.png")
+                tile.save(tile_path)
+                aid = len(self.assets)
+                label = (labels[index] if labels and index < len(labels)
+                         else f"{role} {index + 1}")
+                asset = AssetDef(
+                    id=aid, name=os.path.basename(tile_path), label=label,
+                    path=tile_path, pack="generated_grid", category=category,
+                    role=role, kind="single", frames=1,
+                    fw=cell_w, fh=cell_h,
+                    px=max(cell_w, cell_h),
+                    solid=solid, edible=edible, tool=tool_item,
+                    blocked_footprint=1, placable=True,
+                    meta={"source_sheet": os.path.basename(path),
+                           "grid_index": index},
+                )
+                if harvest:
+                    asset.harvest = harvest
+                if edible > 0:
+                    asset.afford = ("eat", "carry", "give", "burn")
+                else:
+                    asset.afford = ("carry", "hit") if solid else ("carry",)
+                self.assets.append(asset)
+                self.by_role.setdefault(role, []).append(aid)
+                self.by_cat.setdefault(category, []).append(aid)
+                created.append(aid)
+        return created

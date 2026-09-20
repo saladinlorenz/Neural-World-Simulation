@@ -582,6 +582,61 @@ class Sim:
         s[92] = math.cos(f * 6.283)
         s[93] = self.clock.temp
         s[94] = self.clock.rain
+        # === Nouvelles entrees Lot 7 (95-127) ===
+        s[95] = min(1.0, a.inv.get("bois", 0) / 8.0)
+        s[96] = min(1.0, a.inv.get("pierre", 0) / 8.0)
+        s[97] = min(1.0, a.inv.get("graine", 0) / 8.0)
+        s[98] = min(1.0, a.inv.get("or", 0) / 8.0)
+        s[99] = 1.0 if a.tool >= 0 else 0.0
+        s[100] = min(1.0, a.tool_durability / 20.0) if a.tool >= 0 else 0.0
+        tool_kind = ""
+        if a.tool >= 0:
+            tool_kind = self.am.assets[a.tool].meta.get("tool_kind", "")
+        s[101] = 1.0 if tool_kind == "hache" else 0.0
+        s[102] = 1.0 if tool_kind == "pioche" else 0.0
+        s[103] = 1.0 if tool_kind == "marteau" else 0.0
+        ctx = getattr(a, 'context', {})
+        s[104] = ctx.get("food_density", 0.0)
+        s[105] = ctx.get("wood_density", 0.0)
+        s[106] = ctx.get("stone_density", 0.0)
+        s[107] = ctx.get("sheep_count", 0.0)
+        s[108] = ctx.get("ally_count", 0.0)
+        s[109] = ctx.get("enemy_count", 0.0)
+        s[110] = ctx.get("storage_near", 0.0)
+        stor = self.nearest_storage(tx, ty, max_dist=14)
+        if stor:
+            s[111] = min(1.0, stor.inventory.get("food", 0) / max(1, stor.capacity))
+            s[112] = min(1.0, stor.inventory.get("bois", 0) / max(1, stor.capacity))
+        s[113] = ctx.get("site_near", 0.0)
+        site = self.nearest_site(tx, ty, max_dist=10)
+        if site:
+            s[114] = site.progress()
+            missing = sum(1 for t in site.tasks if t.key not in site.placed)
+            s[115] = min(1.0, missing / 10.0)
+        food_mem = a.recall("food", tx, ty)
+        s[116] = min(1.0, (food_mem[2] / 100.0) if food_mem else 1.0)
+        water_mem = a.recall("water", tx, ty)
+        s[117] = min(1.0, (water_mem[2] / 100.0) if water_mem else 1.0)
+        shelter_mem = a.recall("shelter", tx, ty)
+        s[118] = min(1.0, (shelter_mem[2] / 100.0) if shelter_mem else 1.0)
+        if a.bonded is not None:
+            partner = self._by_eid(a.bonded)
+            if partner:
+                d = max(abs(partner.tx - tx), abs(partner.ty - ty))
+                s[119] = min(1.0, d / 40.0)
+        s[120] = ctx.get("route_danger", 0.0)
+        s[121] = min(1.0, len(a._near_agents) / 3.0)
+        s[122] = max(-1.0, min(1.0, a.rep / 8.0))
+        s[123] = 1.0 if self.clock.is_winter else 0.0
+        if a.home:
+            hx, hy = a.home
+            if 0 <= hx < self.w.g and 0 <= hy < self.w.g:
+                stor_home = self.w.storages.get((hx, hy))
+                if stor_home:
+                    s[124] = min(1.0, stor_home.total() / max(1, stor_home.capacity))
+        s[125] = min(1.0, sum(max(0, v) for v in a.inv.values()) / 32.0)
+        s[126] = float(a.emotions[0])
+        s[127] = min(1.0, a.age / float(AGE_ELDER_TICKS * 3))
         return s
 
     # ------------------------------------------------------------------ arbitrage

@@ -405,7 +405,7 @@ class Dashboard:
     def brain_memory_estimate_mb(self, n=None):
         """Poids Elman float64 : Wx(95*n)+Wd(n*n)+Wo(15*n)+biais."""
         n = int(n if n is not None else self.brain_size)
-        params = 95 * n + n * n + n + 15 * n + 15
+        params = 128 * n + n * n + n + 15 * n + 15
         return params * 8 / (1024 * 1024)
 
     def _init_state(self):
@@ -2796,7 +2796,7 @@ class Dashboard:
             if aid not in self.recents:
                 self.recents.insert(0, aid)
                 self.recents = self.recents[:12]
-            if self.mode == "inspect":
+            if self.mode in ("inspect", "agent", "sheep", "monster"):
                 self.mode = "place"
         elif fid.startswith("jfil:"):
             self.jfilter = fid[5:]

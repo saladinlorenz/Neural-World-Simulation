@@ -42,7 +42,7 @@ think/learn/breed/copy, memes constantes N_IN/N_OUT/ACTION_*) :
 import numpy as np
 from collections import deque
 
-N_IN = 95
+N_IN = 128
 N_OUT = 15
 
 # vocabulaire d'actions elementaires (composables par le monde, jamais des roles)

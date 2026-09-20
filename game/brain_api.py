@@ -64,8 +64,8 @@ def think(brain: Brain, perception: Dict[str, Any]) -> Intention:
     Retourne une Intention que la couche supérieure (simulation/UI) appliquera
     au monde via les primitives connues (BUILD, HARVEST, MOVE, etc.).
 
-    Note : brain.py conserve ses poids internes (N_IN=95, N_OUT=15) — cette
-    fonction ne fait queForward pass + échantillonnage d'action.
+    Note : brain.py conserve ses poids internes (N_IN=128, N_OUT=15) — cette
+    fonction ne fait que Forward pass + échantillonnage d'action.
     """
     x = np.asarray(perception.get("input", np.zeros(N_IN, dtype=np.float64)),
                     dtype=np.float64).ravel()

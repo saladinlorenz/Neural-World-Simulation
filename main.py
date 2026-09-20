@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from game.assets_manager import AssetManager
 from game.assets_api import _set_asset_manager
 from game.camera import Camera, ZOOMS
-from game.config import (GRID, SCREEN_H, SCREEN_W, SIM_HZ, TILE, VIEW_H, FPS)
+from game.config import (GRID, SCREEN_H, SCREEN_W, SIM_HZ, TILE, VIEW_H, FPS, ASSETS_DIR)
 
 # marge autour de tout l'écran
 M = 3
@@ -55,6 +55,19 @@ def main():
     am.ensure_procedural_tools()
     am.ensure_kaykit_resources()
     _set_asset_manager(am)
+
+    # Découper les sprite sheets en assets individuels
+    import os as _os
+    for _f in _os.listdir(ASSETS_DIR):
+        if "vegetable" in _f.lower() and _f.lower().endswith(".png") and _os.path.isfile(_os.path.join(ASSETS_DIR, _f)):
+            _p = _os.path.join(ASSETS_DIR, _f)
+            if _os.path.getsize(_p) > 1000:
+                am.register_grid_items(
+                    _p, category="nourriture", role="food",
+                    cell_w=16, cell_h=16, edible=24.0,
+                )
+                break
+
     st = am.stats()
     print(f"  {st['discovered']} fichiers trouvés, {st['deduped']} uniques après "
           f"suppression des répétitions, {len(am.floors)} tilesets de sol.")

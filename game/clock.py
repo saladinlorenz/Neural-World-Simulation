@@ -27,6 +27,10 @@ class Clock:
     def is_night(self):
         return self.light < 0.35
 
+    @property
+    def is_winter(self):
+        return self.season == 3
+
     def label(self):
         h = int(self.day_frac * 24)
         m = int((self.day_frac * 24 - h) * 60)
