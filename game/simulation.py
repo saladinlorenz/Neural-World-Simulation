@@ -1460,13 +1460,21 @@ class Sim:
             return "block_stone"
         return "block_wood"
 
+    def ensure_material_for_task(self, a, task):
+        if a.inv.get(task.material, 0) > 0:
+            return True
+        storage = self.nearest_storage(a.tx, a.ty, max_dist=14)
+        if storage is None:
+            return False
+        return self.withdraw_from_storage(a, storage, task.material)
+
     def place_site_block(self, a, site, task):
         w = self.w
         if task.key in site.placed:
             return False
         if task.material not in ("bois", "pierre"):
             return False
-        if a.inv.get(task.material, 0) <= 0:
+        if not self.ensure_material_for_task(a, task):
             return False
         if w.content_at(task.tx, task.ty) >= 0:
             return False
