@@ -53,6 +53,7 @@ def main():
     am = AssetManager(headless=False).discover()
     am.ensure_procedural_blocks()
     am.ensure_procedural_tools()
+    am.ensure_kaykit_resources()
     _set_asset_manager(am)
     st = am.stats()
     print(f"  {st['discovered']} fichiers trouvés, {st['deduped']} uniques après "

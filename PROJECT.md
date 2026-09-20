@@ -9,6 +9,492 @@
 ```
 E:\my world2\
 ├── assets/
+│   ├── KayKit_ResourceBits_1.0_FREE (1)/
+│   │   └── KayKit_ResourceBits_1.0_FREE/
+│   │       ├── Assets/
+│   │       │   ├── fbx/
+│   │       │   │   ├── Copper_Bar.fbx
+│   │       │   │   ├── Copper_Bars.fbx
+│   │       │   │   ├── Copper_Bars_Stack_Large.fbx
+│   │       │   │   ├── Copper_Bars_Stack_Medium.fbx
+│   │       │   │   ├── Copper_Bars_Stack_Small.fbx
+│   │       │   │   ├── Copper_Nugget_Large.fbx
+│   │       │   │   ├── Copper_Nugget_Medium.fbx
+│   │       │   │   ├── Copper_Nugget_Small.fbx
+│   │       │   │   ├── Copper_Nuggets.fbx
+│   │       │   │   ├── Fuel_A_Barrel.fbx
+│   │       │   │   ├── Fuel_A_Barrel_Dirty.fbx
+│   │       │   │   ├── Fuel_A_Barrels.fbx
+│   │       │   │   ├── Fuel_A_Jerrycan.fbx
+│   │       │   │   ├── Fuel_B_Barrel.fbx
+│   │       │   │   ├── Fuel_B_Barrel_Dirty.fbx
+│   │       │   │   ├── Fuel_B_Barrels.fbx
+│   │       │   │   ├── Fuel_B_Jerrycan.fbx
+│   │       │   │   ├── Fuel_C_Barrel.fbx
+│   │       │   │   ├── Fuel_C_Barrel_Dirty.fbx
+│   │       │   │   ├── Fuel_C_Barrels.fbx
+│   │       │   │   ├── Fuel_C_Jerrycan.fbx
+│   │       │   │   ├── Gold_Bar.fbx
+│   │       │   │   ├── Gold_Bars.fbx
+│   │       │   │   ├── Gold_Bars_Stack_Large.fbx
+│   │       │   │   ├── Gold_Bars_Stack_Medium.fbx
+│   │       │   │   ├── Gold_Bars_Stack_Small.fbx
+│   │       │   │   ├── Gold_Nugget_Large.fbx
+│   │       │   │   ├── Gold_Nugget_Medium.fbx
+│   │       │   │   ├── Gold_Nugget_Small.fbx
+│   │       │   │   ├── Gold_Nuggets.fbx
+│   │       │   │   ├── Iron_Bar.fbx
+│   │       │   │   ├── Iron_Bars.fbx
+│   │       │   │   ├── Iron_Bars_Stack_Large.fbx
+│   │       │   │   ├── Iron_Bars_Stack_Medium.fbx
+│   │       │   │   ├── Iron_Bars_Stack_Small.fbx
+│   │       │   │   ├── Iron_Nugget_Large.fbx
+│   │       │   │   ├── Iron_Nugget_Medium.fbx
+│   │       │   │   ├── Iron_Nugget_Small.fbx
+│   │       │   │   ├── Iron_Nuggets.fbx
+│   │       │   │   ├── Pallet_Wood.fbx
+│   │       │   │   ├── Pallet_Wood_Covered_A.fbx
+│   │       │   │   ├── Pallet_Wood_Covered_B.fbx
+│   │       │   │   ├── Parts_Cog.fbx
+│   │       │   │   ├── Parts_Pile_Large.fbx
+│   │       │   │   ├── Parts_Pile_Medium.fbx
+│   │       │   │   ├── Parts_Pile_Small.fbx
+│   │       │   │   ├── Silver_Bar.fbx
+│   │       │   │   ├── Silver_Bars.fbx
+│   │       │   │   ├── Silver_Bars_Stack_Large.fbx
+│   │       │   │   ├── Silver_Bars_Stack_Medium.fbx
+│   │       │   │   ├── Silver_Bars_Stack_Small.fbx
+│   │       │   │   ├── Silver_Nugget_Large.fbx
+│   │       │   │   ├── Silver_Nugget_Medium.fbx
+│   │       │   │   ├── Silver_Nugget_Small.fbx
+│   │       │   │   ├── Silver_Nuggets.fbx
+│   │       │   │   ├── Stone_Brick.fbx
+│   │       │   │   ├── Stone_Bricks_Stack_Large.fbx
+│   │       │   │   ├── Stone_Bricks_Stack_Medium.fbx
+│   │       │   │   ├── Stone_Bricks_Stack_Small.fbx
+│   │       │   │   ├── Stone_Chunks_Large.fbx
+│   │       │   │   ├── Stone_Chunks_Small.fbx
+│   │       │   │   ├── Textiles_A.fbx
+│   │       │   │   ├── Textiles_B.fbx
+│   │       │   │   ├── Textiles_C.fbx
+│   │       │   │   ├── Textiles_Stack_Large.fbx
+│   │       │   │   ├── Textiles_Stack_Large_Colored.fbx
+│   │       │   │   ├── Textiles_Stack_Small.fbx
+│   │       │   │   ├── Wood_Log_A.fbx
+│   │       │   │   ├── Wood_Log_B.fbx
+│   │       │   │   ├── Wood_Log_Stack.fbx
+│   │       │   │   ├── Wood_Plank_A.fbx
+│   │       │   │   ├── Wood_Plank_B.fbx
+│   │       │   │   ├── Wood_Plank_C.fbx
+│   │       │   │   ├── Wood_Planks_Stack_Large.fbx
+│   │       │   │   ├── Wood_Planks_Stack_Medium.fbx
+│   │       │   │   ├── Wood_Planks_Stack_Small.fbx
+│   │       │   │   └── resource_bits_texture.png
+│   │       │   ├── fbx(unity)/
+│   │       │   │   ├── Copper_Bar.fbx
+│   │       │   │   ├── Copper_Bars.fbx
+│   │       │   │   ├── Copper_Bars_Stack_Large.fbx
+│   │       │   │   ├── Copper_Bars_Stack_Medium.fbx
+│   │       │   │   ├── Copper_Bars_Stack_Small.fbx
+│   │       │   │   ├── Copper_Nugget_Large.fbx
+│   │       │   │   ├── Copper_Nugget_Medium.fbx
+│   │       │   │   ├── Copper_Nugget_Small.fbx
+│   │       │   │   ├── Copper_Nuggets.fbx
+│   │       │   │   ├── Fuel_A_Barrel.fbx
+│   │       │   │   ├── Fuel_A_Barrel_Dirty.fbx
+│   │       │   │   ├── Fuel_A_Barrels.fbx
+│   │       │   │   ├── Fuel_A_Jerrycan.fbx
+│   │       │   │   ├── Fuel_B_Barrel.fbx
+│   │       │   │   ├── Fuel_B_Barrel_Dirty.fbx
+│   │       │   │   ├── Fuel_B_Barrels.fbx
+│   │       │   │   ├── Fuel_B_Jerrycan.fbx
+│   │       │   │   ├── Fuel_C_Barrel.fbx
+│   │       │   │   ├── Fuel_C_Barrel_Dirty.fbx
+│   │       │   │   ├── Fuel_C_Barrels.fbx
+│   │       │   │   ├── Fuel_C_Jerrycan.fbx
+│   │       │   │   ├── Gold_Bar.fbx
+│   │       │   │   ├── Gold_Bars.fbx
+│   │       │   │   ├── Gold_Bars_Stack_Large.fbx
+│   │       │   │   ├── Gold_Bars_Stack_Medium.fbx
+│   │       │   │   ├── Gold_Bars_Stack_Small.fbx
+│   │       │   │   ├── Gold_Nugget_Large.fbx
+│   │       │   │   ├── Gold_Nugget_Medium.fbx
+│   │       │   │   ├── Gold_Nugget_Small.fbx
+│   │       │   │   ├── Gold_Nuggets.fbx
+│   │       │   │   ├── Iron_Bar.fbx
+│   │       │   │   ├── Iron_Bars.fbx
+│   │       │   │   ├── Iron_Bars_Stack_Large.fbx
+│   │       │   │   ├── Iron_Bars_Stack_Medium.fbx
+│   │       │   │   ├── Iron_Bars_Stack_Small.fbx
+│   │       │   │   ├── Iron_Nugget_Large.fbx
+│   │       │   │   ├── Iron_Nugget_Medium.fbx
+│   │       │   │   ├── Iron_Nugget_Small.fbx
+│   │       │   │   ├── Iron_Nuggets.fbx
+│   │       │   │   ├── Pallet_Wood.fbx
+│   │       │   │   ├── Pallet_Wood_Covered_A.fbx
+│   │       │   │   ├── Pallet_Wood_Covered_B.fbx
+│   │       │   │   ├── Parts_Cog.fbx
+│   │       │   │   ├── Parts_Pile_Large.fbx
+│   │       │   │   ├── Parts_Pile_Medium.fbx
+│   │       │   │   ├── Parts_Pile_Small.fbx
+│   │       │   │   ├── Silver_Bar.fbx
+│   │       │   │   ├── Silver_Bars.fbx
+│   │       │   │   ├── Silver_Bars_Stack_Large.fbx
+│   │       │   │   ├── Silver_Bars_Stack_Medium.fbx
+│   │       │   │   ├── Silver_Bars_Stack_Small.fbx
+│   │       │   │   ├── Silver_Nugget_Large.fbx
+│   │       │   │   ├── Silver_Nugget_Medium.fbx
+│   │       │   │   ├── Silver_Nugget_Small.fbx
+│   │       │   │   ├── Silver_Nuggets.fbx
+│   │       │   │   ├── Stone_Brick.fbx
+│   │       │   │   ├── Stone_Bricks_Stack_Large.fbx
+│   │       │   │   ├── Stone_Bricks_Stack_Medium.fbx
+│   │       │   │   ├── Stone_Bricks_Stack_Small.fbx
+│   │       │   │   ├── Stone_Chunks_Large.fbx
+│   │       │   │   ├── Stone_Chunks_Small.fbx
+│   │       │   │   ├── Textiles_A.fbx
+│   │       │   │   ├── Textiles_B.fbx
+│   │       │   │   ├── Textiles_C.fbx
+│   │       │   │   ├── Textiles_Stack_Large.fbx
+│   │       │   │   ├── Textiles_Stack_Large_Colored.fbx
+│   │       │   │   ├── Textiles_Stack_Small.fbx
+│   │       │   │   ├── Wood_Log_A.fbx
+│   │       │   │   ├── Wood_Log_B.fbx
+│   │       │   │   ├── Wood_Log_Stack.fbx
+│   │       │   │   ├── Wood_Plank_A.fbx
+│   │       │   │   ├── Wood_Plank_B.fbx
+│   │       │   │   ├── Wood_Plank_C.fbx
+│   │       │   │   ├── Wood_Planks_Stack_Large.fbx
+│   │       │   │   ├── Wood_Planks_Stack_Medium.fbx
+│   │       │   │   ├── Wood_Planks_Stack_Small.fbx
+│   │       │   │   └── resource_bits_texture.png
+│   │       │   ├── gltf/
+│   │       │   │   ├── Copper_Bar.bin
+│   │       │   │   ├── Copper_Bar.gltf
+│   │       │   │   ├── Copper_Bars.bin
+│   │       │   │   ├── Copper_Bars.gltf
+│   │       │   │   ├── Copper_Bars_Stack_Large.bin
+│   │       │   │   ├── Copper_Bars_Stack_Large.gltf
+│   │       │   │   ├── Copper_Bars_Stack_Medium.bin
+│   │       │   │   ├── Copper_Bars_Stack_Medium.gltf
+│   │       │   │   ├── Copper_Bars_Stack_Small.bin
+│   │       │   │   ├── Copper_Bars_Stack_Small.gltf
+│   │       │   │   ├── Copper_Nugget_Large.bin
+│   │       │   │   ├── Copper_Nugget_Large.gltf
+│   │       │   │   ├── Copper_Nugget_Medium.bin
+│   │       │   │   ├── Copper_Nugget_Medium.gltf
+│   │       │   │   ├── Copper_Nugget_Small.bin
+│   │       │   │   ├── Copper_Nugget_Small.gltf
+│   │       │   │   ├── Copper_Nuggets.bin
+│   │       │   │   ├── Copper_Nuggets.gltf
+│   │       │   │   ├── Fuel_A_Barrel.bin
+│   │       │   │   ├── Fuel_A_Barrel.gltf
+│   │       │   │   ├── Fuel_A_Barrel_Dirty.bin
+│   │       │   │   ├── Fuel_A_Barrel_Dirty.gltf
+│   │       │   │   ├── Fuel_A_Barrels.bin
+│   │       │   │   ├── Fuel_A_Barrels.gltf
+│   │       │   │   ├── Fuel_A_Jerrycan.bin
+│   │       │   │   ├── Fuel_A_Jerrycan.gltf
+│   │       │   │   ├── Fuel_B_Barrel.bin
+│   │       │   │   ├── Fuel_B_Barrel.gltf
+│   │       │   │   ├── Fuel_B_Barrel_Dirty.bin
+│   │       │   │   ├── Fuel_B_Barrel_Dirty.gltf
+│   │       │   │   ├── Fuel_B_Barrels.bin
+│   │       │   │   ├── Fuel_B_Barrels.gltf
+│   │       │   │   ├── Fuel_B_Jerrycan.bin
+│   │       │   │   ├── Fuel_B_Jerrycan.gltf
+│   │       │   │   ├── Fuel_C_Barrel.bin
+│   │       │   │   ├── Fuel_C_Barrel.gltf
+│   │       │   │   ├── Fuel_C_Barrel_Dirty.bin
+│   │       │   │   ├── Fuel_C_Barrel_Dirty.gltf
+│   │       │   │   ├── Fuel_C_Barrels.bin
+│   │       │   │   ├── Fuel_C_Barrels.gltf
+│   │       │   │   ├── Fuel_C_Jerrycan.bin
+│   │       │   │   ├── Fuel_C_Jerrycan.gltf
+│   │       │   │   ├── Gold_Bar.bin
+│   │       │   │   ├── Gold_Bar.gltf
+│   │       │   │   ├── Gold_Bars.bin
+│   │       │   │   ├── Gold_Bars.gltf
+│   │       │   │   ├── Gold_Bars_Stack_Large.bin
+│   │       │   │   ├── Gold_Bars_Stack_Large.gltf
+│   │       │   │   ├── Gold_Bars_Stack_Medium.bin
+│   │       │   │   ├── Gold_Bars_Stack_Medium.gltf
+│   │       │   │   ├── Gold_Bars_Stack_Small.bin
+│   │       │   │   ├── Gold_Bars_Stack_Small.gltf
+│   │       │   │   ├── Gold_Nugget_Large.bin
+│   │       │   │   ├── Gold_Nugget_Large.gltf
+│   │       │   │   ├── Gold_Nugget_Medium.bin
+│   │       │   │   ├── Gold_Nugget_Medium.gltf
+│   │       │   │   ├── Gold_Nugget_Small.bin
+│   │       │   │   ├── Gold_Nugget_Small.gltf
+│   │       │   │   ├── Gold_Nuggets.bin
+│   │       │   │   ├── Gold_Nuggets.gltf
+│   │       │   │   ├── Iron_Bar.bin
+│   │       │   │   ├── Iron_Bar.gltf
+│   │       │   │   ├── Iron_Bars.bin
+│   │       │   │   ├── Iron_Bars.gltf
+│   │       │   │   ├── Iron_Bars_Stack_Large.bin
+│   │       │   │   ├── Iron_Bars_Stack_Large.gltf
+│   │       │   │   ├── Iron_Bars_Stack_Medium.bin
+│   │       │   │   ├── Iron_Bars_Stack_Medium.gltf
+│   │       │   │   ├── Iron_Bars_Stack_Small.bin
+│   │       │   │   ├── Iron_Bars_Stack_Small.gltf
+│   │       │   │   ├── Iron_Nugget_Large.bin
+│   │       │   │   ├── Iron_Nugget_Large.gltf
+│   │       │   │   ├── Iron_Nugget_Medium.bin
+│   │       │   │   ├── Iron_Nugget_Medium.gltf
+│   │       │   │   ├── Iron_Nugget_Small.bin
+│   │       │   │   ├── Iron_Nugget_Small.gltf
+│   │       │   │   ├── Iron_Nuggets.bin
+│   │       │   │   ├── Iron_Nuggets.gltf
+│   │       │   │   ├── Pallet_Wood.bin
+│   │       │   │   ├── Pallet_Wood.gltf
+│   │       │   │   ├── Pallet_Wood_Covered_A.bin
+│   │       │   │   ├── Pallet_Wood_Covered_A.gltf
+│   │       │   │   ├── Pallet_Wood_Covered_B.bin
+│   │       │   │   ├── Pallet_Wood_Covered_B.gltf
+│   │       │   │   ├── Parts_Cog.bin
+│   │       │   │   ├── Parts_Cog.gltf
+│   │       │   │   ├── Parts_Pile_Large.bin
+│   │       │   │   ├── Parts_Pile_Large.gltf
+│   │       │   │   ├── Parts_Pile_Medium.bin
+│   │       │   │   ├── Parts_Pile_Medium.gltf
+│   │       │   │   ├── Parts_Pile_Small.bin
+│   │       │   │   ├── Parts_Pile_Small.gltf
+│   │       │   │   ├── Silver_Bar.bin
+│   │       │   │   ├── Silver_Bar.gltf
+│   │       │   │   ├── Silver_Bars.bin
+│   │       │   │   ├── Silver_Bars.gltf
+│   │       │   │   ├── Silver_Bars_Stack_Large.bin
+│   │       │   │   ├── Silver_Bars_Stack_Large.gltf
+│   │       │   │   ├── Silver_Bars_Stack_Medium.bin
+│   │       │   │   ├── Silver_Bars_Stack_Medium.gltf
+│   │       │   │   ├── Silver_Bars_Stack_Small.bin
+│   │       │   │   ├── Silver_Bars_Stack_Small.gltf
+│   │       │   │   ├── Silver_Nugget_Large.bin
+│   │       │   │   ├── Silver_Nugget_Large.gltf
+│   │       │   │   ├── Silver_Nugget_Medium.bin
+│   │       │   │   ├── Silver_Nugget_Medium.gltf
+│   │       │   │   ├── Silver_Nugget_Small.bin
+│   │       │   │   ├── Silver_Nugget_Small.gltf
+│   │       │   │   ├── Silver_Nuggets.bin
+│   │       │   │   ├── Silver_Nuggets.gltf
+│   │       │   │   ├── Stone_Brick.bin
+│   │       │   │   ├── Stone_Brick.gltf
+│   │       │   │   ├── Stone_Bricks_Stack_Large.bin
+│   │       │   │   ├── Stone_Bricks_Stack_Large.gltf
+│   │       │   │   ├── Stone_Bricks_Stack_Medium.bin
+│   │       │   │   ├── Stone_Bricks_Stack_Medium.gltf
+│   │       │   │   ├── Stone_Bricks_Stack_Small.bin
+│   │       │   │   ├── Stone_Bricks_Stack_Small.gltf
+│   │       │   │   ├── Stone_Chunks_Large.bin
+│   │       │   │   ├── Stone_Chunks_Large.gltf
+│   │       │   │   ├── Stone_Chunks_Small.bin
+│   │       │   │   ├── Stone_Chunks_Small.gltf
+│   │       │   │   ├── Textiles_A.bin
+│   │       │   │   ├── Textiles_A.gltf
+│   │       │   │   ├── Textiles_B.bin
+│   │       │   │   ├── Textiles_B.gltf
+│   │       │   │   ├── Textiles_C.bin
+│   │       │   │   ├── Textiles_C.gltf
+│   │       │   │   ├── Textiles_Stack_Large.bin
+│   │       │   │   ├── Textiles_Stack_Large.gltf
+│   │       │   │   ├── Textiles_Stack_Large_Colored.bin
+│   │       │   │   ├── Textiles_Stack_Large_Colored.gltf
+│   │       │   │   ├── Textiles_Stack_Small.bin
+│   │       │   │   ├── Textiles_Stack_Small.gltf
+│   │       │   │   ├── Wood_Log_A.bin
+│   │       │   │   ├── Wood_Log_A.gltf
+│   │       │   │   ├── Wood_Log_B.bin
+│   │       │   │   ├── Wood_Log_B.gltf
+│   │       │   │   ├── Wood_Log_Stack.bin
+│   │       │   │   ├── Wood_Log_Stack.gltf
+│   │       │   │   ├── Wood_Plank_A.bin
+│   │       │   │   ├── Wood_Plank_A.gltf
+│   │       │   │   ├── Wood_Plank_B.bin
+│   │       │   │   ├── Wood_Plank_B.gltf
+│   │       │   │   ├── Wood_Plank_C.bin
+│   │       │   │   ├── Wood_Plank_C.gltf
+│   │       │   │   ├── Wood_Planks_Stack_Large.bin
+│   │       │   │   ├── Wood_Planks_Stack_Large.gltf
+│   │       │   │   ├── Wood_Planks_Stack_Medium.bin
+│   │       │   │   ├── Wood_Planks_Stack_Medium.gltf
+│   │       │   │   ├── Wood_Planks_Stack_Small.bin
+│   │       │   │   ├── Wood_Planks_Stack_Small.gltf
+│   │       │   │   └── resource_bits_texture.png
+│   │       │   └── obj/
+│   │       │       ├── Copper_Bar.mtl
+│   │       │       ├── Copper_Bar.obj
+│   │       │       ├── Copper_Bars.mtl
+│   │       │       ├── Copper_Bars.obj
+│   │       │       ├── Copper_Bars_Stack_Large.mtl
+│   │       │       ├── Copper_Bars_Stack_Large.obj
+│   │       │       ├── Copper_Bars_Stack_Medium.mtl
+│   │       │       ├── Copper_Bars_Stack_Medium.obj
+│   │       │       ├── Copper_Bars_Stack_Small.mtl
+│   │       │       ├── Copper_Bars_Stack_Small.obj
+│   │       │       ├── Copper_Nugget_Large.mtl
+│   │       │       ├── Copper_Nugget_Large.obj
+│   │       │       ├── Copper_Nugget_Medium.mtl
+│   │       │       ├── Copper_Nugget_Medium.obj
+│   │       │       ├── Copper_Nugget_Small.mtl
+│   │       │       ├── Copper_Nugget_Small.obj
+│   │       │       ├── Copper_Nuggets.mtl
+│   │       │       ├── Copper_Nuggets.obj
+│   │       │       ├── Fuel_A_Barrel.mtl
+│   │       │       ├── Fuel_A_Barrel.obj
+│   │       │       ├── Fuel_A_Barrel_Dirty.mtl
+│   │       │       ├── Fuel_A_Barrel_Dirty.obj
+│   │       │       ├── Fuel_A_Barrels.mtl
+│   │       │       ├── Fuel_A_Barrels.obj
+│   │       │       ├── Fuel_A_Jerrycan.mtl
+│   │       │       ├── Fuel_A_Jerrycan.obj
+│   │       │       ├── Fuel_B_Barrel.mtl
+│   │       │       ├── Fuel_B_Barrel.obj
+│   │       │       ├── Fuel_B_Barrel_Dirty.mtl
+│   │       │       ├── Fuel_B_Barrel_Dirty.obj
+│   │       │       ├── Fuel_B_Barrels.mtl
+│   │       │       ├── Fuel_B_Barrels.obj
+│   │       │       ├── Fuel_B_Jerrycan.mtl
+│   │       │       ├── Fuel_B_Jerrycan.obj
+│   │       │       ├── Fuel_C_Barrel.mtl
+│   │       │       ├── Fuel_C_Barrel.obj
+│   │       │       ├── Fuel_C_Barrel_Dirty.mtl
+│   │       │       ├── Fuel_C_Barrel_Dirty.obj
+│   │       │       ├── Fuel_C_Barrels.mtl
+│   │       │       ├── Fuel_C_Barrels.obj
+│   │       │       ├── Fuel_C_Jerrycan.mtl
+│   │       │       ├── Fuel_C_Jerrycan.obj
+│   │       │       ├── Gold_Bar.mtl
+│   │       │       ├── Gold_Bar.obj
+│   │       │       ├── Gold_Bars.mtl
+│   │       │       ├── Gold_Bars.obj
+│   │       │       ├── Gold_Bars_Stack_Large.mtl
+│   │       │       ├── Gold_Bars_Stack_Large.obj
+│   │       │       ├── Gold_Bars_Stack_Medium.mtl
+│   │       │       ├── Gold_Bars_Stack_Medium.obj
+│   │       │       ├── Gold_Bars_Stack_Small.mtl
+│   │       │       ├── Gold_Bars_Stack_Small.obj
+│   │       │       ├── Gold_Nugget_Large.mtl
+│   │       │       ├── Gold_Nugget_Large.obj
+│   │       │       ├── Gold_Nugget_Medium.mtl
+│   │       │       ├── Gold_Nugget_Medium.obj
+│   │       │       ├── Gold_Nugget_Small.mtl
+│   │       │       ├── Gold_Nugget_Small.obj
+│   │       │       ├── Gold_Nuggets.mtl
+│   │       │       ├── Gold_Nuggets.obj
+│   │       │       ├── Iron_Bar.mtl
+│   │       │       ├── Iron_Bar.obj
+│   │       │       ├── Iron_Bars.mtl
+│   │       │       ├── Iron_Bars.obj
+│   │       │       ├── Iron_Bars_Stack_Large.mtl
+│   │       │       ├── Iron_Bars_Stack_Large.obj
+│   │       │       ├── Iron_Bars_Stack_Medium.mtl
+│   │       │       ├── Iron_Bars_Stack_Medium.obj
+│   │       │       ├── Iron_Bars_Stack_Small.mtl
+│   │       │       ├── Iron_Bars_Stack_Small.obj
+│   │       │       ├── Iron_Nugget_Large.mtl
+│   │       │       ├── Iron_Nugget_Large.obj
+│   │       │       ├── Iron_Nugget_Medium.mtl
+│   │       │       ├── Iron_Nugget_Medium.obj
+│   │       │       ├── Iron_Nugget_Small.mtl
+│   │       │       ├── Iron_Nugget_Small.obj
+│   │       │       ├── Iron_Nuggets.mtl
+│   │       │       ├── Iron_Nuggets.obj
+│   │       │       ├── Pallet_Wood.mtl
+│   │       │       ├── Pallet_Wood.obj
+│   │       │       ├── Pallet_Wood_Covered_A.mtl
+│   │       │       ├── Pallet_Wood_Covered_A.obj
+│   │       │       ├── Pallet_Wood_Covered_B.mtl
+│   │       │       ├── Pallet_Wood_Covered_B.obj
+│   │       │       ├── Parts_Cog.mtl
+│   │       │       ├── Parts_Cog.obj
+│   │       │       ├── Parts_Pile_Large.mtl
+│   │       │       ├── Parts_Pile_Large.obj
+│   │       │       ├── Parts_Pile_Medium.mtl
+│   │       │       ├── Parts_Pile_Medium.obj
+│   │       │       ├── Parts_Pile_Small.mtl
+│   │       │       ├── Parts_Pile_Small.obj
+│   │       │       ├── Silver_Bar.mtl
+│   │       │       ├── Silver_Bar.obj
+│   │       │       ├── Silver_Bars.mtl
+│   │       │       ├── Silver_Bars.obj
+│   │       │       ├── Silver_Bars_Stack_Large.mtl
+│   │       │       ├── Silver_Bars_Stack_Large.obj
+│   │       │       ├── Silver_Bars_Stack_Medium.mtl
+│   │       │       ├── Silver_Bars_Stack_Medium.obj
+│   │       │       ├── Silver_Bars_Stack_Small.mtl
+│   │       │       ├── Silver_Bars_Stack_Small.obj
+│   │       │       ├── Silver_Nugget_Large.mtl
+│   │       │       ├── Silver_Nugget_Large.obj
+│   │       │       ├── Silver_Nugget_Medium.mtl
+│   │       │       ├── Silver_Nugget_Medium.obj
+│   │       │       ├── Silver_Nugget_Small.mtl
+│   │       │       ├── Silver_Nugget_Small.obj
+│   │       │       ├── Silver_Nuggets.mtl
+│   │       │       ├── Silver_Nuggets.obj
+│   │       │       ├── Stone_Brick.mtl
+│   │       │       ├── Stone_Brick.obj
+│   │       │       ├── Stone_Bricks_Stack_Large.mtl
+│   │       │       ├── Stone_Bricks_Stack_Large.obj
+│   │       │       ├── Stone_Bricks_Stack_Medium.mtl
+│   │       │       ├── Stone_Bricks_Stack_Medium.obj
+│   │       │       ├── Stone_Bricks_Stack_Small.mtl
+│   │       │       ├── Stone_Bricks_Stack_Small.obj
+│   │       │       ├── Stone_Chunks_Large.mtl
+│   │       │       ├── Stone_Chunks_Large.obj
+│   │       │       ├── Stone_Chunks_Small.mtl
+│   │       │       ├── Stone_Chunks_Small.obj
+│   │       │       ├── Textiles_A.mtl
+│   │       │       ├── Textiles_A.obj
+│   │       │       ├── Textiles_B.mtl
+│   │       │       ├── Textiles_B.obj
+│   │       │       ├── Textiles_C.mtl
+│   │       │       ├── Textiles_C.obj
+│   │       │       ├── Textiles_Stack_Large.mtl
+│   │       │       ├── Textiles_Stack_Large.obj
+│   │       │       ├── Textiles_Stack_Large_Colored.mtl
+│   │       │       ├── Textiles_Stack_Large_Colored.obj
+│   │       │       ├── Textiles_Stack_Small.mtl
+│   │       │       ├── Textiles_Stack_Small.obj
+│   │       │       ├── Wood_Log_A.mtl
+│   │       │       ├── Wood_Log_A.obj
+│   │       │       ├── Wood_Log_B.mtl
+│   │       │       ├── Wood_Log_B.obj
+│   │       │       ├── Wood_Log_Stack.mtl
+│   │       │       ├── Wood_Log_Stack.obj
+│   │       │       ├── Wood_Plank_A.mtl
+│   │       │       ├── Wood_Plank_A.obj
+│   │       │       ├── Wood_Plank_B.mtl
+│   │       │       ├── Wood_Plank_B.obj
+│   │       │       ├── Wood_Plank_C.mtl
+│   │       │       ├── Wood_Plank_C.obj
+│   │       │       ├── Wood_Planks_Stack_Large.mtl
+│   │       │       ├── Wood_Planks_Stack_Large.obj
+│   │       │       ├── Wood_Planks_Stack_Medium.mtl
+│   │       │       ├── Wood_Planks_Stack_Medium.obj
+│   │       │       ├── Wood_Planks_Stack_Small.mtl
+│   │       │       ├── Wood_Planks_Stack_Small.obj
+│   │       │       └── resource_bits_texture.png
+│   │       ├── Textures/
+│   │       │   └── resource_bits_texture.png
+│   │       ├── Discord Server.url
+│   │       ├── License.txt
+│   │       ├── More KayKit Assets.url
+│   │       ├── Patreon.url
+│   │       └── contents.png
+│   ├── Retro RPG Series - Animal Wildlife/
+│   │   └── Retro RPG Series - Animal Wildlife/
+│   │       ├── Bear.png
+│   │       ├── Bear_Attack.png
+│   │       ├── Beatle.png
+│   │       ├── Beatle_Attack.png
+│   │       ├── Beatle_Slime_Shot.png
+│   │       ├── License - No Attribution Required.txt
+│   │       ├── Snake.png
+│   │       ├── Snake_Attack.png
+│   │       ├── Wolf.png
+│   │       └── Wolf_Attack.png
 │   ├── Tiny Swords (Free Pack) (1)/
 │   │   └── Tiny Swords (Free Pack)/
 │   │       ├── Buildings/
@@ -108,6 +594,16 @@ E:\my world2\
 │   │   ├── craftpix-net-439247-free-fantasy-chibi-male-sprites-pixel-art_archer_attack.png
 │   │   ├── craftpix-net-439247-free-fantasy-chibi-male-sprites-pixel-art_swordsman_attack.png
 │   │   └── craftpix-net-439247-free-fantasy-chibi-male-sprites-pixel-art_wizard_attack.png
+│   ├── animals/
+│   │   ├── bear.png
+│   │   ├── bear_attack.png
+│   │   ├── beatle.png
+│   │   ├── beatle_attack.png
+│   │   ├── beatle_slime.png
+│   │   ├── snake.png
+│   │   ├── snake_attack.png
+│   │   ├── wolf.png
+│   │   └── wolf_attack.png
 │   ├── craftpix-net-211148-free-fantasy-chibi-female-sprites-pixel-art/
 │   │   ├── Enchantress/
 │   │   │   ├── Attack_1.png
@@ -351,13 +847,458 @@ E:\my world2\
 │   │       ├── Jump.png
 │   │       ├── Run.png
 │   │       └── Walk.png
-│   └── portraits/
-│       ├── female_enchantress.png
-│       ├── female_knight.png
-│       ├── female_musketeer.png
-│       ├── male_archer.png
-│       ├── male_swordsman.png
-│       └── male_wizard.png
+│   ├── kaykit_resources/
+│   │   ├── copper_bar.png
+│   │   ├── copper_bars.png
+│   │   ├── copper_nuggets.png
+│   │   ├── gold_bar.png
+│   │   ├── gold_bars_stack.png
+│   │   ├── gold_nuggets.png
+│   │   ├── iron_bar.png
+│   │   ├── iron_bars_stack.png
+│   │   ├── iron_nuggets.png
+│   │   ├── stone_brick.png
+│   │   ├── stone_chunks.png
+│   │   ├── stone_stack.png
+│   │   ├── wood_log.png
+│   │   ├── wood_plank.png
+│   │   └── wood_planks_stack.png
+│   ├── kenney_survival-kit/
+│   │   ├── Models/
+│   │   │   ├── FBX format/
+│   │   │   │   ├── Textures/
+│   │   │   │   │   └── colormap.png
+│   │   │   │   ├── barrel-open.fbx
+│   │   │   │   ├── barrel.fbx
+│   │   │   │   ├── bedroll-frame.fbx
+│   │   │   │   ├── bedroll-packed.fbx
+│   │   │   │   ├── bedroll.fbx
+│   │   │   │   ├── bottle-large.fbx
+│   │   │   │   ├── bottle.fbx
+│   │   │   │   ├── box-large-open.fbx
+│   │   │   │   ├── box-large.fbx
+│   │   │   │   ├── box-open.fbx
+│   │   │   │   ├── box.fbx
+│   │   │   │   ├── bucket.fbx
+│   │   │   │   ├── campfire-fishing-stand.fbx
+│   │   │   │   ├── campfire-pit.fbx
+│   │   │   │   ├── campfire-stand.fbx
+│   │   │   │   ├── chest.fbx
+│   │   │   │   ├── fence-doorway.fbx
+│   │   │   │   ├── fence-fortified.fbx
+│   │   │   │   ├── fence.fbx
+│   │   │   │   ├── fish-large.fbx
+│   │   │   │   ├── fish.fbx
+│   │   │   │   ├── floor-hole.fbx
+│   │   │   │   ├── floor-old.fbx
+│   │   │   │   ├── floor.fbx
+│   │   │   │   ├── grass-large.fbx
+│   │   │   │   ├── grass.fbx
+│   │   │   │   ├── metal-panel-narrow.fbx
+│   │   │   │   ├── metal-panel-screws-half.fbx
+│   │   │   │   ├── metal-panel-screws-narrow.fbx
+│   │   │   │   ├── metal-panel-screws.fbx
+│   │   │   │   ├── metal-panel.fbx
+│   │   │   │   ├── patch-grass-large.fbx
+│   │   │   │   ├── patch-grass.fbx
+│   │   │   │   ├── resource-planks.fbx
+│   │   │   │   ├── resource-stone-large.fbx
+│   │   │   │   ├── resource-stone.fbx
+│   │   │   │   ├── resource-wood.fbx
+│   │   │   │   ├── rock-a.fbx
+│   │   │   │   ├── rock-b.fbx
+│   │   │   │   ├── rock-c.fbx
+│   │   │   │   ├── rock-flat-grass.fbx
+│   │   │   │   ├── rock-flat.fbx
+│   │   │   │   ├── rock-sand-a.fbx
+│   │   │   │   ├── rock-sand-b.fbx
+│   │   │   │   ├── rock-sand-c.fbx
+│   │   │   │   ├── signpost-single.fbx
+│   │   │   │   ├── signpost.fbx
+│   │   │   │   ├── structure-canvas.fbx
+│   │   │   │   ├── structure-floor.fbx
+│   │   │   │   ├── structure-metal-doorway.fbx
+│   │   │   │   ├── structure-metal-floor.fbx
+│   │   │   │   ├── structure-metal-roof.fbx
+│   │   │   │   ├── structure-metal-wall.fbx
+│   │   │   │   ├── structure-metal.fbx
+│   │   │   │   ├── structure-roof.fbx
+│   │   │   │   ├── structure.fbx
+│   │   │   │   ├── tent-canvas-half.fbx
+│   │   │   │   ├── tent-canvas.fbx
+│   │   │   │   ├── tent.fbx
+│   │   │   │   ├── tool-axe-upgraded.fbx
+│   │   │   │   ├── tool-axe.fbx
+│   │   │   │   ├── tool-hammer-upgraded.fbx
+│   │   │   │   ├── tool-hammer.fbx
+│   │   │   │   ├── tool-hoe-upgraded.fbx
+│   │   │   │   ├── tool-hoe.fbx
+│   │   │   │   ├── tool-pickaxe-upgraded.fbx
+│   │   │   │   ├── tool-pickaxe.fbx
+│   │   │   │   ├── tool-shovel-upgraded.fbx
+│   │   │   │   ├── tool-shovel.fbx
+│   │   │   │   ├── tree-autumn-tall.fbx
+│   │   │   │   ├── tree-autumn-trunk.fbx
+│   │   │   │   ├── tree-autumn.fbx
+│   │   │   │   ├── tree-log-small.fbx
+│   │   │   │   ├── tree-log.fbx
+│   │   │   │   ├── tree-tall.fbx
+│   │   │   │   ├── tree-trunk.fbx
+│   │   │   │   ├── tree.fbx
+│   │   │   │   ├── workbench-anvil.fbx
+│   │   │   │   ├── workbench-grind.fbx
+│   │   │   │   └── workbench.fbx
+│   │   │   ├── GLB format/
+│   │   │   │   ├── Textures/
+│   │   │   │   │   └── colormap.png
+│   │   │   │   ├── barrel-open.glb
+│   │   │   │   ├── barrel.glb
+│   │   │   │   ├── bedroll-frame.glb
+│   │   │   │   ├── bedroll-packed.glb
+│   │   │   │   ├── bedroll.glb
+│   │   │   │   ├── bottle-large.glb
+│   │   │   │   ├── bottle.glb
+│   │   │   │   ├── box-large-open.glb
+│   │   │   │   ├── box-large.glb
+│   │   │   │   ├── box-open.glb
+│   │   │   │   ├── box.glb
+│   │   │   │   ├── bucket.glb
+│   │   │   │   ├── campfire-fishing-stand.glb
+│   │   │   │   ├── campfire-pit.glb
+│   │   │   │   ├── campfire-stand.glb
+│   │   │   │   ├── chest.glb
+│   │   │   │   ├── fence-doorway.glb
+│   │   │   │   ├── fence-fortified.glb
+│   │   │   │   ├── fence.glb
+│   │   │   │   ├── fish-large.glb
+│   │   │   │   ├── fish.glb
+│   │   │   │   ├── floor-hole.glb
+│   │   │   │   ├── floor-old.glb
+│   │   │   │   ├── floor.glb
+│   │   │   │   ├── grass-large.glb
+│   │   │   │   ├── grass.glb
+│   │   │   │   ├── metal-panel-narrow.glb
+│   │   │   │   ├── metal-panel-screws-half.glb
+│   │   │   │   ├── metal-panel-screws-narrow.glb
+│   │   │   │   ├── metal-panel-screws.glb
+│   │   │   │   ├── metal-panel.glb
+│   │   │   │   ├── patch-grass-large.glb
+│   │   │   │   ├── patch-grass.glb
+│   │   │   │   ├── resource-planks.glb
+│   │   │   │   ├── resource-stone-large.glb
+│   │   │   │   ├── resource-stone.glb
+│   │   │   │   ├── resource-wood.glb
+│   │   │   │   ├── rock-a.glb
+│   │   │   │   ├── rock-b.glb
+│   │   │   │   ├── rock-c.glb
+│   │   │   │   ├── rock-flat-grass.glb
+│   │   │   │   ├── rock-flat.glb
+│   │   │   │   ├── rock-sand-a.glb
+│   │   │   │   ├── rock-sand-b.glb
+│   │   │   │   ├── rock-sand-c.glb
+│   │   │   │   ├── signpost-single.glb
+│   │   │   │   ├── signpost.glb
+│   │   │   │   ├── structure-canvas.glb
+│   │   │   │   ├── structure-floor.glb
+│   │   │   │   ├── structure-metal-doorway.glb
+│   │   │   │   ├── structure-metal-floor.glb
+│   │   │   │   ├── structure-metal-roof.glb
+│   │   │   │   ├── structure-metal-wall.glb
+│   │   │   │   ├── structure-metal.glb
+│   │   │   │   ├── structure-roof.glb
+│   │   │   │   ├── structure.glb
+│   │   │   │   ├── tent-canvas-half.glb
+│   │   │   │   ├── tent-canvas.glb
+│   │   │   │   ├── tent.glb
+│   │   │   │   ├── tool-axe-upgraded.glb
+│   │   │   │   ├── tool-axe.glb
+│   │   │   │   ├── tool-hammer-upgraded.glb
+│   │   │   │   ├── tool-hammer.glb
+│   │   │   │   ├── tool-hoe-upgraded.glb
+│   │   │   │   ├── tool-hoe.glb
+│   │   │   │   ├── tool-pickaxe-upgraded.glb
+│   │   │   │   ├── tool-pickaxe.glb
+│   │   │   │   ├── tool-shovel-upgraded.glb
+│   │   │   │   ├── tool-shovel.glb
+│   │   │   │   ├── tree-autumn-tall.glb
+│   │   │   │   ├── tree-autumn-trunk.glb
+│   │   │   │   ├── tree-autumn.glb
+│   │   │   │   ├── tree-log-small.glb
+│   │   │   │   ├── tree-log.glb
+│   │   │   │   ├── tree-tall.glb
+│   │   │   │   ├── tree-trunk.glb
+│   │   │   │   ├── tree.glb
+│   │   │   │   ├── workbench-anvil.glb
+│   │   │   │   ├── workbench-grind.glb
+│   │   │   │   └── workbench.glb
+│   │   │   ├── OBJ format/
+│   │   │   │   ├── Textures/
+│   │   │   │   │   └── colormap.png
+│   │   │   │   ├── barrel-open.mtl
+│   │   │   │   ├── barrel-open.obj
+│   │   │   │   ├── barrel.mtl
+│   │   │   │   ├── barrel.obj
+│   │   │   │   ├── bedroll-frame.mtl
+│   │   │   │   ├── bedroll-frame.obj
+│   │   │   │   ├── bedroll-packed.mtl
+│   │   │   │   ├── bedroll-packed.obj
+│   │   │   │   ├── bedroll.mtl
+│   │   │   │   ├── bedroll.obj
+│   │   │   │   ├── bottle-large.mtl
+│   │   │   │   ├── bottle-large.obj
+│   │   │   │   ├── bottle.mtl
+│   │   │   │   ├── bottle.obj
+│   │   │   │   ├── box-large-open.mtl
+│   │   │   │   ├── box-large-open.obj
+│   │   │   │   ├── box-large.mtl
+│   │   │   │   ├── box-large.obj
+│   │   │   │   ├── box-open.mtl
+│   │   │   │   ├── box-open.obj
+│   │   │   │   ├── box.mtl
+│   │   │   │   ├── box.obj
+│   │   │   │   ├── bucket.mtl
+│   │   │   │   ├── bucket.obj
+│   │   │   │   ├── campfire-fishing-stand.mtl
+│   │   │   │   ├── campfire-fishing-stand.obj
+│   │   │   │   ├── campfire-pit.mtl
+│   │   │   │   ├── campfire-pit.obj
+│   │   │   │   ├── campfire-stand.mtl
+│   │   │   │   ├── campfire-stand.obj
+│   │   │   │   ├── chest.mtl
+│   │   │   │   ├── chest.obj
+│   │   │   │   ├── fence-doorway.mtl
+│   │   │   │   ├── fence-doorway.obj
+│   │   │   │   ├── fence-fortified.mtl
+│   │   │   │   ├── fence-fortified.obj
+│   │   │   │   ├── fence.mtl
+│   │   │   │   ├── fence.obj
+│   │   │   │   ├── fish-large.mtl
+│   │   │   │   ├── fish-large.obj
+│   │   │   │   ├── fish.mtl
+│   │   │   │   ├── fish.obj
+│   │   │   │   ├── floor-hole.mtl
+│   │   │   │   ├── floor-hole.obj
+│   │   │   │   ├── floor-old.mtl
+│   │   │   │   ├── floor-old.obj
+│   │   │   │   ├── floor.mtl
+│   │   │   │   ├── floor.obj
+│   │   │   │   ├── grass-large.mtl
+│   │   │   │   ├── grass-large.obj
+│   │   │   │   ├── grass.mtl
+│   │   │   │   ├── grass.obj
+│   │   │   │   ├── metal-panel-narrow.mtl
+│   │   │   │   ├── metal-panel-narrow.obj
+│   │   │   │   ├── metal-panel-screws-half.mtl
+│   │   │   │   ├── metal-panel-screws-half.obj
+│   │   │   │   ├── metal-panel-screws-narrow.mtl
+│   │   │   │   ├── metal-panel-screws-narrow.obj
+│   │   │   │   ├── metal-panel-screws.mtl
+│   │   │   │   ├── metal-panel-screws.obj
+│   │   │   │   ├── metal-panel.mtl
+│   │   │   │   ├── metal-panel.obj
+│   │   │   │   ├── patch-grass-large.mtl
+│   │   │   │   ├── patch-grass-large.obj
+│   │   │   │   ├── patch-grass.mtl
+│   │   │   │   ├── patch-grass.obj
+│   │   │   │   ├── resource-planks.mtl
+│   │   │   │   ├── resource-planks.obj
+│   │   │   │   ├── resource-stone-large.mtl
+│   │   │   │   ├── resource-stone-large.obj
+│   │   │   │   ├── resource-stone.mtl
+│   │   │   │   ├── resource-stone.obj
+│   │   │   │   ├── resource-wood.mtl
+│   │   │   │   ├── resource-wood.obj
+│   │   │   │   ├── rock-a.mtl
+│   │   │   │   ├── rock-a.obj
+│   │   │   │   ├── rock-b.mtl
+│   │   │   │   ├── rock-b.obj
+│   │   │   │   ├── rock-c.mtl
+│   │   │   │   ├── rock-c.obj
+│   │   │   │   ├── rock-flat-grass.mtl
+│   │   │   │   ├── rock-flat-grass.obj
+│   │   │   │   ├── rock-flat.mtl
+│   │   │   │   ├── rock-flat.obj
+│   │   │   │   ├── rock-sand-a.mtl
+│   │   │   │   ├── rock-sand-a.obj
+│   │   │   │   ├── rock-sand-b.mtl
+│   │   │   │   ├── rock-sand-b.obj
+│   │   │   │   ├── rock-sand-c.mtl
+│   │   │   │   ├── rock-sand-c.obj
+│   │   │   │   ├── signpost-single.mtl
+│   │   │   │   ├── signpost-single.obj
+│   │   │   │   ├── signpost.mtl
+│   │   │   │   ├── signpost.obj
+│   │   │   │   ├── structure-canvas.mtl
+│   │   │   │   ├── structure-canvas.obj
+│   │   │   │   ├── structure-floor.mtl
+│   │   │   │   ├── structure-floor.obj
+│   │   │   │   ├── structure-metal-doorway.mtl
+│   │   │   │   ├── structure-metal-doorway.obj
+│   │   │   │   ├── structure-metal-floor.mtl
+│   │   │   │   ├── structure-metal-floor.obj
+│   │   │   │   ├── structure-metal-roof.mtl
+│   │   │   │   ├── structure-metal-roof.obj
+│   │   │   │   ├── structure-metal-wall.mtl
+│   │   │   │   ├── structure-metal-wall.obj
+│   │   │   │   ├── structure-metal.mtl
+│   │   │   │   ├── structure-metal.obj
+│   │   │   │   ├── structure-roof.mtl
+│   │   │   │   ├── structure-roof.obj
+│   │   │   │   ├── structure.mtl
+│   │   │   │   ├── structure.obj
+│   │   │   │   ├── tent-canvas-half.mtl
+│   │   │   │   ├── tent-canvas-half.obj
+│   │   │   │   ├── tent-canvas.mtl
+│   │   │   │   ├── tent-canvas.obj
+│   │   │   │   ├── tent.mtl
+│   │   │   │   ├── tent.obj
+│   │   │   │   ├── tool-axe-upgraded.mtl
+│   │   │   │   ├── tool-axe-upgraded.obj
+│   │   │   │   ├── tool-axe.mtl
+│   │   │   │   ├── tool-axe.obj
+│   │   │   │   ├── tool-hammer-upgraded.mtl
+│   │   │   │   ├── tool-hammer-upgraded.obj
+│   │   │   │   ├── tool-hammer.mtl
+│   │   │   │   ├── tool-hammer.obj
+│   │   │   │   ├── tool-hoe-upgraded.mtl
+│   │   │   │   ├── tool-hoe-upgraded.obj
+│   │   │   │   ├── tool-hoe.mtl
+│   │   │   │   ├── tool-hoe.obj
+│   │   │   │   ├── tool-pickaxe-upgraded.mtl
+│   │   │   │   ├── tool-pickaxe-upgraded.obj
+│   │   │   │   ├── tool-pickaxe.mtl
+│   │   │   │   ├── tool-pickaxe.obj
+│   │   │   │   ├── tool-shovel-upgraded.mtl
+│   │   │   │   ├── tool-shovel-upgraded.obj
+│   │   │   │   ├── tool-shovel.mtl
+│   │   │   │   ├── tool-shovel.obj
+│   │   │   │   ├── tree-autumn-tall.mtl
+│   │   │   │   ├── tree-autumn-tall.obj
+│   │   │   │   ├── tree-autumn-trunk.mtl
+│   │   │   │   ├── tree-autumn-trunk.obj
+│   │   │   │   ├── tree-autumn.mtl
+│   │   │   │   ├── tree-autumn.obj
+│   │   │   │   ├── tree-log-small.mtl
+│   │   │   │   ├── tree-log-small.obj
+│   │   │   │   ├── tree-log.mtl
+│   │   │   │   ├── tree-log.obj
+│   │   │   │   ├── tree-tall.mtl
+│   │   │   │   ├── tree-tall.obj
+│   │   │   │   ├── tree-trunk.mtl
+│   │   │   │   ├── tree-trunk.obj
+│   │   │   │   ├── tree.mtl
+│   │   │   │   ├── tree.obj
+│   │   │   │   ├── workbench-anvil.mtl
+│   │   │   │   ├── workbench-anvil.obj
+│   │   │   │   ├── workbench-grind.mtl
+│   │   │   │   ├── workbench-grind.obj
+│   │   │   │   ├── workbench.mtl
+│   │   │   │   └── workbench.obj
+│   │   │   └── Textures/
+│   │   │       └── variation-a.png
+│   │   ├── Previews/
+│   │   │   ├── barrel-open.png
+│   │   │   ├── barrel.png
+│   │   │   ├── bedroll-frame.png
+│   │   │   ├── bedroll-packed.png
+│   │   │   ├── bedroll.png
+│   │   │   ├── bottle-large.png
+│   │   │   ├── bottle.png
+│   │   │   ├── box-large-open.png
+│   │   │   ├── box-large.png
+│   │   │   ├── box-open.png
+│   │   │   ├── box.png
+│   │   │   ├── bucket.png
+│   │   │   ├── campfire-fishing-stand.png
+│   │   │   ├── campfire-pit.png
+│   │   │   ├── campfire-stand.png
+│   │   │   ├── chest.png
+│   │   │   ├── fence-doorway.png
+│   │   │   ├── fence-fortified.png
+│   │   │   ├── fence.png
+│   │   │   ├── fish-large.png
+│   │   │   ├── fish.png
+│   │   │   ├── floor-hole.png
+│   │   │   ├── floor-old.png
+│   │   │   ├── floor.png
+│   │   │   ├── grass-large.png
+│   │   │   ├── grass.png
+│   │   │   ├── metal-panel-narrow.png
+│   │   │   ├── metal-panel-screws-half.png
+│   │   │   ├── metal-panel-screws-narrow.png
+│   │   │   ├── metal-panel-screws.png
+│   │   │   ├── metal-panel.png
+│   │   │   ├── patch-grass-large.png
+│   │   │   ├── patch-grass.png
+│   │   │   ├── resource-planks.png
+│   │   │   ├── resource-stone-large.png
+│   │   │   ├── resource-stone.png
+│   │   │   ├── resource-wood.png
+│   │   │   ├── rock-a.png
+│   │   │   ├── rock-b.png
+│   │   │   ├── rock-c.png
+│   │   │   ├── rock-flat-grass.png
+│   │   │   ├── rock-flat.png
+│   │   │   ├── rock-sand-a.png
+│   │   │   ├── rock-sand-b.png
+│   │   │   ├── rock-sand-c.png
+│   │   │   ├── signpost-single.png
+│   │   │   ├── signpost.png
+│   │   │   ├── structure-canvas.png
+│   │   │   ├── structure-floor.png
+│   │   │   ├── structure-metal-doorway.png
+│   │   │   ├── structure-metal-floor.png
+│   │   │   ├── structure-metal-roof.png
+│   │   │   ├── structure-metal-wall.png
+│   │   │   ├── structure-metal.png
+│   │   │   ├── structure-roof.png
+│   │   │   ├── structure.png
+│   │   │   ├── tent-canvas-half.png
+│   │   │   ├── tent-canvas.png
+│   │   │   ├── tent.png
+│   │   │   ├── tool-axe-upgraded.png
+│   │   │   ├── tool-axe.png
+│   │   │   ├── tool-hammer-upgraded.png
+│   │   │   ├── tool-hammer.png
+│   │   │   ├── tool-hoe-upgraded.png
+│   │   │   ├── tool-hoe.png
+│   │   │   ├── tool-pickaxe-upgraded.png
+│   │   │   ├── tool-pickaxe.png
+│   │   │   ├── tool-shovel-upgraded.png
+│   │   │   ├── tool-shovel.png
+│   │   │   ├── tree-autumn-tall.png
+│   │   │   ├── tree-autumn-trunk.png
+│   │   │   ├── tree-autumn.png
+│   │   │   ├── tree-log-small.png
+│   │   │   ├── tree-log.png
+│   │   │   ├── tree-tall.png
+│   │   │   ├── tree-trunk.png
+│   │   │   ├── tree.png
+│   │   │   ├── workbench-anvil.png
+│   │   │   ├── workbench-grind.png
+│   │   │   └── workbench.png
+│   │   ├── License.txt
+│   │   ├── Overview.html
+│   │   ├── Preview (Variation A).png
+│   │   ├── Preview.png
+│   │   ├── Sample.png
+│   │   ├── View Documentation.url
+│   │   ├── Visit Kenney.url
+│   │   └── Visit Patreon.url
+│   ├── portraits/
+│   │   ├── female_enchantress.png
+│   │   ├── female_knight.png
+│   │   ├── female_musketeer.png
+│   │   ├── male_archer.png
+│   │   ├── male_swordsman.png
+│   │   └── male_wizard.png
+│   ├── vegetables/
+│   │   ├── carotte.png
+│   │   ├── champignon.png
+│   │   ├── courgette.png
+│   │   ├── oignon.png
+│   │   └── tomate.png
+│   └── vegetable &fruit（.png
 ├── data/
 │   ├── lab/
 │   └── saves/
@@ -373,9 +1314,12 @@ E:\my world2\
 │   ├── camera.py
 │   ├── clock.py
 │   ├── config.py
+│   ├── construction.py
 │   ├── dashboard.py
+│   ├── diagnostics.py
 │   ├── engine.py
 │   ├── entities.py
+│   ├── invariants.py
 │   ├── lab.py
 │   ├── renderer.py
 │   ├── save.py
@@ -387,6 +1331,7 @@ E:\my world2\
 │   ├── world.py
 │   └── worldgen.py
 ├── map/
+├── .gitignore
 ├── main.py
 └── requirements.txt
 ```
@@ -401,6 +1346,7 @@ E:\my world2\
 regles, decident avec leur reseau de neurones, et s'auto-organisent (ou se
 destruisent)."""
 import argparse
+import atexit
 import os
 import sys
 
@@ -451,6 +1397,7 @@ def main():
     am = AssetManager(headless=False).discover()
     am.ensure_procedural_blocks()
     am.ensure_procedural_tools()
+    am.ensure_kaykit_resources()
     _set_asset_manager(am)
     st = am.stats()
     print(f"  {st['discovered']} fichiers trouvés, {st['deduped']} uniques après "
@@ -595,6 +1542,10 @@ def main():
                         sim.log("Aucune sauvegarde.", (228, 98, 98), "monde")
             elif ev.type == pygame.MOUSEBUTTONDOWN:
                 if dash.handle_event(ev, sim):
+                    if getattr(dash, '_needs_save', False):
+                        dash._needs_save = False
+                        from game.save import save_game as _auto_save
+                        _auto_save(sim, cam, slot=0)
                     continue
                 vr = dash.view_rect()
                 mx = ev.pos[0]
@@ -721,7 +1672,8 @@ def main():
         ui = {"tile": dash.hover_tile, "ghost": dash.hover_tile[0] > 0 and in_map,
               "asset": dash.asset, "mode": dash.mode, "agent": sim.selected,
               "legend": show_legend[0], "brush": dash.brush_radius(),
-              "view_rect": pygame.Rect(0, 0, vr.width, vr.height)}
+              "view_rect": pygame.Rect(0, 0, vr.width, vr.height),
+              "overlay": dash.active_overlay}
         view_surf = pygame.Surface((vr.width, vr.height))
         ren.draw(view_surf, sim, cam, ui)
         screen.fill((227, 232, 236))
@@ -990,6 +1942,8 @@ class World:
         self.smell = np.zeros((g, g), dtype=np.float32)  # champ d'odeurs (feu, nourriture, mort)
         self.heat = np.zeros((g, g), dtype=np.float32)   # traces de présence (exploration)
         self.cemetery = []  # list of (tx, ty, name, death_tick, color_rgb)
+        self.storages = {}  # (tx, ty) -> Storage
+        self.sites = {}     # (tx, ty) -> BuildingSite
         # index de connaissance : ou est chaque categorie de ressource
         self.kidx = {k: {} for k in ("food", "wood", "stone", "gold", "tool", "shelter")}
         self._kcell = 8
@@ -1059,8 +2013,9 @@ class World:
                         nx, ny = x + dx + int(wind[0] * 2), y + dy + int(wind[1] * 2)
                         if not self.inb(nx, ny) or self.water[ny, nx] or self.fire[ny, nx]:
                             continue
-                        if flammable and self.content[ny, nx] >= 0 \
-                           and int(self.content[ny, nx]) in flammable \
+                        naid = self.content_at(nx, ny)
+                        if flammable and naid >= 0 \
+                           and naid in flammable \
                            and self.rng_fire.random() < 0.16:
                             self.fire[ny, nx] = 200
         return int(burning[0].size)
@@ -1278,6 +2233,19 @@ class World:
     def bury(self, tx, ty, name, death_tick, color_rgb):
         """Enterre un habitant : enregistre la tombe (pas de bloc posé)."""
         self.cemetery.append((tx, ty, name, death_tick, color_rgb))
+
+    def site_at(self, tx, ty):
+        for site in self.sites.values():
+            for task in site.tasks:
+                if task.tx == tx and task.ty == ty:
+                    return site
+        return None
+
+    def add_site(self, site):
+        self.sites[site.key] = site
+
+    def remove_site(self, site):
+        self.sites.pop(site.key, None)
 
     def burn_out(self, am, y, x):
         """Le feu a fini de bruler la tuile : ce qu'elle contenait est detruit."""
@@ -2224,6 +3192,7 @@ class Being:
         self._loc = np.zeros(8)
         self._near_agents = []
         self._near_sheep = []
+        self._near_monsters = []
         self._last_heard = -1
         # ---- Relations (directionnelles)
         self.rel = {}                                # eid -> [confiance, affection]
@@ -2403,6 +3372,38 @@ class Sheep:
         self.anim_t = 0
         self.frame = 0
         self.fear = 0.0
+
+    @property
+    def tx(self):
+        return int(self.x // TILE)
+
+    @property
+    def ty(self):
+        return int(self.y // TILE)
+
+
+class Monster:
+    __slots__ = ("eid", "x", "y", "vx", "vy", "energy", "health", "kind",
+                 "alive", "anim_t", "frame", "hostile", "damage", "sight")
+
+    def __init__(self, eid, x, y, kind="wolf"):
+        self.eid = eid
+        self.x, self.y = x, y
+        self.vx = self.vy = 0.0
+        self.energy = 0.8
+        self.health = 1.0
+        self.kind = kind
+        self.alive = True
+        self.anim_t = 0
+        self.frame = 0
+        stats = {"bear": {"hostile": True, "damage": 0.18, "sight": 6},
+                 "wolf": {"hostile": True, "damage": 0.12, "sight": 8},
+                 "snake": {"hostile": True, "damage": 0.10, "sight": 5},
+                 "beatle": {"hostile": False, "damage": 0.0, "sight": 3}}
+        s = stats.get(kind, stats["wolf"])
+        self.hostile = s["hostile"]
+        self.damage = s["damage"]
+        self.sight = s["sight"]
 
     @property
     def tx(self):
@@ -2662,9 +3663,9 @@ class Brain:
                 break
             d = (np.arange(N_OUT) == act) - probs
             d = d * (adv * eff_lr * w)
+            dh = (d @ self._Wo) * (1.0 - h_prev ** 2)
             self._b2 += d
             self._Wo += np.outer(d, self.h if i == 0 else h_prev)
-            dh = (d @ self._Wo) * (1.0 - h_prev ** 2)
             self._b1 += dh * 0.5
             self._Wd += dh * h_prev * 0.5
             self._Wx += np.outer(dh, x) * 0.5
@@ -3098,12 +4099,12 @@ def populate(w, am, rng, dense=True):
              lambda x, y: place(golds, x, y, hp=5, solid=True))
 
     # ── broussailles et rochers, partout ──────────────────────────────
-    for _ in range(220 if dense else 30):
+    for _ in range(1200 if dense else 150):
         x, y = int(rng.integers(4, GRID - 4)), int(rng.integers(4, GRID - 4))
         place(bushes + rocks, x, y)
 
     # ── fruits sauvages : prairies et lisières ────────────────────────
-    for x, y in _biome_sites(w, rng, 900 if dense else 90,
+    for x, y in _biome_sites(w, rng, 2500 if dense else 250,
                              (B.BIOME_GRASS, B.BIOME_FOREST, B.BIOME_MARSH),
                              margin=4):
         place(foods, x, y, hp=1)
@@ -3275,7 +4276,7 @@ import pygame
 
 from . import config
 from .config import CLAN_COLORS, GRID, TILE
-from .entities import Inhabitant, Sheep
+from .entities import Inhabitant, Sheep, Monster
 from .world import Item
 
 _blank_mode = False
@@ -3426,7 +4427,7 @@ class Renderer:
             rr = max(4, k[0])
             g = pygame.Surface((rr * 2, rr * 2), pygame.SRCALPHA)
             for r in range(rr, 0, -3):
-                a = int(6 * (1.0 - r / rr) * alpha / 3)
+                a = min(255, int(6 * (1.0 - r / rr) * alpha / 3))
                 if a > 0:
                     pygame.draw.circle(g, (255, 180, 90, a), (rr, rr), r)
             if len(self._glow_cache) > 64:
@@ -3512,6 +4513,9 @@ class Renderer:
         for s in sim.sheep:
             if x0 - 1 <= s.x / TILE <= x1 + 1 and y0 - 1 <= s.y / TILE <= y1 + 1:
                 draws.append((s.y, 1, self._draw_sheep, (s,)))
+        for m in sim.monsters:
+            if x0 - 1 <= m.x / TILE <= x1 + 1 and y0 - 1 <= m.y / TILE <= y1 + 1:
+                draws.append((m.y, 1, self._draw_monster, (m,)))
         for a in sim.agents:
             if a.alive and x0 - 1 <= a.x / TILE <= x1 + 1 and y0 - 1 <= a.y / TILE <= y1 + 1:
                 draws.append((a.y, 2, self._draw_agent, (a, ui)))
@@ -3519,8 +4523,11 @@ class Renderer:
             csub = w.content[y0:y1 + 1, x0:x1 + 1]
             cys, cxs = np.nonzero(csub >= 0)
             for j, i in zip(cys, cxs):
-                draws.append(((y0 + j) * TILE + 15, 3, self._draw_asset,
-                              (int(i) + x0, int(j) + y0, int(csub[j, i]), w)))
+                aid = int(csub[j, i])
+                a_def = self.am.assets[aid]
+                bottom_y = ((y0 + j) + a_def.size_tiles) * TILE
+                draws.append((bottom_y, 3, self._draw_asset,
+                              (int(i) + x0, int(j) + y0, aid, w)))
         for eff in sim.effects:
             draws.append((eff["y"] + 1, 4, self._draw_fx, (eff, sim.w.tick)))
         # cimetière : pierres tombales neutres
@@ -3532,8 +4539,14 @@ class Renderer:
         for _, _, fn, arg in draws:
             fn(screen, cam, *arg)
 
+        # 5.5) chantiers en cours (blueprints translucides)
+        self._draw_sites(screen, cam, w, (x0, y0, x1, y1))
+
         # 6) ligne de quête de l'habitant sélectionné
         self._goal_line(screen, cam, ui)
+
+        # 6.5) overlay de diagnostic
+        self._draw_diagnostic_overlay(screen, sim, cam, ui, (x0, y0, x1, y1))
 
         # 7) atmosphère
         box = (x0, y0, x1, y1)
@@ -3702,6 +4715,19 @@ class Renderer:
         surf = am.surface(aid, (s.anim_t // 8) % frames, _zq(cam.zoom))
         sx, sy = cam.to_screen(s.x, s.y)
         if getattr(s, "vx", 0) < -0.05:
+            surf = pygame.transform.flip(surf, True, False)
+        screen.blit(surf, (sx - surf.get_width() / 2, sy - surf.get_height() + 3))
+
+    def _draw_monster(self, screen, cam, m: Monster):
+        am = self.am
+        kind = m.kind
+        state = getattr(m, "state", "idle")
+        aid = am.monsters.get(kind, {}).get(state) or am.monsters.get(kind, {}).get("idle")
+        if aid is None:
+            return
+        surf = am.surface(aid, 0, _zq(cam.zoom))
+        sx, sy = cam.to_screen(m.x, m.y)
+        if getattr(m, "vx", 0) < -0.05:
             surf = pygame.transform.flip(surf, True, False)
         screen.blit(surf, (sx - surf.get_width() / 2, sy - surf.get_height() + 3))
 
@@ -3961,6 +4987,171 @@ class Renderer:
             _, sy = cam.to_screen(0, y * TILE)
             pygame.draw.line(screen, col, (view.left, sy), (view.right, sy), 1)
 
+    def _draw_sites(self, screen, cam, world, box):
+        x0, y0, x1, y1 = box
+        for site in getattr(world, "sites", {}).values():
+            if not (x0 - 6 <= site.origin_tx <= x1 + 6
+                    and y0 - 6 <= site.origin_ty <= y1 + 6):
+                continue
+            for task in site.remaining_tasks():
+                sx, sy = cam.to_screen(task.tx * TILE, task.ty * TILE)
+                tw = max(2, int(TILE * cam.zoom))
+                th = max(2, int(TILE * cam.zoom * cam.ys))
+                if task.phase == "foundation":
+                    color = (145, 145, 155, 130)
+                elif task.phase == "door":
+                    color = (178, 120, 60, 150)
+                elif task.phase == "roof":
+                    color = (170, 88, 64, 140)
+                else:
+                    color = (142, 104, 68, 125) if task.material == "bois" else (145, 145, 155, 125)
+                ghost = pygame.Surface((tw, th), pygame.SRCALPHA)
+                ghost.fill(color)
+                pygame.draw.rect(ghost, (230, 230, 235, 170), ghost.get_rect(), 1)
+                screen.blit(ghost, (int(sx), int(sy)))
+            if cam.zoom >= 0.5:
+                import math as _m
+                sx, sy = cam.to_screen((site.origin_tx + 2.5) * TILE,
+                                       (site.origin_ty + 2.5) * TILE)
+                font = self._font(max(9, int(11 * cam.zoom)), True)
+                label = font.render(f"{site.progress():.0%}", True, (238, 194, 86))
+                screen.blit(label, (int(sx - label.get_width() / 2),
+                                    int(sy - 26 * cam.zoom)))
+
+    def _draw_diagnostic_overlay(self, screen, sim, cam, ui, box):
+        overlay = ui.get("overlay", "none")
+        if overlay == "none":
+            return
+
+        import math as _math
+        w = sim.w
+        x0, y0, x1, y1 = box
+        selected = ui.get("agent")
+
+        if overlay == "resources":
+            csub = w.content[y0:y1 + 1, x0:x1 + 1]
+            ys, xs = np.nonzero(csub >= 0)
+            for j, i in zip(ys, xs):
+                tx, ty = x0 + int(i), y0 + int(j)
+                aid = int(csub[j, i])
+                a = self.am.assets[aid]
+                if a.edible > 0:
+                    col = (96, 215, 114)
+                elif a.harvest:
+                    mat = a.harvest.get("material")
+                    col = {
+                        "bois": (139, 96, 55),
+                        "pierre": (150, 150, 164),
+                        "or": (240, 198, 60),
+                    }.get(mat, (220, 220, 220))
+                elif a.tool:
+                    col = (92, 164, 236)
+                else:
+                    continue
+                sx, sy = cam.to_screen(tx * TILE + TILE / 2, ty * TILE + TILE / 2)
+                pygame.draw.circle(screen, col, (int(sx), int(sy)),
+                                   max(2, int(4 * cam.zoom)))
+
+        elif overlay == "memory" and selected is not None:
+            colors = {
+                "food": (96, 215, 114),
+                "water": (72, 165, 235),
+                "wood": (139, 96, 55),
+                "stone": (150, 150, 164),
+                "shelter": (238, 194, 86),
+                "agent": (220, 154, 215),
+            }
+            for category, points in selected.seen.items():
+                col = colors.get(category, (230, 230, 230))
+                for tx, ty, force in points:
+                    sx, sy = cam.to_screen(tx * TILE + TILE / 2, ty * TILE + TILE / 2)
+                    radius = max(2, int((3 + 5 * force) * cam.zoom))
+                    pygame.draw.circle(screen, col, (int(sx), int(sy)), radius, 1)
+
+        elif overlay == "goal" and selected is not None:
+            goal = selected.goal or {}
+            if goal.get("x") is not None and goal.get("y") is not None:
+                sx, sy = cam.to_screen(selected.x, selected.y)
+                gx, gy = cam.to_screen(goal["x"] * TILE + TILE / 2,
+                                       goal["y"] * TILE + TILE / 2)
+                pygame.draw.line(screen, (255, 238, 104), (sx, sy), (gx, gy), 2)
+                pygame.draw.circle(screen, (255, 238, 104), (int(gx), int(gy)),
+                                   max(4, int(6 * cam.zoom)), 2)
+
+        elif overlay == "danger":
+            sub = w.fire[y0:y1 + 1, x0:x1 + 1]
+            ys, xs = np.nonzero(sub > 0)
+            for j, i in zip(ys, xs):
+                sx, sy = cam.to_screen((x0 + i) * TILE + TILE / 2,
+                                       (y0 + j) * TILE + TILE / 2)
+                pygame.draw.circle(screen, (235, 90, 68), (int(sx), int(sy)),
+                                   max(4, int(7 * cam.zoom)), 2)
+            if selected is not None:
+                for (cx, cy), value in selected.belief_places.items():
+                    tx, ty = cx * 8, cy * 8
+                    if not (x0 <= tx <= x1 and y0 <= ty <= y1):
+                        continue
+                    sx, sy = cam.to_screen(tx * TILE + TILE / 2, ty * TILE + TILE / 2)
+                    r = max(3, int(12 * cam.zoom * value))
+                    pygame.draw.circle(screen, (214, 84, 84), (int(sx), int(sy)), r, 1)
+
+        elif overlay == "exploration":
+            sub = w.heat[y0:y1 + 1, x0:x1 + 1]
+            ys, xs = np.nonzero(sub > 0.08)
+            for j, i in zip(ys, xs):
+                value = float(sub[j, i])
+                sx, sy = cam.to_screen((x0 + i) * TILE, (y0 + j) * TILE)
+                size = max(1, int(TILE * cam.zoom))
+                alpha = int(130 * min(1.0, value))
+                layer = pygame.Surface((size, max(1, int(size * cam.ys))), pygame.SRCALPHA)
+                layer.fill((92, 164, 236, alpha))
+                screen.blit(layer, (int(sx), int(sy)))
+
+        elif overlay == "territory":
+            sub = w.marker[y0:y1 + 1, x0:x1 + 1]
+            ys, xs = np.nonzero(sub > 0.06)
+            for j, i in zip(ys, xs):
+                value = float(sub[j, i])
+                col = self._clan_rgb(int(w.marker_col[y0 + j, x0 + i]))
+                sx, sy = cam.to_screen((x0 + i) * TILE + TILE / 2,
+                                       (y0 + j) * TILE + TILE / 2)
+                pygame.draw.circle(screen, col, (int(sx), int(sy)),
+                                   max(2, int(6 * cam.zoom * value)), 1)
+
+        elif overlay == "storage":
+            for (stx, sty), storage in getattr(w, "storages", {}).items():
+                if not (x0 <= stx <= x1 and y0 <= sty <= y1):
+                    continue
+                sx, sy = cam.to_screen(stx * TILE + TILE / 2, sty * TILE + TILE / 2)
+                r = max(4, int(8 * cam.zoom))
+                pygame.draw.rect(screen, (238, 194, 86),
+                                 pygame.Rect(int(sx - r), int(sy - r), 2 * r, 2 * r), 2)
+
+        elif overlay == "sites":
+            for (stx, sty), site in getattr(w, "sites", {}).items():
+                if not (x0 <= stx <= x1 and y0 <= sty <= y1):
+                    continue
+                sx, sy = cam.to_screen(stx * TILE + TILE / 2, sty * TILE + TILE / 2)
+                r = max(4, int(8 * cam.zoom))
+                pygame.draw.rect(screen, (92, 164, 236),
+                                 pygame.Rect(int(sx - r), int(sy - r), 2 * r, 2 * r), 2)
+                total_work = sum(site.recipe.values())
+                done_work = sum(site.stored.values())
+                prog = done_work / max(1, total_work)
+                pygame.draw.arc(screen, (96, 215, 114),
+                                pygame.Rect(int(sx - r - 2), int(sy - r - 2),
+                                            2 * r + 4, 2 * r + 4),
+                                -_math.pi / 2,
+                                -_math.pi / 2 + 2 * _math.pi * prog, 2)
+
+        elif overlay == "cemetery":
+            for tx, ty, name, death_tick, color in getattr(w, "cemetery", ()):
+                if not (x0 <= tx <= x1 and y0 <= ty <= y1):
+                    continue
+                sx, sy = cam.to_screen(tx * TILE + TILE / 2, ty * TILE + TILE / 2)
+                pygame.draw.circle(screen, (160, 155, 148), (int(sx), int(sy)),
+                                   max(4, int(7 * cam.zoom)), 2)
+
 
 def _wg():
     """Import différé de worldgen (évite un cycle d'import au chargement)."""
@@ -4180,7 +5371,8 @@ CARD_REGISTRY = [
 
 MODES = [("place", "Poser"), ("erase", "Gommer"), ("floor", "Sol"),
          ("block", "Bloc"),
-         ("agent", "Être"), ("sheep", "Mouton"), ("inspect", "Examiner"),
+         ("agent", "Être"), ("sheep", "Mouton"), ("monster", "Monstre"),
+         ("inspect", "Examiner"),
          ("water", "Eau"), ("land", "Terre"), ("wall", "Mur"),
          ("carve", "Sculpter"), ("restore", "Restaurer")]
 
@@ -4192,7 +5384,8 @@ TAB_MODES = {
     "decor":    [("place", "Poser"), ("erase", "Gommer"), ("floor", "Sol"),
                  ("block", "Bloc"),
                  ("water", "Eau"), ("land", "Terre"), ("wall", "Mur"),
-                 ("carve", "Sculpter"), ("restore", "Restaurer")],
+                 ("carve", "Sculpter"), ("restore", "Restaurer"),
+                 ("inspect", "Examiner")],
     "etre":     [("agent", "Être"), ("inspect", "Examiner")],
     "habitants": [("agent", "Créer"), ("inspect", "Examiner")],
     "societe":  [],
@@ -4204,6 +5397,7 @@ TAB_HINTS = {
     "floor": "clic = peindre le sol sélectionné",
     "agent": "clic = insérer l'être défini dans le gabarit",
     "sheep": "clic = ajouter un mouton",
+    "monster": "clic = ajouter un monstre aléatoire",
     "inspect": "clic = examiner un être",
     "water": "glisser = transformer terre en eau (pinceau)",
     "land": "glisser = transformer eau en terre (pinceau)",
@@ -4399,6 +5593,9 @@ class Dashboard:
         self.action = None
         self.painting = None
         self.creator_focus = False
+        self.selected_tile = None    # (tx, ty) de la dernière tuile examinée
+        self.last_tile_snapshot = None
+        self.active_overlay = "none"
         from .tool_editor import ToolEditor
         self.tool_editor = ToolEditor()
         self.tool_editor_kind = "hache"
@@ -4918,14 +6115,21 @@ class Dashboard:
         if not modes:
             return
         avail = self.panel_r - 2 * T.S3
-        w = avail // len(modes)
-        for i, (mid, lbl) in enumerate(modes):
-            r = pygame.Rect(x0 + T.S3 + i * w, y, w - T.S1, T.H_BTN)
-            self._btn(screen, r, lbl, f"mode:{mid}",
-                      primary=(self.mode == mid))
+        min_btn_w = 72
+        per_row = max(1, avail // min_btn_w)
+        rows = [modes[i:i + per_row] for i in range(0, len(modes), per_row)]
+        cy = y
+        for row in rows:
+            w = avail // len(row)
+            for i, (mid, lbl) in enumerate(row):
+                r = pygame.Rect(x0 + T.S3 + i * w, cy, w - T.S1, T.H_BTN)
+                self._btn(screen, r, lbl, f"mode:{mid}",
+                          primary=(self.mode == mid))
+            cy += T.H_BTN + T.S1
         hint = TAB_HINTS.get(self.mode, "")
-        self._t(screen, T.F_MICRO, hint, T.FAINT, x0 + T.S4, y + T.H_BTN + 3,
-                max_w=self.panel_r - 2 * T.S4)
+        if hint:
+            self._t(screen, T.F_MICRO, hint, T.FAINT, x0 + T.S4, cy + 1,
+                    max_w=self.panel_r - 2 * T.S4)
 
     def _tabs(self, screen):
         x0, y = self.x0, 110
@@ -5675,10 +6879,177 @@ class Dashboard:
     # ══════════════════════════════════════════════════════════════════
     #  6. AUTRES ONGLETS
     # ══════════════════════════════════════════════════════════════════
+    def _draw_tile_inspector(self, screen, sim, rect):
+        from .diagnostics import tile_snapshot
+        if self.selected_tile is None:
+            return rect.y
+        tx, ty = self.selected_tile
+        data = tile_snapshot(sim, tx, ty)
+        y = rect.y
+        x0 = rect.x
+        w = rect.width
+
+        self._card(screen, pygame.Rect(x0, y, w, 0), T.R2, T.SURFACE, T.BORDER)
+        self._t(screen, T.F_SUB, f"TUILE {tx}, {ty}", T.TEXT, x0 + T.S3, y + T.S2, bold=True)
+        y += 28
+
+        rows = [
+            ("Terrain", "eau" if data["eau"] else "terre" if data["terre"] else "hors sol"),
+            ("Bloquée", "oui" if data["bloque"] else "non"),
+            ("Abri", "oui" if data["abri"] else "non"),
+            ("Feu", str(data["feu"])),
+            ("Odeur", f"{data['odeur']:.2f}"),
+            ("Exploration", f"{data['exploration']:.2f}"),
+            ("Phéromones", f"{data['pheromone']:.2f}"),
+        ]
+
+        if "biome" in data:
+            rows.extend([
+                ("Biome", str(data["biome"])),
+                ("Altitude", f"{data['altitude']:.2f}"),
+                ("Pente", f"{data['pente']:.2f}"),
+            ])
+
+        obj = data.get("objet")
+        if obj:
+            rows.extend([
+                ("Objet", obj["nom"]),
+                ("Rôle", obj["role"]),
+                ("PV", str(data["pv_objet"])),
+                ("Affordances", ", ".join(obj["affordances"][:4]) or "—"),
+            ])
+
+        if data.get("tombe"):
+            grave = data["tombe"]
+            rows.extend([
+                ("Tombe", grave["nom"]),
+                ("Décès tick", str(grave["tick_deces"])),
+            ])
+
+        storage = data.get("stockage")
+        if storage:
+            rows.extend([
+                ("Dépôt", storage.get("clan") or "commun"),
+                ("Remplissage", f"{storage['remplissage']:.0%}"),
+                ("Inventaire", str(storage["inventaire"])),
+            ])
+
+        site = data.get("chantier")
+        if site:
+            rows.extend([
+                ("Chantier", site.get("nom", "?")),
+                ("Progression", f"{site.get('progression', 0):.0%}"),
+                ("Blocs", f"{site.get('blocs_poses', 0)} / {site.get('blocs_total', 0)}"),
+                ("Contributeurs", str(len(site.get("contributeurs", [])))),
+            ])
+
+        for label, value in rows:
+            self._t(screen, T.F_MICRO, label, T.MUTED, x0 + T.S3, y, max_w=w * 0.38)
+            self._t(screen, T.F_MICRO, value, T.TEXT,
+                    x0 + w - T.S3, y, right=True, max_w=w * 0.56)
+            y += 20
+
+        return y + T.S2
+
+    def _draw_agent_diagnostics(self, screen, sim, rect):
+        from .diagnostics import agent_snapshot
+        agent = sim.selected
+        data = agent_snapshot(sim, agent)
+        if data is None:
+            return rect.y
+        y = rect.y
+        x0 = rect.x
+        w = rect.width
+
+        self._card(screen, pygame.Rect(x0, y, w, 0), T.R2, T.SURFACE, T.BORDER)
+        self._t(screen, T.F_SUB, data["nom"], T.TEXT, x0 + T.S3, y + T.S2, bold=True)
+        self._t(screen,
+                T.F_MICRO,
+                f"{data['sexe']} · {data['classe']} · {data['age_ans']:.1f} ans · "
+                f"gén. {data['generation']} · {data['cerveau']['neurones']} N",
+                T.MUTED,
+                x0 + T.S3, y + 23, max_w=w - 2 * T.S3)
+        y += 45
+
+        vital = (
+            ("Santé", data["sante"], C_CORPS),
+            ("Énergie", data["energie"], T.WARN),
+            ("Satiété", 1.0 - data["faim"], C_EMO),
+            ("Soif", 1.0 - data["soif"], T.ACCENT),
+        )
+        for label, value, color in vital:
+            self._t(screen, T.F_MICRO, label, T.MUTED, x0 + T.S3, y)
+            bar = pygame.Rect(x0 + 74, y - 2, w - 124, 9)
+            self._bar(screen, bar, value, color)
+            self._t(screen, T.F_MICRO, f"{value:.2f}", T.TEXT,
+                    x0 + w - T.S3, y, right=True)
+            y += 17
+        y += 6
+
+        goal = data["but"]
+        self._t(screen, T.F_BODY, "INTENTION ACTUELLE", T.ACCENT, x0 + T.S3, y, bold=True)
+        y += 19
+        self._t(screen, T.F_SMALL, goal["action_nom"], T.TEXT, x0 + T.S3, y)
+        target = "—"
+        if goal["cible_x"] is not None:
+            target = f"tuile {goal['cible_x']}, {goal['cible_y']}"
+        self._t(screen, T.F_SMALL, target, T.MUTED, x0 + w - T.S3, y, right=True)
+        y += 18
+        if goal["distance_px"] is not None:
+            self._t(screen, T.F_MICRO,
+                    f"distance {goal['distance_px'] / TILE:.1f} tuiles · "
+                    f"bloqué {goal['bloque_ticks']} ticks",
+                    T.FAINT, x0 + T.S3, y, max_w=w - 2 * T.S3)
+            y += 18
+
+        self._t(screen, T.F_BODY, "INVENTAIRE", C_EXP, x0 + T.S3, y, bold=True)
+        y += 19
+        inv = data["inventaire"]
+        self._t(screen, T.F_SMALL,
+                f"bois {inv.get('bois', 0)} · pierre {inv.get('pierre', 0)} · "
+                f"or {inv.get('or', 0)} · graines {inv.get('graine', 0)}",
+                T.TEXT, x0 + T.S3, y, max_w=w - 2 * T.S3)
+        y += 19
+
+        tool = data["outil"]
+        tool_label = "aucun"
+        if tool:
+            tool_label = f"{tool['nom']} · durabilité {data['durabilite_outil']}"
+        self._t(screen, T.F_SMALL, f"Outil : {tool_label}", T.MUTED,
+                x0 + T.S3, y, max_w=w - 2 * T.S3)
+        y += 23
+
+        self._t(screen, T.F_BODY, "CERVEAU", C_COG, x0 + T.S3, y, bold=True)
+        y += 19
+        for item in data["cerveau"]["classement_actions"]:
+            self._t(screen, T.F_SMALL, item.get("nom", "?"), T.TEXT, x0 + T.S3, y)
+            self._t(screen, T.F_SMALL, f"{item.get('probabilite', 0):.1%}", T.MUTED,
+                    x0 + w - T.S3, y, right=True)
+            y += 18
+
+        self._t(screen, T.F_BODY, "RELATIONS", C_MEM, x0 + T.S3, y + 4, bold=True)
+        y += 24
+        for relation in data["relations"][:5]:
+            self._t(screen, T.F_SMALL, relation["nom"], T.TEXT, x0 + T.S3, y)
+            self._t(screen, T.F_MICRO,
+                    f"confiance {relation['confiance']:+.2f} · "
+                    f"affection {relation['affection']:+.2f}",
+                    T.MUTED, x0 + w - T.S3, y, right=True, max_w=150)
+            y += 18
+
+        return y + T.S2
+
     def _tab_decor(self, screen, sim, y):
         x0 = self.x0
         r = pygame.Rect(x0 + T.S3, y, self.panel_r - 2 * T.S3, 0)
         cy = r.y
+
+        if self.selected_tile is not None:
+            cy = self._draw_tile_inspector(
+                screen, sim,
+                pygame.Rect(x0 + T.S3, cy, self.panel_r - 2 * T.S3, 0),
+            )
+            cy += T.S2
 
         # asset sélectionné — infos détaillées
         if self.asset >= 0 and self.asset < len(self.am.assets):
@@ -5793,6 +7164,38 @@ class Dashboard:
             cy += 15
         cy += T.S2
 
+        OVERLAY_LABELS = (
+            ("none", "Normal"),
+            ("resources", "Ressources"),
+            ("memory", "Mémoire"),
+            ("goal", "But"),
+            ("danger", "Danger"),
+            ("exploration", "Exploration"),
+            ("territory", "Territoire"),
+            ("storage", "Dépôts"),
+            ("sites", "Chantiers"),
+            ("cemetery", "Cimetière"),
+        )
+        self._t(screen, T.F_SMALL, "COUCHE DE DIAGNOSTIC", T.MUTED, r.x + T.S4, cy, bold=True)
+        cy += 19
+        fx = r.x + T.S4
+        for key, label in OVERLAY_LABELS:
+            chip_w = self._tw(T.F_MICRO, label) + 16
+            if fx + chip_w > r.right - T.S4:
+                fx = r.x + T.S4
+                cy += 24
+            chip = pygame.Rect(fx, cy, chip_w, 20)
+            sel = self.active_overlay == key
+            pygame.draw.rect(screen, T.SELECT if sel else T.SURFACE, chip, border_radius=T.R1)
+            if sel:
+                pygame.draw.rect(screen, T.ACCENT, chip, 1, border_radius=T.R1)
+            self._t(screen, T.F_MICRO, label,
+                    T.ACCENT if sel else T.MUTED,
+                    chip.centerx, chip.centery, cx=True, cy=True)
+            self._push(chip, f"overlay:{key}")
+            fx += chip_w + 4
+        cy += 28
+
         self._content_h["decor"] = cy - r.y
 
     def _tab_habitants(self, screen, sim, y):
@@ -5900,7 +7303,8 @@ class Dashboard:
                                   ("Paroles", st.get("talks", 0)),
                                   ("Attaques", st.get("attacks", 0))]),
             ("Monde", C_COG, [("Feux", st.get("fires", 0)),
-                              ("Moutons", len(getattr(sim, "sheep", [])))]),
+                              ("Moutons", len(getattr(sim, "sheep", []))),
+                              ("Monstres", len(getattr(sim, "monsters", [])))]),
         ]
         self._t(screen, T.F_SUB, "SOCIÉTÉ", T.TEXT, x0 + T.S4, y, bold=True)
         self._t(screen, T.F_SMALL, "motifs observés, jamais imposés", T.MUTED,
@@ -6162,7 +7566,7 @@ class Dashboard:
         tx, ty = int(wx // TILE), int(wy // TILE)
 
         if button == 2 or self.mode == "inspect":
-            pick_radius_world = max(TILE * 1.5, 40.0 / max(0.10, cam.zoom))
+            pick_radius_world = max(TILE * 2.0, 60.0 / max(0.10, cam.zoom))
             best, bd = None, pick_radius_world * pick_radius_world
             for ag in sim.agents:
                 if not getattr(ag, "alive", False):
@@ -6170,15 +7574,34 @@ class Dashboard:
                 d2 = (ag.x - wx) ** 2 + (ag.y - wy) ** 2
                 if d2 <= bd:
                     best, bd = ag, d2
+            if best is None:
+                for sh in sim.sheep:
+                    if not getattr(sh, "alive", False):
+                        continue
+                    d2 = (sh.x - wx) ** 2 + (sh.y - wy) ** 2
+                    if d2 <= bd:
+                        best, bd = sh, d2
             if best is not None:
-                sim.selected = best
-                self.tab = "etre"
-                self._scroll["etre"] = 0
-                self.follow = True
-                sim.log(f"Examen : {best.name}, {best.age_years:.1f} ans.",
-                        (59, 118, 214), "monde")
+                from .entities import Being, Sheep
+                if isinstance(best, Being):
+                    sim.selected = best
+                    self.tab = "etre"
+                    self._scroll["etre"] = 0
+                    self.follow = True
+                    sim.log(f"Examen : {best.name}, {best.age_years:.1f} ans.",
+                            (59, 118, 214), "monde")
+                elif isinstance(best, Sheep):
+                    self.tab = "etre"
+                    sim.log(f"Mouton en ({best.tx}, {best.ty}). "
+                            f"Energie : {best.energy:.0%}",
+                            (108, 208, 128), "monde")
                 return True
-            return False
+            from .diagnostics import tile_snapshot
+            self.selected_tile = (tx, ty)
+            self.last_tile_snapshot = tile_snapshot(sim, tx, ty)
+            self.tab = "decor"
+            self._scroll["decor"] = 0
+            return True
 
         if button != 1:
             return False
@@ -6244,16 +7667,20 @@ class Dashboard:
             old_len = len(w.items)
             w.items = [it for it in w.items
                        if not (int(it.x // TILE) == tx and int(it.y // TILE) == ty)]
-            return removed or len(w.items) != old_len
+            had_floor = w.floor[ty, tx] >= 0
+            w.floor[ty, tx] = -1
+            w.mark_dirty(tx, ty)
+            self._minimap_ver = -1
+            return removed or len(w.items) != old_len or had_floor
 
         if self.mode == "floor":
             aid = self.asset
-            if 0 <= aid < len(self.am.assets) and self.am.assets[aid].category == "sol":
-                w.set_floor(tx, ty, self.am.assets[aid].id * 216)
+            if aid in self.am.floors:
+                sheet_idx = self.am.floors.index(aid)
+                w.set_floor(tx, ty, sheet_idx * 216)
                 return True
-            floors = self.am.pool("sol")
-            if floors:
-                w.set_floor(tx, ty, int(floors[0]) * 216)
+            if self.am.floors:
+                w.set_floor(tx, ty, 0)
                 return True
             return False
 
@@ -6291,6 +7718,10 @@ class Dashboard:
 
         if self.mode == "sheep":
             sim.spawn_sheep(x=wx, y=wy)
+            return True
+
+        if self.mode == "monster":
+            sim.spawn_monster(x=wx, y=wy)
             return True
 
         return False
@@ -6537,6 +7968,7 @@ class Dashboard:
             self.left_open = not self.left_open
         elif fid == "only_favs":
             self.only_favs = not self.only_favs
+            self._filter_sig = None
         elif fid == "home":
             self.tab = "etre"
         elif fid == "search":
@@ -6663,6 +8095,8 @@ class Dashboard:
                     self.drag = fid
         elif fid.startswith("blockmat:"):
             self.block_material = fid[9:]
+        elif fid.startswith("overlay:"):
+            self.active_overlay = fid[8:]
         elif fid.startswith("tcolor:"):
             self.tpl_color = fid[7:]
             self.normalize_template_class()
@@ -6692,6 +8126,7 @@ class Dashboard:
                         if self._sim_ref.selected is a:
                             self._sim_ref.selected = None
                         self.hdel_pending = None
+                        self._needs_save = True
                         break
             else:
                 # 1er clic : armer la confirmation
@@ -6803,30 +8238,31 @@ from .brain_api import (ATTACK, BUILD, DRINK, DROP, EAT, EXPLORE, FLEE, GIVE,
                      TALK, ACTION_NAMES_EXP as ACTION_NAMES, ACTION_TRAIT_EXP as ACTION_TRAIT)
 from .brain import Brain
 from .clock import Clock
-from .config import (GRID, MAX_POP, MAX_SHEEP, TILE, WORLD_PX,
+from .config import (CLAN_COLORS, GRID, MAX_POP, MAX_SHEEP, TILE, WORLD_PX,
                      DEFAULT_SPAWN_AGE_TICKS, TICKS_PER_YEAR, AGE_ELDER_TICKS,
                      AGE_MAX_NATURAL_DEATH_TICKS, DAY_TICKS)
-from .entities import Being, Sheep, ClanKnowledge
+from .entities import Being, Sheep, Monster, ClanKnowledge
 from .world import Item
 from .universal_knowledge import UniversalKnowledge
 from .academy import Academy
 from .lab import LabRecorder
+from .construction import ConstructionSite, blueprint_from_name
 
 MAT_AIDS = {"bois": "item_wood", "pierre": "stone_res", "or": "gold_pile"}
 
 # --- metabolisme (lois biologiques, pas des comportements)
-HUNGER_RATE = 0.00026
-THIRST_RATE = 0.00012
-SLEEP_RATE_D = 0.00014
-SLEEP_RATE_N = 0.00040
-E_DRAIN = 0.00010
+HUNGER_RATE = 0.00012
+THIRST_RATE = 0.00008
+SLEEP_RATE_D = 0.00006
+SLEEP_RATE_N = 0.00020
+E_DRAIN = 0.00004
 MOVE_DRAIN = 0.00018
 REST_GAIN = 0.00180
 SLEEP_GAIN = 0.00420
 SHELTER_BONUS = 1.9
-STARVE_HP = 0.00095
-THIRST_HP = 0.00090
-LOWE_HP = 0.00030
+STARVE_HP = 0.00012
+THIRST_HP = 0.00012
+LOWE_HP = 0.00008
 INV_CAP = 8
 ATTACK_DMG = 0.16
 ATTACK_DMG_TOOL = 0.30
@@ -6842,6 +8278,7 @@ class Sim:
         self.clock = Clock(np.random.default_rng(seed + 1))
         self.agents: list[Being] = []
         self.sheep: list[Sheep] = []
+        self.monsters: list[Monster] = []
         self.effects: list[dict] = []
         self.sounds: deque = deque(maxlen=40)
         self.next_eid = 1
@@ -6947,6 +8384,27 @@ class Sim:
         self.grid_bucket.setdefault((cx, cy), []).append(s)
         self._entity_cells[s.eid] = (cx, cy)
 
+    def spawn_monster(self, x=None, y=None, kind=None):
+        if len(self.monsters) >= 20:
+            return
+        kinds = ["bear", "wolf", "snake", "beatle"]
+        for _ in range(30):
+            if x is None:
+                tx = int(self.rng.integers(6, GRID - 6))
+                ty = int(self.rng.integers(6, GRID - 6))
+            else:
+                tx = min(GRID - 2, max(1, int(x // TILE)))
+                ty = min(GRID - 2, max(1, int(y // TILE)))
+            if self.w.land[ty, tx] and not self.w.blocked[ty, tx]:
+                break
+        k = kind or self.rng.choice(kinds)
+        m = Monster(self.next_eid, tx * TILE + 8, ty * TILE + 8, kind=k)
+        self.next_eid += 1
+        self.monsters.append(m)
+        cx, cy = int(m.x // 32), int(m.y // 32)
+        self.grid_bucket.setdefault((cx, cy), []).append(m)
+        self._entity_cells[m.eid] = (cx, cy)
+
     def remove_agent(self, a, name="le gardien"):
         """Retrait manuel depuis le tableau de bord : l'habitant quitte le monde
         sans laisser de cadavre. Les liens sociaux sont nettoyés."""
@@ -6959,6 +8417,8 @@ class Sim:
             other.rel.pop(a.eid, None)
             if other.bonded == a.eid:
                 other.bonded = None
+                other.married = False
+                other.partner_id = None
                 other.life.append("a perdu son partenaire")
             other.children[:] = [c for c in other.children if c != a.eid]
         self.stats["deaths"] += 1
@@ -6999,8 +8459,24 @@ class Sim:
         for s in self.sheep:
             if s.alive:
                 self._sheep(s)
+        for m in self.monsters:
+            if m.alive:
+                self._monster(m)
         self.agents = [a for a in self.agents if a.alive]
         self.sheep = [s for s in self.sheep if s.alive]
+        self.monsters = [m for m in self.monsters if m.alive]
+        # nettoyage grid_bucket : entités mortes
+        for dead_eid in [eid for eid, cell in list(self._entity_cells.items())
+                         if not any(a.eid == eid for a in self.agents)
+                         and not any(s.eid == eid for s in self.sheep)
+                         and not any(m.eid == eid for m in self.monsters)]:
+            cell = self._entity_cells.pop(dead_eid, None)
+            if cell is not None:
+                bucket = self.grid_bucket.get(cell)
+                if bucket:
+                    self.grid_bucket[cell] = [e for e in bucket if getattr(e, "eid", None) != dead_eid]
+                    if not self.grid_bucket[cell]:
+                        del self.grid_bucket[cell]
         self.effects = [e for e in self.effects if w.tick - e["t0"] < e["ttl"]]
         # odeurs des objets
         if w.tick % 20 == 0:
@@ -7032,6 +8508,10 @@ class Sim:
                                  (88, 148, 228), "laboratoire")
         if w.tick % DAY_TICKS == 0:
             self.lab.snapshot(self)
+        if __debug__ and w.tick % 600 == 0:
+            from .invariants import validate_simulation
+            for error in validate_simulation(self):
+                self.log(f"INVARIANT: {error}", (214, 84, 84), "monde")
 
     def _bucket(self):
         self.item_bucket = {}
@@ -7118,24 +8598,25 @@ class Sim:
         # ====== VISION COURTE PORTÉE : Moore neighborhood (actions physiques) ======
         near_agents = []
         near_sheep = []
-        for dy in range(-R_near, R_near + 1):
-            for dx in range(-R_near, R_near + 1):
-                if dx == 0 and dy == 0:
-                    continue
-                nx, ny = tx + dx, ty + dy
-                if not (0 <= nx < w.g and 0 <= ny < w.g):
-                    continue
-                for e in self.grid_bucket.get((nx, ny), ()):
-                    if isinstance(e, Being) and e.eid != a.eid:
+        near_monsters = []
+        R_near_chunks = max(1, int(R_near * TILE / 32))
+        cx_a, cy_a = int(a.x // 32), int(a.y // 32)
+        R_near_px = R_near * TILE
+        for j in range(cy_a - R_near_chunks, cy_a + R_near_chunks + 1):
+            for i in range(cx_a - R_near_chunks, cx_a + R_near_chunks + 1):
+                for e in self.grid_bucket.get((i, j), ()):
+                    if isinstance(e, Being) and e.eid != a.eid and getattr(e, "alive", False):
                         d2 = (e.x - a.x) ** 2 + (e.y - a.y) ** 2
-                        if d2 < (R_near * TILE) ** 2:
-                            if e not in near_agents:
-                                near_agents.append(e)
-                    elif isinstance(e, Sheep):
+                        if d2 < R_near_px ** 2:
+                            near_agents.append(e)
+                    elif isinstance(e, Sheep) and getattr(e, "alive", False):
                         d2 = (e.x - a.x) ** 2 + (e.y - a.y) ** 2
-                        if d2 < (R_near * TILE) ** 2:
-                            if e not in near_sheep:
-                                near_sheep.append(e)
+                        if d2 < R_near_px ** 2:
+                            near_sheep.append(e)
+                    elif isinstance(e, Monster) and getattr(e, "alive", False):
+                        d2 = (e.x - a.x) ** 2 + (e.y - a.y) ** 2
+                        if d2 < R_near_px ** 2:
+                            near_monsters.append(e)
         # mémoriser agents vus en longue portée aussi
         for e in near_agents:
             a.remember("agent", e.tx, e.ty)
@@ -7164,6 +8645,7 @@ class Sim:
         a._loc = loc
         a._near_agents = near_agents
         a._near_sheep = near_sheep
+        a._near_monsters = near_monsters
 
     @staticmethod
     def _ring(tx, ty):
@@ -7282,6 +8764,17 @@ class Sim:
                 d = max(abs(t.tx - a.tx), abs(t.ty - a.ty))
                 if d > 10:
                     bias[SOCIAL] += 0.4 * e[7]
+        if self.clock.rain > 0.6:
+            bias[SLEEP] += 0.6 * self.clock.rain
+            bias[REST] += 0.5 * self.clock.rain
+            bias[EXPLORE] -= 0.8 * self.clock.rain
+            bias[HARVEST] -= 0.4 * self.clock.rain
+        if a._near_monsters:
+            nearest = min(a._near_monsters,
+                          key=lambda m: (m.x - a.x)**2 + (m.y - a.y)**2)
+            if nearest.hostile:
+                bias[FLEE] += 1.2
+                bias[ATTACK] += 0.3 * e[2]
         return bias
 
     def _feasible(self, a: Being):
@@ -7297,13 +8790,13 @@ class Sim:
         f[HARVEST] = bool(a.recall("wood", a.tx, a.ty) or a.recall("stone", a.tx, a.ty))
         f[DRINK] = a.needs[2] > 0.32 and (a._loc[4] > 0 or bool(a.recall("water", a.tx, a.ty)))
         f[DROP] = a.carry() > 0
-        f[BUILD] = ((a.inv["bois"] >= 3 and a.inv["pierre"] >= 1)
+        f[BUILD] = ((a.inv.get("bois", 0) >= 6 and a.inv.get("pierre", 0) >= 2)
                      or a.inv.get("graine", 0) > 0) and not a.child
         f[GIVE] = bool(a._near_agents) and a.carry() > 1
         f[TAKE] = bool(a._near_agents) and not a.child
-        f[ATTACK] = (bool(a._near_agents) or bool(a._near_sheep)) and a.energy > 0.25 \
+        f[ATTACK] = (bool(a._near_agents) or bool(a._near_sheep) or bool(a._near_monsters)) and a.energy > 0.25 \
             and not a.child
-        f[FLEE] = a.emotions[0] > 0.35 and bool(a._near_agents or a._near_sheep)
+        f[FLEE] = a.emotions[0] > 0.35 and bool(a._near_agents or a._near_sheep or a._near_monsters)
         f[TALK] = bool(a._near_agents) and \
             self.w.tick - a.talk_cd.get(a._near_agents[0].eid, -999) > 240
         f[SOCIAL] = bool(a.recall("agent", a.tx, a.ty)) or bool(a._near_agents)
@@ -7335,6 +8828,10 @@ class Sim:
         personal = a.recall(category, tx, ty)
         if personal is not None:
             return personal
+        clan_places = self.clan_knowledge.nearby_places(category, tx, ty, max_dist=100)
+        if clan_places:
+            best = clan_places[0]
+            return best[0], best[1], best[3]
         fact = self.universal_knowledge.nearest(category, tx, ty, tick=self.w.tick)
         if fact is None:
             return None
@@ -7385,6 +8882,9 @@ class Sim:
                 g["x"], g["y"], g["ref"] = e.tx, e.ty, e
             elif act == ATTACK and a._near_sheep:
                 e = a._near_sheep[0]
+                g["x"], g["y"], g["ref"] = e.tx, e.ty, e
+            elif act == ATTACK and a._near_monsters:
+                e = max(a._near_monsters, key=lambda m: m.health)
                 g["x"], g["y"], g["ref"] = e.tx, e.ty, e
             elif act == SOCIAL and a.bonded is not None:
                 t = self._by_eid(a.bonded)
@@ -7841,10 +9341,10 @@ class Sim:
 
     def _do_attack(self, a, ref, gx, gy):
         w = self.w
-        target = ref if isinstance(ref, (Being, Sheep)) and getattr(ref, "alive", False) else None
+        target = ref if isinstance(ref, (Being, Sheep, Monster)) and getattr(ref, "alive", False) else None
         if target is None:
             near = [e for e in self._near(a.x, a.y,
-                     lambda e: isinstance(e, (Being, Sheep)) and e is not a, r=1)]
+                     lambda e: isinstance(e, (Being, Sheep, Monster)) and e is not a, r=1)]
             target = max(near, key=lambda t: t.health) if near else None
         if target is None:
             a.goal = None
@@ -7874,6 +9374,13 @@ class Sim:
         if isinstance(target, Sheep):
             if target.health <= 0:
                 self._kill_sheep(target, killer=a)
+                a.goal = None
+            return
+        if isinstance(target, Monster):
+            if target.health <= 0:
+                target.alive = False
+                self.monsters = [x for x in self.monsters if x.alive]
+                self._entity_cells.pop(target.eid, None)
                 a.goal = None
             return
         # consequences sociales
@@ -8100,7 +9607,125 @@ class Sim:
         self._reward(a, 0.35)
         return True
 
+    def can_place_blueprint(self, tasks):
+        w = self.w
+        for task in tasks:
+            if not (0 <= task.tx < w.g and 0 <= task.ty < w.g):
+                return False
+            if not w.land[task.ty, task.tx]:
+                return False
+            if w.water[task.ty, task.tx]:
+                return False
+            if w.content_at(task.tx, task.ty) >= 0:
+                return False
+        return True
+
+    def find_build_location(self, a, radius=8):
+        for r in range(2, radius + 1):
+            for dy in range(-r, r + 1):
+                for dx in range(-r, r + 1):
+                    if abs(dx) != r and abs(dy) != r:
+                        continue
+                    tx, ty = a.tx + dx, a.ty + dy
+                    tasks = blueprint_from_name("small_house", tx, ty)
+                    if self.can_place_blueprint(tasks):
+                        return tx, ty
+        return None
+
+    def create_house_site(self, a, tx=None, ty=None):
+        if tx is None or ty is None:
+            pos = self.find_build_location(a)
+            if pos is None:
+                return None
+            tx, ty = pos
+        tasks = blueprint_from_name("small_house", tx, ty)
+        if not self.can_place_blueprint(tasks):
+            return None
+        site = ConstructionSite(
+            origin_tx=tx, origin_ty=ty,
+            blueprint_name="small_house", tasks=tasks,
+            created_tick=self.w.tick,
+            owner_eid=a.eid, owner_clan=a.color,
+        )
+        self.w.add_site(site)
+        a.home = (tx + 2, ty + 2)
+        self.log(f"{a.name} a commence le plan d'une maison.", (178, 228, 168), "batiment")
+        return site
+
+    def nearest_site(self, tx, ty, max_dist=15):
+        best, best_dist = None, 10**9
+        for site in self.w.sites.values():
+            d = max(abs(site.origin_tx - tx), abs(site.origin_ty - ty))
+            if d <= max_dist and d < best_dist:
+                best, best_dist = site, d
+        return best
+
+    def role_for_block_task(self, task):
+        if task.phase == "door":
+            return "block_door"
+        if task.phase == "roof":
+            return "block_roof"
+        if task.material == "pierre":
+            return "block_stone"
+        return "block_wood"
+
+    def place_site_block(self, a, site, task):
+        w = self.w
+        if (task.tx, task.ty) in site.placed:
+            return False
+        if task.material not in ("bois", "pierre"):
+            return False
+        if a.inv.get(task.material, 0) <= 0:
+            return False
+        if w.content_at(task.tx, task.ty) >= 0:
+            return False
+        role = self.role_for_block_task(task)
+        pool = self.am.pool(role)
+        if not pool:
+            return False
+        aid = int(self.am.pick(pool, self.rng))
+        w.place(task.tx, task.ty, aid, self.am, hp=6,
+                solid=task.solid, shelter=False, size=1)
+        a.inv[task.material] -= 1
+        site.mark_placed(a.eid, task)
+        a.skills[1] = min(1.0, a.skills[1] + 0.012)
+        self.stats["builds"] += 1
+        self._fx("dust", task.tx * TILE + TILE / 2, task.ty * TILE + TILE / 2)
+        self._reward(a, 0.10)
+        if site.complete():
+            self.complete_site(site, a)
+        return True
+
+    def complete_site(self, site, finisher):
+        w = self.w
+        for ty in range(site.origin_ty + 1, site.origin_ty + 4):
+            for tx in range(site.origin_tx + 1, site.origin_tx + 4):
+                if 0 <= tx < w.g and 0 <= ty < w.g:
+                    w.shelter[ty, tx] = 1
+        w.remove_site(site)
+        self._check_village(site.origin_tx + 2, site.origin_ty + 2)
+        for eid in site.contributors:
+            c = next((x for x in self.agents if x.eid == eid), None)
+            if c and c.alive:
+                c.skills[1] = min(1.0, c.skills[1] + 0.04)
+                c.needs[6] = max(0.0, c.needs[6] - 0.12)
+                self._reward(c, 0.25)
+        self.log(f"Maison terminee : {len(site.contributors)} contributeur(s).",
+                 (108, 208, 128), "batiment")
+
     def do_build_block(self, a, tx, ty):
+        """BUILD : contribuer a un chantier existant ou placer un bloc."""
+        site = self.nearest_site(a.tx, a.ty, max_dist=14)
+        if site is not None:
+            task = site.next_task_for(a.inv)
+            if task is not None:
+                return self.place_site_block(a, site, task)
+        site = self.create_house_site(a)
+        if site is not None:
+            task = site.next_task_for(a.inv)
+            if task is not None:
+                return self.place_site_block(a, site, task)
+            return True
         w, am = self.w, self.am
         if w.blocked[ty, tx] or w.content_at(tx, ty) >= 0 or not w.land[ty, tx]:
             tx, ty = self._free_near(tx, ty)
@@ -8222,6 +9847,8 @@ class Sim:
                 other.emotions[3] = min(1.0, other.emotions[3] + 0.35 * r[1])
                 if other.bonded == a.eid:
                     other.bonded = None
+                    other.married = False
+                    other.partner_id = None
         if a.bonded:
             b = self._by_eid(a.bonded)
             if b and b.alive:
@@ -8476,6 +10103,47 @@ class Sim:
             s.energy = 0.55
             self.spawn_sheep(x=s.x + 10, y=s.y)
 
+    def _monster(self, m: Monster):
+        w = self.w
+        m.energy -= 0.00018
+        near_humans = self._near(m.x, m.y,
+                                 lambda e: isinstance(e, Being) and e.alive,
+                                 r=m.sight)
+        near_sheep = self._near(m.x, m.y,
+                                lambda e: isinstance(e, Sheep) and e.alive,
+                                r=m.sight)
+        target = None
+        if near_humans:
+            target = min(near_humans, key=lambda e: (e.x - m.x)**2 + (e.y - m.y)**2)
+        elif near_sheep:
+            target = min(near_sheep, key=lambda e: (e.x - m.x)**2 + (e.y - m.y)**2)
+
+        if m.hostile and target and m.energy > 0.1:
+            dx = target.x - m.x
+            dy = target.y - m.y
+            dist = math.sqrt(dx*dx + dy*dy)
+            if dist < 14:
+                target.health -= m.damage
+                m.state = "attack" if hasattr(m, "state") else "idle"
+            elif dist > 0:
+                mvx = dx / dist
+                mvy = dy / dist
+                self._move(m, mvx * 0.6, mvy * 0.6, sheep=True)
+        else:
+            mvx = self.rng.uniform(-1, 1)
+            mvy = self.rng.uniform(-1, 1)
+            self._move(m, mvx * 0.3, mvy * 0.3, sheep=True)
+
+        m.anim_t += 1
+        if m.anim_t % 7 == 0:
+            m.frame += 1
+        if m.energy <= 0:
+            m.health -= 0.002
+        if m.health <= 0:
+            m.alive = False
+            self.monsters = [x for x in self.monsters if x.alive]
+            self._entity_cells.pop(m.eid, None)
+
     # ------------------------------------------------------------------ pathfinding local
     def _local_bfs(self, start_tx, start_ty, goal_fn, max_r=15):
         """BFS local : cherche un chemin autour des obstacles.
@@ -8489,6 +10157,8 @@ class Sim:
             cx, cy = q.popleft()
             if goal_fn(cx, cy):
                 curr = (cx, cy)
+                if curr == (start_tx, start_ty):
+                    return 0, 0
                 while came_from[curr] != (start_tx, start_ty):
                     curr = came_from[curr]
                 return curr[0] - start_tx, curr[1] - start_ty
@@ -8685,6 +10355,22 @@ def save_game(sim, cam=None, slot=0):
         "smell": w.smell,
         "heat": w.heat,
         "cemetery": list(w.cemetery),
+        "sites": {
+            f"{tx},{ty}": {
+                "origin_tx": s.origin_tx,
+                "origin_ty": s.origin_ty,
+                "blueprint_name": s.blueprint_name,
+                "tasks": [{"tx": t.tx, "ty": t.ty, "material": t.material,
+                           "phase": t.phase, "solid": t.solid}
+                          for t in s.tasks],
+                "placed": list(s.placed),
+                "contributors": dict(s.contributors),
+                "created_tick": s.created_tick,
+                "owner_eid": s.owner_eid,
+                "owner_clan": s.owner_clan,
+            }
+            for (tx, ty), s in w.sites.items()
+        },
         "items": [(it.x, it.y, it.aid, it.kind, it.life) for it in w.items],
         "w_tick": w.tick,
         "g": w.g,
@@ -8737,6 +10423,9 @@ def save_game(sim, cam=None, slot=0):
         # --- sheep ---
         "n_sheep": len(sim.sheep),
         "sheep": [_serialize_sheep(s) for s in sim.sheep],
+        # --- monsters ---
+        "n_monsters": len(sim.monsters),
+        "monsters": [_serialize_monster(m) for m in sim.monsters],
     }
     if w.gen is not None:
         data["gen_height_base"] = w.gen.height_base
@@ -8791,11 +10480,27 @@ def load_game(am, slot=0):
     w.smell = data["smell"]
     w.heat = data["heat"]
     w.cemetery = data.get("cemetery", [])
+    w.sites = {}
+    from .construction import ConstructionSite, BlockTask
+    for raw in data.get("sites", {}).values():
+        tasks = [BlockTask(**t) for t in raw.get("tasks", [])]
+        site = ConstructionSite(
+            origin_tx=raw["origin_tx"],
+            origin_ty=raw["origin_ty"],
+            blueprint_name=raw.get("blueprint_name", "small_house"),
+            tasks=tasks,
+            placed={tuple(p) for p in raw.get("placed", [])},
+            contributors={int(k): int(v) for k, v in raw.get("contributors", {}).items()},
+            created_tick=int(raw.get("created_tick", 0)),
+            owner_eid=raw.get("owner_eid"),
+            owner_clan=raw.get("owner_clan"),
+        )
+        w.sites[site.key] = site
     w.tick = data["w_tick"]
     w.items = []
     for (ix, iy, iaid, ikind, ilife) in data.get("items", []):
         from .world import Item
-        w.items.append(Item(ix, iy, iaid, ikind, ilife))
+        w.items.append(Item(ikind, iaid, ix, iy, life=ilife))
 
     # --- worldgen ---
     if data.get("has_gen", False):
@@ -8872,6 +10577,26 @@ def load_game(am, slot=0):
     sim.sheep = []
     for sd in data.get("sheep", []):
         sim.sheep.append(_deserialize_sheep(sd))
+    # --- monsters ---
+    sim.monsters = []
+    for md in data.get("monsters", []):
+        sim.monsters.append(_deserialize_monster(md))
+
+    # --- rebuild spatial hash (grid_bucket + _entity_cells) ---
+    sim.grid_bucket = {}
+    sim._entity_cells = {}
+    for a in sim.agents:
+        cx, cy = int(a.x // 32), int(a.y // 32)
+        sim.grid_bucket.setdefault((cx, cy), []).append(a)
+        sim._entity_cells[a.eid] = (cx, cy)
+    for s in sim.sheep:
+        cx, cy = int(s.x // 32), int(s.y // 32)
+        sim.grid_bucket.setdefault((cx, cy), []).append(s)
+        sim._entity_cells[s.eid] = (cx, cy)
+    for m in sim.monsters:
+        cx, cy = int(m.x // 32), int(m.y // 32)
+        sim.grid_bucket.setdefault((cx, cy), []).append(m)
+        sim._entity_cells[m.eid] = (cx, cy)
 
     # --- camera ---
     cam = Camera()
@@ -9017,8 +10742,25 @@ def _deserialize_sheep(d):
     return s
 
 
+def _serialize_monster(m):
+    return {
+        "eid": m.eid, "x": m.x, "y": m.y,
+        "vx": m.vx, "vy": m.vy,
+        "energy": m.energy, "health": m.health,
+        "kind": m.kind, "alive": m.alive,
+    }
+
+
+def _deserialize_monster(d):
+    m = Monster(d["eid"], d["x"], d["y"], kind=d["kind"])
+    m.vx = d["vx"]; m.vy = d["vy"]
+    m.energy = d["energy"]; m.health = d["health"]
+    m.alive = d["alive"]
+    return m
+
+
 # --- import circular ---
-from .entities import Being, Sheep
+from .entities import Being, Sheep, Monster
 ```
 
 ---
@@ -9292,6 +11034,46 @@ def _classify(rel, fname):
     if "portraits" in t and fname.lower().endswith(".png"):
         return "interface", "ui_portraits", {"px": 44}
 
+    # ------------------------------------------------------------------ outils custom (tools_custom/)
+    if "tools_custom" in t or "custom_tools" in t:
+        kind = "hache"
+        for k in ("hache", "pioche", "marteau"):
+            if k in f:
+                kind = k
+                break
+        return "outils", "tool", {"px": 14, "tool": True,
+                                  "meta": {"tool_kind": kind, "custom": True}}
+
+    # ------------------------------------------------------------------ vegetables (custom sprites extraits)
+    if "vegetable" in t or "vegetables" in t:
+        nutrition = 35.0
+        if "carotte" in f:
+            nutrition = 30.0
+        elif "tomate" in f:
+            nutrition = 25.0
+        elif "champignon" in f:
+            nutrition = 20.0
+        elif "oignon" in f:
+            nutrition = 22.0
+        elif "courgette" in f:
+            nutrition = 28.0
+        return "nourriture", "food", {"px": 16, "edible": nutrition}
+
+    # ------------------------------------------------------------------ retro rpg animals (extracted singles)
+    if "animals" in t and "retro" not in t:
+        if "_attack" in f:
+            kind = f.split("_attack")[0]
+            return "animaux", "monster_attack", {"px": 22,
+                                                  "meta": {"kind": kind, "state": "attack"}}
+        kind = f.replace(".png", "")
+        px = {"bear": 24, "wolf": 22, "snake": 18, "beatle": 14}.get(kind, 20)
+        return "animaux", "monster", {"px": px,
+                                      "meta": {"kind": kind, "state": "idle"}}
+
+    # ------------------------------------------------------------------ retro rpg animals (original sheets = ignored, use extracted singles)
+    if "retro rpg" in t and "animal" in t:
+        return "divers", "ignored", {}
+
     # ------------------------------------------------------------------ standalone environment sprites
     if fname.lower() == "sheep.png":
         return "animaux", "sheep", {"px": 22, "meta": {"state": "idle"}}
@@ -9328,7 +11110,59 @@ def _kenney(kit, f):
         ed = 0.0
         if any(x in name for x in FOOD_HI):
             ed = 34.0
-        return "props", "prop", {"px": 18, "solid": solid, "shelter": shelter, "edible": ed}
+        # outils
+        if name.startswith("tool "):
+            up = "upgraded" in name
+            tool_kind = name.replace(" upgraded", "").replace("tool ", "")
+            px = 14 if up else 12
+            return "outils", "tool", {"px": px, "tool": True,
+                                      "meta": {"tool_kind": tool_kind, "upgraded": up}}
+        # ressources
+        if name.startswith("resource "):
+            mat = "bois" if "wood" in name or "planks" in name else "pierre"
+            return "ressources", "stone_res" if mat == "pierre" else "item_wood", {
+                "px": 16, "material": mat}
+        # arbres
+        if name.startswith("tree"):
+            return "ressources", "tree", {"px": 32, "solid": True,
+                                          "harvest": dict(material="bois", amount=3, hp=6)}
+        # ignorer structures pre-construites
+        if name.startswith("structure") or name.startswith("tent"):
+            return None, None, None
+        # ignorer workbench
+        if name.startswith("workbench"):
+            return None, None, None
+        # campfeu
+        if name.startswith("campfire"):
+            return "props", "prop", {"px": 18, "edible": 0.0, "flammable": True}
+        # caisses / stockage
+        if any(name.startswith(x) for x in ("box", "chest", "barrel", "bucket")):
+            return "props", "prop", {"px": 18, "solid": True}
+        # clotures
+        if name.startswith("fence"):
+            return "props", "prop", {"px": 18, "solid": True}
+        # poissons
+        if name.startswith("fish"):
+            return "nourriture", "food", {"px": 14, "edible": 40.0}
+        # nature
+        if name.startswith("rock") or name.startswith("patch") or name.startswith("grass"):
+            return "decor", "decor", {"px": 16}
+        # panneau
+        if name.startswith("signpost"):
+            return "props", "prop", {"px": 18}
+        # lits (sans shelter)
+        if name.startswith("bedroll"):
+            return "props", "prop", {"px": 18}
+        # bouteille
+        if name.startswith("bottle"):
+            return "props", "prop", {"px": 14}
+        # panneaux metal
+        if name.startswith("metal"):
+            return "props", "prop", {"px": 18, "solid": True}
+        # floor
+        if name.startswith("floor"):
+            return "props", "prop", {"px": 18}
+        return "props", "prop", {"px": 18, "solid": solid, "edible": ed}
     if kit == "kenney_mini-arcade":
         return "props", "prop", {"px": 24, "solid": solid}
     return "props", "prop", {"px": 18, "solid": solid}
@@ -9422,6 +11256,7 @@ class AssetManager:
         self.by_cat: dict[str, list[int]] = {}
         self.skins: dict[tuple, list[int]] = {}     # (color, cls, state) -> [aid]
         self.sheep: dict[str, int] = {}
+        self.monsters: dict[str, dict[str, int]] = {}
         self.fx: dict[str, list[int]] = {}
         self.ui: dict[str, list[int]] = {}
         self.floors: list[int] = []
@@ -9571,6 +11406,10 @@ class AssetManager:
                 self.skins.setdefault(key, []).append(a.id)
             elif a.role == "sheep":
                 self.sheep[m["state"]] = a.id
+            elif a.role in ("monster", "monster_attack"):
+                kind = m.get("kind", "unknown")
+                state = m.get("state", "idle")
+                self.monsters.setdefault(kind, {})[state] = a.id
             elif a.role == "fx":
                 self.fx.setdefault(m["fx"], []).append(a.id)
             elif a.role.startswith("ui_"):
@@ -9787,22 +11626,29 @@ class AssetManager:
 
     def ensure_procedural_blocks(self):
         specs = [
-            ("block_wood", (150, 108, 62), (110, 78, 44)),
-            ("block_stone", (150, 150, 156), (108, 108, 114)),
+            ("block_wood", "Bloc bois", (150, 108, 62), (110, 78, 44), True),
+            ("block_stone", "Bloc pierre", (150, 150, 156), (108, 108, 114), True),
+            ("block_roof", "Tuile toit", (125, 70, 55), (86, 45, 38), False),
+            ("block_door", "Porte", (108, 70, 38), (65, 42, 25), False),
         ]
-        for role, fill, edge in specs:
+        for role, label, fill, edge, solid in specs:
             if self.by_role.get(role):
                 continue
             surf = pygame.Surface((16, 16), pygame.SRCALPHA)
             surf.fill(fill)
             pygame.draw.rect(surf, edge, surf.get_rect(), 2)
+            if role == "block_door":
+                pygame.draw.circle(surf, (220, 190, 80), (12, 8), 1)
+            elif role == "block_roof":
+                pygame.draw.line(surf, edge, (1, 5), (15, 5), 1)
+                pygame.draw.line(surf, edge, (1, 10), (15, 10), 1)
             aid = len(self.assets)
             a = AssetDef(
                 id=aid, name=f"{role}.png",
-                label="Bloc de bois" if role == "block_wood" else "Bloc de pierre",
+                label=label,
                 path="", pack="procedural", category="batiments", role=role,
                 kind="single", frames=1, fw=16, fh=16, px=16,
-                solid=True, blocked_footprint=1, placable=True,
+                solid=solid, blocked_footprint=1, placable=True,
                 meta={"procedural": True},
             )
             a.afford = ("block", "hit")
@@ -9852,7 +11698,77 @@ class AssetManager:
         self.by_role.setdefault("tool", []).append(aid)
         self.by_role.setdefault(f"tool_{tool_kind}", []).append(aid)
         self.by_cat.setdefault("outils", []).append(aid)
-        return aid
+
+    def ensure_kaykit_resources(self):
+        """KayKit Resource Bits : sprites extraits de la texture atlas."""
+        import os as _os
+        from .config import ASSETS_DIR
+        res_dir = _os.path.join(_os.path.dirname(ASSETS_DIR), "assets", "kaykit_resources")
+        if not _os.path.isdir(res_dir):
+            return
+        specs = [
+            ("wood_log",          "Bois (tronc)",     "ressources", "item_wood",
+             {"material": "bois", "px": 16}),
+            ("wood_plank",        "Planche",          "ressources", "item_wood",
+             {"material": "bois", "px": 16}),
+            ("wood_planks_stack", "Pile planches",    "ressources", "item_wood",
+             {"material": "bois", "px": 20}),
+            ("stone_brick",       "Brique pierre",    "ressources", "stone_res",
+             {"material": "pierre", "px": 16}),
+            ("stone_chunks",      "Cailloux",         "ressources", "stone_res",
+             {"material": "pierre", "px": 16}),
+            ("stone_stack",       "Pile pierres",     "ressources", "stone_res",
+             {"material": "pierre", "px": 20}),
+            ("gold_bar",          "Lingot or",        "ressources", "gold_pile",
+             {"material": "or", "px": 16}),
+            ("gold_nuggets",      "Pepites or",       "ressources", "gold_pile",
+             {"material": "or", "px": 16}),
+            ("gold_bars_stack",   "Pile lingots or",  "ressources", "gold_pile",
+             {"material": "or", "px": 20}),
+            ("iron_bar",          "Lingot fer",       "props", "prop",
+             {"px": 16, "solid": True}),
+            ("iron_nuggets",      "Pepites fer",      "props", "prop",
+             {"px": 16}),
+            ("iron_bars_stack",   "Pile lingots fer", "props", "prop",
+             {"px": 20, "solid": True}),
+            ("copper_bar",        "Lingot cuivre",    "props", "prop",
+             {"px": 16, "solid": True}),
+            ("copper_nuggets",    "Pepites cuivre",   "props", "prop",
+             {"px": 16}),
+            ("copper_bars",       "Barres cuivre",    "props", "prop",
+             {"px": 20, "solid": True}),
+        ]
+        for fname, label, cat, role, kw in specs:
+            path = _os.path.join(res_dir, f"{fname}.png")
+            if not _os.path.exists(path):
+                continue
+            if self.by_role.get(role) and any(
+                self.assets[i].name == f"{fname}.png" for i in self.by_role.get(role, [])
+            ):
+                continue
+            try:
+                img = pygame.image.load(path).convert_alpha()
+            except pygame.error:
+                continue
+            aid = len(self.assets)
+            a = AssetDef(
+                id=aid, name=f"{fname}.png", label=label,
+                path=path, pack="kaykit", category=cat, role=role,
+                kind="single", frames=1,
+                fw=img.get_width(), fh=img.get_height(),
+                px=kw.pop("px", 16),
+                solid=kw.pop("solid", False),
+                blocked_footprint=1, placable=True,
+                material=kw.pop("material", ""),
+                meta={"procedural": True},
+            )
+            for k, v in kw.items():
+                setattr(a, k, v)
+            a.afford = ("block", "carry", "hit") if a.solid else ("carry", "hit")
+            a._procedural_surface = img
+            self.assets.append(a)
+            self.by_role.setdefault(role, []).append(aid)
+            self.by_cat.setdefault(cat, []).append(aid)
 ```
 
 ---
@@ -10956,6 +12872,452 @@ class Academy:
 
 ---
 
+## game/construction.py
+
+```python
+"""Construction progressive style Minecraft.
+
+Un blueprint est une liste de cellules. Les habitants posent des blocs réels
+un par un. Le chantier peut être partagé entre plusieurs habitants.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class BlockTask:
+    tx: int
+    ty: int
+    material: str
+    phase: str
+    solid: bool = True
+
+
+@dataclass
+class ConstructionSite:
+    origin_tx: int
+    origin_ty: int
+    blueprint_name: str
+    tasks: list[BlockTask]
+    placed: set[tuple[int, int]] = field(default_factory=set)
+    contributors: dict[int, int] = field(default_factory=dict)
+    created_tick: int = 0
+    owner_eid: int | None = None
+    owner_clan: str | None = None
+
+    @property
+    def key(self):
+        return self.origin_tx, self.origin_ty
+
+    def remaining_tasks(self) -> list[BlockTask]:
+        return [task for task in self.tasks if (task.tx, task.ty) not in self.placed]
+
+    def complete(self) -> bool:
+        return len(self.placed) >= len(self.tasks)
+
+    def progress(self) -> float:
+        if not self.tasks:
+            return 1.0
+        return min(1.0, len(self.placed) / len(self.tasks))
+
+    def missing_materials(self) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for task in self.remaining_tasks():
+            out[task.material] = out.get(task.material, 0) + 1
+        return out
+
+    def next_task_for(self, inventory: dict[str, int]) -> BlockTask | None:
+        """Priorité aux tâches que l'habitant peut réellement accomplir.
+
+        Ordre : fondation → mur → porte → toit.
+        """
+        order = {"foundation": 0, "wall": 1, "door": 2, "roof": 3}
+        tasks = sorted(self.remaining_tasks(), key=lambda t: order.get(t.phase, 9))
+        for task in tasks:
+            if inventory.get(task.material, 0) > 0:
+                return task
+        return None
+
+    def mark_placed(self, eid: int, task: BlockTask):
+        self.placed.add((task.tx, task.ty))
+        self.contributors[eid] = self.contributors.get(eid, 0) + 1
+
+
+class HouseBlueprint:
+    """Fabrique des plans simples, réalistes et adaptables.
+
+    Petite maison 5x5 :
+    - sol intérieur 3x3,
+    - murs sur contour,
+    - ouverture centrale au sud (porte),
+    - toit visuel sur contour supérieur.
+    """
+
+    @staticmethod
+    def small_house(tx: int, ty: int, material: str = "bois") -> list[BlockTask]:
+        tasks: list[BlockTask] = []
+        width, height = 5, 5
+        door_x = tx + width // 2
+        door_y = ty + height - 1
+
+        for y in range(ty, ty + height):
+            for x in range(tx, tx + width):
+                edge = x in (tx, tx + width - 1) or y in (ty, ty + height - 1)
+                if edge:
+                    tasks.append(BlockTask(x, y, "pierre", "foundation", solid=True))
+
+        for y in range(ty, ty + height):
+            for x in range(tx, tx + width):
+                edge = x in (tx, tx + width - 1) or y in (ty, ty + height - 1)
+                if not edge:
+                    continue
+                if x == door_x and y == door_y:
+                    tasks.append(BlockTask(x, y, "bois", "door", solid=False))
+                else:
+                    tasks.append(BlockTask(x, y, material, "wall", solid=True))
+
+        for x in range(tx, tx + width):
+            tasks.append(BlockTask(x, ty, material, "roof", solid=False))
+
+        return tasks
+
+    @staticmethod
+    def storage_hut(tx: int, ty: int) -> list[BlockTask]:
+        """Petit bâtiment 3x3 utile pour futur dépôt collectif."""
+        tasks: list[BlockTask] = []
+        for y in range(ty, ty + 3):
+            for x in range(tx, tx + 3):
+                edge = x in (tx, tx + 2) or y in (ty, ty + 2)
+                if edge:
+                    tasks.append(BlockTask(x, y, "bois", "wall", solid=True))
+        tasks.append(BlockTask(tx + 1, ty + 2, "bois", "door", solid=False))
+        return tasks
+
+
+def blueprint_from_name(name: str, tx: int, ty: int) -> list[BlockTask]:
+    if name == "storage_hut":
+        return HouseBlueprint.storage_hut(tx, ty)
+    return HouseBlueprint.small_house(tx, ty)
+```
+
+---
+
+## game/diagnostics.py
+
+```python
+"""Diagnostics purs du monde vivant.
+
+Ce module ne modifie jamais Sim, World ou Being. Il convertit leur état
+réel en dictionnaires simples que l'UI peut afficher sans dupliquer la
+logique métier.
+"""
+from __future__ import annotations
+
+from typing import Any
+import math
+
+from .config import GRID, TILE
+
+
+def clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def action_name(sim, action: int | None) -> str:
+    if action is None:
+        return "Aucune"
+    try:
+        from .brain_api import ACTION_NAMES_EXP
+        return ACTION_NAMES_EXP.get(int(action), f"Action {action}")
+    except Exception:
+        return f"Action {action}"
+
+
+def asset_info(am, aid: int | None) -> dict | None:
+    if aid is None or not (0 <= int(aid) < len(am.assets)):
+        return None
+    a = am.assets[int(aid)]
+    return {
+        "id": int(aid),
+        "nom": getattr(a, "label", getattr(a, "name", "asset")),
+        "role": getattr(a, "role", ""),
+        "categorie": getattr(a, "category", ""),
+        "solid": bool(getattr(a, "solid", False)),
+        "abri": bool(getattr(a, "shelter", False)),
+        "comestible": float(getattr(a, "edible", 0.0)),
+        "outil": bool(getattr(a, "tool", False)),
+        "recolte": dict(getattr(a, "harvest", None) or {}),
+        "affordances": list(getattr(a, "afford", ()) or ()),
+        "inflammable": bool(getattr(a, "flammable", False)),
+    }
+
+
+def agent_snapshot(sim, agent) -> dict[str, Any] | None:
+    """Instantané complet d'un habitant vivant.
+
+    Toutes les valeurs proviennent directement de l'instance Being.
+    """
+    if agent is None or not getattr(agent, "alive", False):
+        return None
+
+    goal = getattr(agent, "goal", None) or {}
+    goal_tx = goal.get("x")
+    goal_ty = goal.get("y")
+    distance = None
+    if goal_tx is not None and goal_ty is not None:
+        distance = math.hypot(goal_tx * TILE + TILE / 2 - agent.x,
+                              goal_ty * TILE + TILE / 2 - agent.y)
+
+    tool_aid = getattr(agent, "tool", -1)
+    tool = asset_info(sim.am, tool_aid) if tool_aid >= 0 else None
+
+    brain_rank = []
+    explain = getattr(getattr(agent, "brain", None), "explain", None)
+    if callable(explain):
+        try:
+            brain_rank = explain(top=5)
+        except Exception:
+            brain_rank = []
+
+    memories = {}
+    for category, entries in getattr(agent, "seen", {}).items():
+        memories[category] = [
+            {"x": int(x), "y": int(y), "force": float(force)}
+            for x, y, force in entries
+        ]
+
+    relatives = []
+    for other in sim.agents:
+        if other.eid == agent.eid:
+            continue
+        relation = getattr(agent, "rel", {}).get(other.eid)
+        if relation is None:
+            continue
+        trust = relation[0] if isinstance(relation, (tuple, list)) else float(relation)
+        affection = relation[1] if isinstance(relation, (tuple, list)) and len(relation) > 1 else 0.0
+        relatives.append({
+            "eid": other.eid,
+            "nom": other.name,
+            "confiance": float(trust),
+            "affection": float(affection),
+            "vivant": bool(other.alive),
+        })
+
+    relatives.sort(key=lambda r: (r["confiance"] + r["affection"]), reverse=True)
+
+    return {
+        "eid": int(agent.eid),
+        "nom": agent.name,
+        "vivant": bool(agent.alive),
+        "sexe": agent.sex,
+        "classe": agent.cls,
+        "clan": agent.color,
+        "generation": int(agent.gen),
+        "age_ans": float(agent.age_years),
+        "stage": agent.stage,
+        "mort_naturelle_ans": float(agent.natural_death_age / 43200.0),
+        "position": {"x": float(agent.x), "y": float(agent.y),
+                     "tx": int(agent.tx), "ty": int(agent.ty)},
+        "etat": getattr(agent, "state", "idle"),
+        "sante": float(agent.health),
+        "douleur": float(agent.pain),
+        "temperature": float(agent.temp),
+        "energie": float(agent.energy),
+        "faim": float(agent.hunger),
+        "soif": float(agent.needs[2]),
+        "sommeil": float(agent.needs[3]),
+        "securite": float(agent.needs[4]),
+        "appartenance": float(agent.needs[5]),
+        "estime": float(agent.needs[6]),
+        "emotions": {str(i): float(v) for i, v in enumerate(agent.emotions)},
+        "personnalite": {str(i): float(v) for i, v in enumerate(agent.personality)},
+        "corps": {str(i): float(v) for i, v in enumerate(agent.body)},
+        "cognition": {str(i): float(v) for i, v in enumerate(agent.cog)},
+        "competences": {"recolte": float(agent.skills[0]),
+                        "construction": float(agent.skills[1]),
+                        "combat": float(agent.skills[2]),
+                        "social": float(agent.skills[3])},
+        "inventaire": dict(agent.inv),
+        "outil": tool,
+        "durabilite_outil": int(getattr(agent, "tool_durability", 0)),
+        "but": {
+            "action": goal.get("act"),
+            "action_nom": action_name(sim, goal.get("act")),
+            "cible_x": goal_tx,
+            "cible_y": goal_ty,
+            "distance_px": distance,
+            "expiration_tick": goal.get("until"),
+            "intensite": goal.get("intensity", 0.0),
+            "bloque_ticks": int(getattr(agent, "stuck", 0)),
+        },
+        "cerveau": {
+            "neurones": int(agent.brain.n),
+            "frequence_reflexion": int(agent.brain.te),
+            "classement_actions": brain_rank,
+        },
+        "memoire": memories,
+        "croyances_danger": dict(getattr(agent, "belief_places", {})),
+        "relations": relatives[:12],
+        "partenaire_eid": getattr(agent, "bonded", None),
+        "parents": list(getattr(agent, "parents", ()) or ()),
+        "enfants": list(getattr(agent, "children", ()) or ()),
+        "episodes": list(getattr(agent, "episodes", ()))[-12:],
+        "vie": list(getattr(agent, "life", ()))[-12:],
+    }
+
+
+def tile_snapshot(sim, tx: int, ty: int) -> dict[str, Any]:
+    """Instantané exact d'une tuile ou d'une cellule du monde."""
+    w = sim.w
+    tx, ty = int(tx), int(ty)
+    if not (0 <= tx < w.g and 0 <= ty < w.g):
+        return {"dans_monde": False, "tx": tx, "ty": ty}
+
+    aid = w.content_at(tx, ty)
+    ainfo = asset_info(sim.am, aid)
+    result = {
+        "dans_monde": True,
+        "tx": tx,
+        "ty": ty,
+        "terre": bool(w.land[ty, tx]),
+        "eau": bool(w.water[ty, tx]),
+        "bloque": bool(w.blocked[ty, tx]),
+        "abri": bool(w.shelter[ty, tx]),
+        "feu": int(w.fire[ty, tx]),
+        "odeur": float(w.smell[ty, tx]),
+        "exploration": float(w.heat[ty, tx]),
+        "pheromone": float(w.marker[ty, tx]),
+        "couleur_pheromone": int(w.marker_col[ty, tx]),
+        "sol": int(w.floor[ty, tx]),
+        "objet": ainfo,
+        "pv_objet": int(w.hp[ty, tx]) if aid >= 0 else 0,
+        "repousse": float(w.regrow[ty, tx]),
+        "cimetiere": False,
+        "tombe": None,
+        "stockage": None,
+        "chantier": None,
+    }
+
+    for grave in getattr(w, "cemetery", ()):
+        gx, gy, name, death_tick, color = grave
+        if int(gx) == tx and int(gy) == ty:
+            result["cimetiere"] = True
+            result["tombe"] = {
+                "nom": name,
+                "tick_deces": int(death_tick),
+                "couleur": tuple(color),
+            }
+            break
+
+    storage = getattr(w, "storages", {}).get((tx, ty))
+    if storage is not None:
+        result["stockage"] = {
+            "capacite": int(storage.capacity),
+            "inventaire": dict(storage.inventory),
+            "clan": getattr(storage, "owner_clan", None),
+            "remplissage": float(sum(storage.inventory.values()) / max(1, storage.capacity)),
+        }
+
+    site = getattr(w, "sites", {}).get((tx, ty))
+    if site is None:
+        site = w.site_at(tx, ty)
+    if site is not None:
+        result["chantier"] = {
+            "nom": site.blueprint_name,
+            "progression": site.progress(),
+            "manquant": site.missing_materials(),
+            "contributeurs": list(site.contributors),
+            "blocs_poses": len(site.placed),
+            "blocs_total": len(site.tasks),
+        }
+
+    gen = getattr(w, "gen", None)
+    if gen is not None:
+        try:
+            from . import worldgen as wg
+            result["biome"] = wg.biome_name_at(gen, tx, ty)
+            result["altitude"] = float(wg.height_at(gen, tx, ty))
+            result["pente"] = float(wg.slope(gen)[ty, tx])
+        except Exception:
+            pass
+
+    return result
+
+
+def world_snapshot(sim) -> dict[str, Any]:
+    """Résumé global léger, utile au panneau laboratoire."""
+    alive = [a for a in sim.agents if a.alive]
+    w = sim.w
+    return {
+        "tick": int(w.tick),
+        "annee": int(sim.clock.year + 1),
+        "saison": sim.clock.season,
+        "jour": int(sim.clock.day + 1),
+        "heure": sim.clock.label,
+        "population": len(alive),
+        "moutons": len(sim.sheep),
+        "items": len(w.items),
+        "feux": int((w.fire > 0).sum()),
+        "tombes": len(getattr(w, "cemetery", ())),
+        "naissances": int(sim.stats.get("births", 0)),
+        "deces": int(sim.stats.get("deaths", 0)),
+        "recoltes": int(sim.stats.get("harvests", 0)),
+        "constructions": int(sim.stats.get("builds", 0)),
+        "attaques": int(sim.stats.get("attacks", 0)),
+        "dons": int(sim.stats.get("gives", 0)),
+        "vols": int(sim.stats.get("takes", 0)),
+        "paroles": int(sim.stats.get("talks", 0)),
+        "temperature": float(sim.clock.temp),
+        "pluie": float(sim.clock.rain),
+        "lumiere": float(sim.clock.light),
+        "champion": getattr(sim.academy, "champion_label", "aucun"),
+        "score_champion": float(getattr(sim.academy, "champion_score", float("-inf"))),
+    }
+```
+
+---
+
+## game/invariants.py
+
+```python
+"""Tests d'invariants exécutables en mode debug."""
+from __future__ import annotations
+
+
+def validate_simulation(sim):
+    errors = []
+    w = sim.w
+
+    for a in sim.agents:
+        if not a.alive:
+            errors.append(f"agent mort encore présent : eid={a.eid}")
+        if not (0 <= a.tx < w.g and 0 <= a.ty < w.g):
+            errors.append(f"agent hors monde : eid={a.eid}")
+        if not (0.0 <= a.health <= 1.0):
+            errors.append(f"santé invalide : eid={a.eid}")
+        if not (0.0 <= a.energy <= 1.0):
+            errors.append(f"énergie invalide : eid={a.eid}")
+        if not (0.0 <= a.hunger <= 1.0):
+            errors.append(f"faim invalide : eid={a.eid}")
+        if a.tool >= 0 and not (0 <= a.tool < len(sim.am.assets)):
+            errors.append(f"outil invalide : eid={a.eid}")
+
+    for tx, ty, name, death_tick, color in getattr(w, "cemetery", ()):
+        if not (0 <= tx < w.g and 0 <= ty < w.g):
+            errors.append(f"tombe hors monde : {name}")
+
+    for (tx, ty), storage in getattr(w, "storages", {}).items():
+        if (tx, ty) != (storage.tx, storage.ty):
+            errors.append("clé de stockage incohérente")
+        if sum(storage.inventory.values()) > storage.capacity:
+            errors.append(f"stockage dépasse capacité : {tx},{ty}")
+
+    return errors
+```
+
+---
+
 ## game/lab.py
 
 ```python
@@ -10989,6 +13351,7 @@ class LabRecorder:
             "day": sim.clock.day,
             "population": len(alive),
             "sheep": len(sim.sheep),
+            "monsters": len(sim.monsters),
             "births": sim.stats.get("births", 0),
             "deaths": sim.stats.get("deaths", 0),
             "mean_age": sum(a.age_years for a in alive) / max(1, len(alive)),
@@ -11114,6 +13477,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, asdict
 from typing import Dict, Tuple
+import numpy as np
 
 FACT_TTL = 12_000
 MIN_CONFIRMATIONS = 2
@@ -11244,4 +13608,4 @@ class UniversalKnowledge:
 
 ---
 
-*Généré automatiquement — 25 fichiers, ~10655 lignes de code.*
+*Généré automatiquement — 28 fichiers, ~12053 lignes de code.*

@@ -1316,72 +1316,8 @@ class Sim:
                 self.log(f"{a.name} a planté un arbre.", (108, 188, 98), "economie")
                 return True
 
-        # ── construction classique ──
-        # choix dicté par la mémoire subjective de l'être (belief_places + personnalité)
-        danger_here = a.belief_places.get((tx // 8, ty // 8), 0.0)
-        prudence = a.personality[3]
-
-        all_houses = am.pool("house")
-        if danger_here > 0.4 and prudence > 0.4:
-            # être prudent + lieu perçu dangereux → forteresse si dispo
-            pool = am.pool("house")
-            castles = [h for h in pool if "castle" in am.assets[h].name.lower()
-                       or "tower" in am.assets[h].name.lower()
-                       or "barracks" in am.assets[h].name.lower()]
-            pool = castles if castles else pool
-        else:
-            pool = all_houses
-
-        clan_houses = [h for h in pool if am.assets[h].meta.get("color") == a.color]
-        pool = clan_houses if clan_houses and self.rng.random() < 0.6 else pool
-        pool = pool or all_houses
-
-        rec = None
-        target_aid = -1
-        for cid in pool:
-            candsd = am.assets[cid]
-            if getattr(candsd, "build_recipe", None) is not None:
-                target_aid = cid
-                rec = candsd.build_recipe
-                break
-        if target_aid < 0:
-            cost_b, cost_p = 3, 1
-            if a.inv["bois"] < cost_b or a.inv["pierre"] < cost_p:
-                return False
-            a.inv["bois"] -= cost_b
-            a.inv["pierre"] -= cost_p
-        else:
-            missing = False
-            for m in rec["materials"]:
-                have = a.inv.get(m["materiau"], 0)
-                if have < m["quantity"]:
-                    missing = True
-                    break
-            if missing:
-                return False
-            for m in rec["materials"]:
-                a.inv[m["materiau"]] = max(0, a.inv.get(m["materiau"], 0) - m["quantity"])
-        if w.blocked[ty, tx] or w.content_at(tx, ty) >= 0 or not w.land[ty, tx]:
-            gx, gy = self._free_near(a.tx, a.ty)
-            if w.blocked[gy, gx] or w.content_at(gx, gy) >= 0:
-                return False
-            tx, ty = gx, gy
-        aid = int(am.pick(list(pool), self.rng, default=-1))
-        if aid < 0:
-            return False
-        asd = am.assets[aid]
-        size = asd.size_tiles
-        tx = min(tx, w.g - size)
-        ty = min(ty, w.g - size)
-        w.place(tx, ty, aid, am, hp=0, solid=True, shelter=True, size=size)
-        self.stats["builds"] += 1
-        if asd.px >= 64:
-            self.log(f"{a.name} a érige « {asd.label} » en ({tx},{ty}).", (178, 228, 168), "batiment")
-        a.skills[1] = min(1.0, a.skills[1] + 0.04)
-        a.needs[6] = max(0.0, a.needs[6] - 0.3)
-        a.rep += 2
-        a.emotions[1] = min(1.0, a.emotions[1] + 0.1)
-        a.state = "build"
+        # ── construction brique par brique ──
+        return self.do_build_block(a, tx, ty)
         if a.home is None:
             a.home = (tx, ty)
             a.life.append("première maison")

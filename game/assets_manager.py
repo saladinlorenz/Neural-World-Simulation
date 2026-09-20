@@ -162,12 +162,9 @@ def _classify(rel, fname):
             return "sol", "floor", {"kind": "tiles", "px": 16}
         return "decor", "decor", {"px": 18}
 
-    # ------------------------------------------------------------------ tiny buildings
+    # ignorer tiny buildings (pre-construits)
     if in_tiny and "/buildings/" in t:
-        color = next((c for c in CLAN_COLORS if f"{c} buildings" in t), "")
-        big = any(x in f for x in ("castle", "barracks", "archery"))
-        return "batiments", "house", {"px": 56 if big else 36, "solid": True,
-                                      "shelter": True, "color": color}
+        return None, None, None
 
     # ------------------------------------------------------------------ tiny fx
     if in_tiny and "particle fx" in t:
@@ -328,11 +325,8 @@ def _kenney(kit, f):
     solid = any(x in name for x in SOLID) or shelter
     if kit == "kenney_graveyard-kit":
         return "tombe", "grave", {"px": 16, "solid": solid}
-    if kit == "kenney_castle-kit":
-        return "batiments", "fort", {"px": 22, "solid": True, "shelter": "house" in name or "barracks" in name}
-    if kit == "kenney_building-kit":
-        cat = "batiments" if any(x in name for x in ("house", "wall", "roof", "door", "barricade", "tower", "chimney")) else "props"
-        return cat, "prop", {"px": 20, "solid": solid, "shelter": shelter}
+    if kit in ("kenney_castle-kit", "kenney_building-kit"):
+        return None, None, None
     if kit == "kenney_car-kit":
         return "vehicules", "vehicle", {"px": 30, "solid": True}
     if kit == "kenney_survival-kit":
@@ -355,22 +349,19 @@ def _kenney(kit, f):
         if name.startswith("tree"):
             return "ressources", "tree", {"px": 32, "solid": True,
                                           "harvest": dict(material="bois", amount=3, hp=6)}
-        # structures / bâtiments
-        if name.startswith("structure"):
-            sh = "roof" in name or "wall" in name
-            return "batiments", "house", {"px": 22, "solid": True, "shelter": sh}
-        if name.startswith("tent"):
-            return "batiments", "house", {"px": 24, "solid": True, "shelter": True}
-        # mobilier / craft
+        # ignorer structures pre-construites
+        if name.startswith("structure") or name.startswith("tent"):
+            return None, None, None
+        # ignorer workbench
         if name.startswith("workbench"):
-            return "batiments", "fort", {"px": 20, "solid": True}
+            return None, None, None
+        # campfeu
         if name.startswith("campfire"):
-            return "props", "prop", {"px": 18, "edible": 0.0,
-                                     "flammable": True}
+            return "props", "prop", {"px": 18, "edible": 0.0, "flammable": True}
         # caisses / stockage
         if any(name.startswith(x) for x in ("box", "chest", "barrel", "bucket")):
             return "props", "prop", {"px": 18, "solid": True}
-        # clôtures
+        # clotures
         if name.startswith("fence"):
             return "props", "prop", {"px": 18, "solid": True}
         # poissons
@@ -382,16 +373,19 @@ def _kenney(kit, f):
         # panneau
         if name.startswith("signpost"):
             return "props", "prop", {"px": 18}
-        # lits
+        # lits (sans shelter)
         if name.startswith("bedroll"):
-            return "props", "prop", {"px": 18, "shelter": True}
+            return "props", "prop", {"px": 18}
         # bouteille
         if name.startswith("bottle"):
             return "props", "prop", {"px": 14}
-        # panneaux métal
+        # panneaux metal
         if name.startswith("metal"):
             return "props", "prop", {"px": 18, "solid": True}
-        return "props", "prop", {"px": 18, "solid": solid, "shelter": shelter, "edible": ed}
+        # floor
+        if name.startswith("floor"):
+            return "props", "prop", {"px": 18}
+        return "props", "prop", {"px": 18, "solid": solid, "edible": ed}
     if kit == "kenney_mini-arcade":
         return "props", "prop", {"px": 24, "solid": solid}
     return "props", "prop", {"px": 18, "solid": solid}
@@ -422,17 +416,8 @@ def _uf_rts(n):
         return "nourriture", "bush", T(58, edible=26.0)
     if "barrel" in n or "crate" in n:
         return "props", "prop", T(30, solid=True, material="bois")
-    if "mine" in n:
-        return "batiments", "fort", T(60, solid=True)
-    big_dwelling = any(x in n for x in ("town center", "temple", "wonder "))
-    if (n.startswith("houses") or "tower house" in n or big_dwelling):
-        return "batiments", "house", T(84 if big_dwelling else 64, solid=True, shelter=True)
-    if any(n.startswith(x) for x in ("farm", "windmill", "barracks", "archery", "watch tower",
-                                     "watchtower", "market", "storage", "port", "dock",
-                                     "wall", "wonderwalls")):
-        return "batiments", "fort", T(76 if not (n.startswith("wall") or n.startswith("port")
-                                                 or n.startswith("dock")) else 48, solid=True)
-    return "batiments", "fort", T(56, solid=True)
+    # Ignorer tous les batiments pre-construits
+    return None, None, None
 
 
 def _apply_afford(a):
@@ -927,4 +912,74 @@ class AssetManager:
         self.by_role.setdefault("tool", []).append(aid)
         self.by_role.setdefault(f"tool_{tool_kind}", []).append(aid)
         self.by_cat.setdefault("outils", []).append(aid)
-        return aid
+
+    def ensure_kaykit_resources(self):
+        """KayKit Resource Bits : sprites extraits de la texture atlas."""
+        import os as _os
+        from .config import ASSETS_DIR
+        res_dir = _os.path.join(_os.path.dirname(ASSETS_DIR), "assets", "kaykit_resources")
+        if not _os.path.isdir(res_dir):
+            return
+        specs = [
+            ("wood_log",          "Bois (tronc)",     "ressources", "item_wood",
+             {"material": "bois", "px": 16}),
+            ("wood_plank",        "Planche",          "ressources", "item_wood",
+             {"material": "bois", "px": 16}),
+            ("wood_planks_stack", "Pile planches",    "ressources", "item_wood",
+             {"material": "bois", "px": 20}),
+            ("stone_brick",       "Brique pierre",    "ressources", "stone_res",
+             {"material": "pierre", "px": 16}),
+            ("stone_chunks",      "Cailloux",         "ressources", "stone_res",
+             {"material": "pierre", "px": 16}),
+            ("stone_stack",       "Pile pierres",     "ressources", "stone_res",
+             {"material": "pierre", "px": 20}),
+            ("gold_bar",          "Lingot or",        "ressources", "gold_pile",
+             {"material": "or", "px": 16}),
+            ("gold_nuggets",      "Pepites or",       "ressources", "gold_pile",
+             {"material": "or", "px": 16}),
+            ("gold_bars_stack",   "Pile lingots or",  "ressources", "gold_pile",
+             {"material": "or", "px": 20}),
+            ("iron_bar",          "Lingot fer",       "props", "prop",
+             {"px": 16, "solid": True}),
+            ("iron_nuggets",      "Pepites fer",      "props", "prop",
+             {"px": 16}),
+            ("iron_bars_stack",   "Pile lingots fer", "props", "prop",
+             {"px": 20, "solid": True}),
+            ("copper_bar",        "Lingot cuivre",    "props", "prop",
+             {"px": 16, "solid": True}),
+            ("copper_nuggets",    "Pepites cuivre",   "props", "prop",
+             {"px": 16}),
+            ("copper_bars",       "Barres cuivre",    "props", "prop",
+             {"px": 20, "solid": True}),
+        ]
+        for fname, label, cat, role, kw in specs:
+            path = _os.path.join(res_dir, f"{fname}.png")
+            if not _os.path.exists(path):
+                continue
+            if self.by_role.get(role) and any(
+                self.assets[i].name == f"{fname}.png" for i in self.by_role.get(role, [])
+            ):
+                continue
+            try:
+                img = pygame.image.load(path).convert_alpha()
+            except pygame.error:
+                continue
+            aid = len(self.assets)
+            a = AssetDef(
+                id=aid, name=f"{fname}.png", label=label,
+                path=path, pack="kaykit", category=cat, role=role,
+                kind="single", frames=1,
+                fw=img.get_width(), fh=img.get_height(),
+                px=kw.pop("px", 16),
+                solid=kw.pop("solid", False),
+                blocked_footprint=1, placable=True,
+                material=kw.pop("material", ""),
+                meta={"procedural": True},
+            )
+            for k, v in kw.items():
+                setattr(a, k, v)
+            a.afford = ("block", "carry", "hit") if a.solid else ("carry", "hit")
+            a._procedural_surface = img
+            self.assets.append(a)
+            self.by_role.setdefault(role, []).append(aid)
+            self.by_cat.setdefault(cat, []).append(aid)

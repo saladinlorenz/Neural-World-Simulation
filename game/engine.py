@@ -135,8 +135,6 @@ def populate(w, am, rng, dense=True):
     tools  = am.pool("tool")
     foods  = am.pool("food")
     meats  = am.pool("meat_res")
-    houses = am.pool("house")
-    forts  = am.pool("fort")
     if not trees:
         return
 
@@ -196,14 +194,6 @@ def populate(w, am, rng, dense=True):
     for _ in range(10 if dense else 2):
         x, y = int(rng.integers(6, GRID - 6)), int(rng.integers(6, GRID - 6))
         place(tools, x, y)
-
-    # ── ruines anciennes ──────────────────────────────────────────────
-    for cx, cy in _biome_sites(w, rng, 3 if dense else 1,
-                               (B.BIOME_GRASS,), max_slope=0.5, margin=40):
-        for k in range(5):
-            ang = k * 1.25
-            place(houses + forts, int(cx + np.cos(ang) * 6),
-                  int(cy + np.sin(ang) * 6), solid=True)
 
     _paint_floors(w, am, rng, dense)
 
