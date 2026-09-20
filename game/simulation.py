@@ -313,6 +313,8 @@ class Sim:
                     aid = int(self.am.pick(pool, self.rng))
                     w.place(tx, ty, aid, self.am, hp=3, solid=False, size=1)
                     del w.crop_plots[(tx, ty)]
+                    self.lab.event(self.w.tick, "crop_harvested",
+                                   eid=plot.owner_eid, tx=tx, ty=ty)
 
     # ------------------------------------------------------------------ messages
     def send_fact(self, sender, receiver, category, tx, ty, confidence=0.6):
@@ -327,6 +329,12 @@ class Sim:
             "ty": ty,
             "confidence": confidence,
         }))
+        self.lab.event(self.w.tick, "message_sent",
+                       sender_eid=sender.eid, receiver_eid=receiver.eid,
+                       category=category, tx=tx, ty=ty, confidence=confidence)
+        self.lab.event(self.w.tick, "message_received",
+                       sender_eid=sender.eid, receiver_eid=receiver.eid,
+                       category=category, tx=tx, ty=ty, trust=trust)
         return True
         if w.tick % 1800 == 0:
             for a in self.agents:
@@ -389,7 +397,10 @@ class Sim:
         R = a.sense_r(light)                    # longue portée (10-15 tiles)
         R_near = a.sense_r_near()               # courte portée (8 tiles = Moore)
         tx, ty = a.tx, a.ty
+        old_heat = float(w.heat[ty, tx])
         w.heat[ty, tx] = min(1.0, w.heat[ty, tx] + 0.012)
+        if old_heat < 0.5 and w.heat[ty, tx] >= 0.5:
+            self.lab.event(self.w.tick, "route_used", tx=tx, ty=ty)
 
         # ====== VISION LONGUE PORTÉE : mémoire / navigation ======
         n = PERCEPT_CELLS + int(40 * a.cog[3])
@@ -936,6 +947,9 @@ class Sim:
         a.skills[3] = min(1.0, a.skills[3] + 0.01)
         a.rep += 0.05
         self._reward(a, 0.08)
+        self.lab.event(self.w.tick, "storage_deposit",
+                       eid=a.eid, tx=storage.tx, ty=storage.ty,
+                       material=material, amount=moved)
         return True
 
     def withdraw_from_storage(self, a, storage, material):
@@ -945,6 +959,9 @@ class Sim:
         if moved <= 0:
             return False
         a.inv[material] = a.inv.get(material, 0) + moved
+        self.lab.event(self.w.tick, "storage_withdraw",
+                       eid=a.eid, tx=storage.tx, ty=storage.ty,
+                       material=material, amount=moved)
         return True
 
     # ------------------------------------------------------------------ agent
@@ -1205,6 +1222,9 @@ class Sim:
                     "tick": self.w.tick,
                     "actor": actor.eid,
                 })
+                self.lab.event(self.w.tick, "imitation_recorded",
+                               observer_eid=observer.eid, actor_eid=actor.eid,
+                               action=int(action), reward=float(reward))
 
     def _lr(self, a):
         """Taux d'apprentissage cohérent avec le calendrier biologique."""
@@ -1264,6 +1284,8 @@ class Sim:
                 a.skills[1] = min(1.0, a.skills[1] + 0.03)
                 self.log(f"{a.name} a fabriqué {kind}.", (248, 208, 98), "economie")
                 self._reward(a, 0.25)
+                self.lab.event(self.w.tick, "tool_crafted",
+                               eid=a.eid, tool_kind=kind, durability=recipe["durability"])
                 return True
         return False
 
@@ -1319,6 +1341,8 @@ class Sim:
                 a.tool_durability -= 1
                 if a.tool_durability <= 0:
                     self.log(f"L'outil de {a.name} s'est cassé à l'usage.", (218, 138, 58), "economie")
+                    self.lab.event(self.w.tick, "tool_broken",
+                                   eid=a.eid, tool_id=a.tool)
                     a.tool = -1
                     a.tool_durability = 0
             return True
@@ -1438,6 +1462,7 @@ class Sim:
         if a.tool >= 0:
             a.tool_durability -= 2
             if a.tool_durability <= 0:
+                self.lab.event(self.w.tick, "tool_broken", eid=a.eid, tool_id=a.tool)
                 a.tool = -1
                 a.tool_durability = 0
         a.skills[2] = min(1.0, a.skills[2] + 0.02)
@@ -1457,6 +1482,9 @@ class Sim:
                 target.alive = False
                 self.monsters = [x for x in self.monsters if x.alive]
                 self._entity_cells.pop(target.eid, None)
+                self.lab.event(self.w.tick, "monster_killed",
+                               eid=a.eid, monster_eid=target.eid,
+                               tx=int(target.x), ty=int(target.y))
                 a.goal = None
             return
         # consequences sociales
@@ -1614,6 +1642,8 @@ class Sim:
             a.inv["graine"] = max(0, a.inv["graine"] - 1)
             self._reward(a, 0.12)
             self.log(f"{a.name} a plante une graine.", (108, 188, 98), "economie")
+            self.lab.event(self.w.tick, "crop_planted",
+                           eid=a.eid, tx=tx, ty=ty)
             return True
 
         # ── construction brique par brique ──
@@ -1709,6 +1739,9 @@ class Sim:
             owner_eid=a.eid, owner_clan=a.color,
         )
         self.w.add_site(site)
+        self.lab.event(self.w.tick, "site_created",
+                       eid=a.eid, blueprint=blueprint,
+                       tx=tx, ty=ty, tasks_total=len(tasks))
         if blueprint == "small_house":
             a.home = (tx + 2, ty + 2)
         self.log(f"{a.name} a commence un chantier ({blueprint}).", (178, 228, 168), "batiment")
@@ -1760,6 +1793,11 @@ class Sim:
         site.mark_placed(a.eid, task)
         a.skills[1] = min(1.0, a.skills[1] + 0.012)
         self.stats["builds"] += 1
+        self.lab.event(self.w.tick, "site_block_placed",
+                       eid=a.eid, blueprint=site.blueprint_name,
+                       tx=task.tx, ty=task.ty, phase=task.phase,
+                       material=task.material,
+                       progress=site.progress())
         self._fx("dust", task.tx * TILE + TILE / 2, task.ty * TILE + TILE / 2)
         self._reward(a, 0.10)
         if site.complete():
@@ -1806,6 +1844,10 @@ class Sim:
                 self._reward(c, 0.25)
         self.log(f"{bp} termine : {len(site.contributors)} contributeur(s).",
                  (108, 208, 128), "batiment")
+        self.lab.event(self.w.tick, "site_completed",
+                       blueprint=bp, tx=site.origin_tx, ty=site.origin_ty,
+                       contributors=len(site.contributors),
+                       finisher_eid=finisher.eid if finisher else None)
 
     def do_build_block(self, a, tx, ty):
         """BUILD : contribuer a un chantier existant ou placer un bloc."""
