@@ -35,6 +35,8 @@ class World:
         self.sites = {}     # (tx, ty) -> BuildingSite
         self.crop_plots = {}  # (tx, ty) -> CropPlot
         self.mountains = np.zeros((g, g), dtype=np.uint8)  # terrain montagnes ( jamais modifie)
+        self.foundation = np.full((g, g), -1, dtype=np.int16)
+        self.roof = np.full((g, g), -1, dtype=np.int16)
         # index de connaissance : ou est chaque categorie de ressource
         self.kidx = {k: {} for k in ("food", "wood", "stone", "gold", "tool", "shelter")}
         self._kcell = 8
@@ -361,6 +363,8 @@ class World:
         self.smell[:] = 0
         self.heat[:] = 0
         self.floor[:] = -1
+        self.foundation[:] = -1
+        self.roof[:] = -1
         self.items.clear()
         self.cemetery.clear()
         self.storages.clear()

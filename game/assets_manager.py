@@ -53,6 +53,9 @@ class AssetDef:
         self.flammable = False
         self.weight = 1.0
         self.placable = True      # posable dans le monde via le panneau Decor
+        self.afford_details = None
+        self.build_recipe = None
+        self._procedural_surface = None
         for k, v in kw.items():
             setattr(self, k, v)
 
@@ -103,6 +106,25 @@ def _classify(rel, fname):
     f = fname.lower()
     kw = {}
     in_tiny = "tiny swords" in t
+
+    # ------------------------------------------------------------------ generated_assets (food / animals)
+    if "generated_assets" in t:
+        if f.startswith("food_"):
+            FOOD_NUTRITION = {
+                "tomato": 25.0, "potato": 30.0, "mushroom": 20.0,
+                "meat_cooked": 55.0, "fish_raw": 40.0, "egg": 25.0,
+                "cheese": 35.0, "carrot": 30.0, "bread": 40.0,
+                "berry": 15.0, "banana": 25.0, "apple": 20.0,
+            }
+            key = f[5:-4]  # strip "food_" and ".png"
+            n = FOOD_NUTRITION.get(key, 25.0)
+            return "nourriture", "food", {"px": 16, "edible": n}
+        if f.startswith("animal_"):
+            kind = f[7:-4]  # strip "animal_" and ".png"
+            px = {"bear": 26, "wolf": 22, "deer": 22, "rabbit": 16,
+                  "bird": 14, "fish": 16}.get(kind, 20)
+            return "animaux", "monster", {"px": px,
+                                          "meta": {"kind": kind, "state": "idle"}}
 
     # ------------------------------------------------------------------ tiny units
     if in_tiny and "/units/" in t:

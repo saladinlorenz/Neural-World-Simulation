@@ -21,10 +21,17 @@ from .brain_api import (ATTACK, BUILD, DRINK, DROP, EAT, EXPLORE, FLEE, GIVE,
                      HARVEST, MARK, N_IN, N_OUT, REST, SLEEP, SOCIAL, TAKE,
                      TALK, ACTION_NAMES_EXP as ACTION_NAMES, ACTION_TRAIT_EXP as ACTION_TRAIT)
 from .brain import Brain
+from .brain_schema import INPUT
+from .brain import (IMMEDIAT, PRUDENT, ECONOMIQUE, COOPERATIF, EXPLORATION, DEFENSIF,
+                    SOI, NOURRITURE, EAU, BOIS, PIERRE, ABRI, DEPOT_CHANTIER, ETRE_VIVANT)
 from .clock import Clock
 from .config import (CLAN_COLORS, GRID, MAX_POP, MAX_SHEEP, TILE, WORLD_PX,
-                     DEFAULT_SPAWN_AGE_TICKS, TICKS_PER_YEAR, AGE_ELDER_TICKS,
-                     AGE_MAX_NATURAL_DEATH_TICKS, DAY_TICKS)
+                      DEFAULT_SPAWN_AGE_TICKS, TICKS_PER_YEAR, AGE_ELDER_TICKS,
+                      AGE_MAX_NATURAL_DEATH_TICKS, DAY_TICKS,
+                      HUNGER_RATE, THIRST_RATE, SLEEP_RATE_D, SLEEP_RATE_N,
+                      E_DRAIN, MOVE_DRAIN, REST_GAIN, SLEEP_GAIN, SHELTER_BONUS,
+                      STARVE_HP, THIRST_HP, LOWE_HP, INV_CAP,
+                      ATTACK_DMG, ATTACK_DMG_TOOL, WORK_TICKS, PERCEPT_CELLS)
 from .entities import Being, Sheep, Monster, ClanKnowledge
 from .world import Item
 from .universal_knowledge import UniversalKnowledge
@@ -33,25 +40,6 @@ from .lab import LabRecorder
 from .construction import ConstructionSite, blueprint_from_name
 
 MAT_AIDS = {"bois": "item_wood", "pierre": "stone_res", "or": "gold_pile"}
-
-# --- metabolisme (lois biologiques, pas des comportements)
-HUNGER_RATE = 0.00012
-THIRST_RATE = 0.00008
-SLEEP_RATE_D = 0.00006
-SLEEP_RATE_N = 0.00020
-E_DRAIN = 0.00004
-MOVE_DRAIN = 0.00018
-REST_GAIN = 0.00180
-SLEEP_GAIN = 0.00420
-SHELTER_BONUS = 1.9
-STARVE_HP = 0.00012
-THIRST_HP = 0.00012
-LOWE_HP = 0.00008
-INV_CAP = 8
-ATTACK_DMG = 0.16
-ATTACK_DMG_TOOL = 0.30
-WORK_TICKS = 6
-PERCEPT_CELLS = 70          # echantillons de perception / tick / etre
 
 
 class Sim:
@@ -75,6 +63,10 @@ class Sim:
         self.stats = dict(births=0, deaths=0, builds=0, villages=0, attacks=0,
                           gives=0, takes=0, talks=0, harvests=0, tool_found=0,
                           explored=0, drinks=0, sleeps=0, fires=0)
+        # Lot M : diagnostics comportementaux
+        self.debug_action_counts = {}
+        self.debug_failure_counts = {"path": 0, "feasible": 0, "affordance": 0}
+        self.debug_anima_counts = {"episodes": 0, "intentions": 0, "plans": 0}
         self.journal = deque(maxlen=120)
         self.society = []
         self.pop_hist = deque(maxlen=220)
@@ -149,6 +141,7 @@ class Sim:
         cx, cy = int(a.x // 32), int(a.y // 32)
         self.grid_bucket.setdefault((cx, cy), []).append(a)
         self._entity_cells[a.eid] = (cx, cy)
+        self.bootstrap_resource_memory(a, radius=max(40, a.sense_r(self.clock.light)))
         return a
 
     def spawn_sheep(self, x=None, y=None):
@@ -215,11 +208,187 @@ class Sim:
         keys = self.am.unit_colors()
         return (keys.index(color) + 1) if color in keys else 1
 
+    def bootstrap_resource_memory(self, a, radius=12):
+        w = self.w
+        for ty in range(max(0, a.ty - radius), min(w.g, a.ty + radius + 1)):
+            for tx in range(max(0, a.tx - radius), min(w.g, a.tx + radius + 1)):
+                aid = w.content_at(tx, ty)
+                if aid < 0:
+                    if w.water[ty, tx]:
+                        a.remember("water", tx, ty)
+                    continue
+                asset = self.am.assets[aid]
+                if asset.edible > 0:
+                    a.remember("food", tx, ty)
+                elif asset.harvest:
+                    material = asset.harvest.get("material")
+                    if material == "bois":
+                        a.remember("wood", tx, ty)
+                    elif material in ("pierre", "or"):
+                        a.remember("stone", tx, ty)
+                elif asset.shelter:
+                    a.remember("shelter", tx, ty)
+
     def _by_eid(self, eid):
         for a in self.agents:
             if a.eid == eid:
                 return a
         return None
+
+    # ------------------------------------------------------------------ Anima
+    def _record_anima(self, a, kind, place, actors=None, action="",
+                      outcome="survived", health_loss=0.0, fear=0.0,
+                      surprise=0.0, social_impact=0.0, achievement=0.0):
+        """Calcule l'importance et enregistre un episode Anima."""
+        importance = (
+            0.35 * min(1.0, health_loss)
+            + 0.25 * min(1.0, fear)
+            + 0.15 * min(1.0, surprise)
+            + 0.15 * min(1.0, social_impact)
+            + 0.10 * min(1.0, achievement)
+        )
+        if importance < 0.05:
+            return None
+        emotion = {"fear": fear, "pain": min(1.0, health_loss),
+                    "surprise": surprise}
+        ep = a.remember_anima_episode(
+            self.w.tick, kind, place, actors=actors,
+            action=action, outcome=outcome, emotion=emotion,
+            importance=importance,
+        )
+        if importance >= 0.20:
+            cx, cy = place[0] // 8, place[1] // 8
+            a.anima["beliefs"]["places"][(cx, cy)] = min(1.0,
+                max(a.anima["beliefs"]["places"].get((cx, cy), 0.0), importance))
+            # Lot F : trace causale pour crédit différé
+            a.anima_add_causal_trace(kind, place, self.w.tick,
+                                     expected_effect=kind)
+            self.update_anima_from_event(a, {
+                "tick": self.w.tick, "kind": kind, "place": place,
+                "actors": actors or [], "action": action,
+                "outcome": outcome, "emotion": emotion,
+                "importance": importance,
+            })
+        return ep
+
+    # -- Lot 3 : mise a jour centree apres evenements --
+    IDENTITY_EFFECTS = {
+        "construction_complete": {"builder": 0.06},
+        "construction_started": {"builder": 0.02},
+        "food_given": {"provider": 0.04, "caretaker": 0.02},
+        "monster_survival": {"survivor": 0.06},
+        "monster_attack": {"survivor": 0.02},
+        "monster_killed": {"fighter": 0.05},
+        "new_area_discovered": {"explorer": 0.025},
+        "help": {"caretaker": 0.03, "mediator": 0.01},
+        "birth": {"caretaker": 0.03},
+        "injury": {"survivor": 0.01},
+    }
+    VALUE_EFFECTS = {
+        "food_given": {"community": 0.01, "generosity": 0.01},
+        "food_received": {"community": 0.005},
+        "food_found": {"wealth": 0.005},
+        "theft": {"security": 0.02, "community": -0.01},
+        "betrayal": {"security": 0.025, "community": -0.015},
+        "monster_attack": {"survival": 0.01, "security": 0.015},
+        "construction_complete": {"security": 0.01, "family": 0.005},
+        "construction_started": {"knowledge": 0.005},
+        "new_area_discovered": {"knowledge": 0.01},
+        "help": {"community": 0.008, "generosity": 0.005},
+        "birth": {"family": 0.02, "community": 0.005},
+        "injury": {"survival": 0.005},
+        "resource_deposited": {"community": 0.003},
+        "resource_withdrawn": {"wealth": 0.003},
+    }
+    TRAUMA_EFFECTS = {
+        "monster_attack": {"attack": 0.08},
+        "injury": {"attack": 0.04},
+        "theft": {"betrayal": 0.08},
+        "betrayal": {"betrayal": 0.12},
+        "loss": {"loss": 0.15},
+        "fire": {"fire": 0.10},
+    }
+
+    def update_anima_from_event(self, agent, event):
+        """Met a jour la psychologie personnelle apres un evenement reel."""
+        kind = event.get("kind", "")
+        actors = event.get("actors", [])
+        tick = event.get("tick", self.w.tick)
+        importance = event.get("importance", 0.0)
+        health_loss = event.get("health_loss", 0.0)
+        # --- identite ---
+        identity_fx = self.IDENTITY_EFFECTS.get(kind, {})
+        for id_key, delta in identity_fx.items():
+            agent.anima_add_identity(id_key, delta)
+        # --- valeurs ---
+        value_fx = self.VALUE_EFFECTS.get(kind, {})
+        for v_key, delta in value_fx.items():
+            agent.anima_add_value(v_key, delta)
+        # --- trauma ---
+        trauma_fx = self.TRAUMA_EFFECTS.get(kind, {})
+        for t_key, delta in trauma_fx.items():
+            agent.anima["trauma"][t_key] = min(
+                1.0, agent.anima["trauma"].get(t_key, 0.0) + delta)
+        # --- attachement ---
+        if kind == "food_received" and actors:
+            for oid in [e for e in actors if e != agent.eid]:
+                agent.anima["attachments"][oid] = min(
+                    1.0, agent.anima["attachments"].get(oid, 0.0) + 0.05)
+        elif kind == "help" and actors:
+            for oid in [e for e in actors if e != agent.eid]:
+                agent.anima["attachments"][oid] = min(
+                    1.0, agent.anima["attachments"].get(oid, 0.0) + 0.03)
+        elif kind == "birth":
+            agent.anima["attachments"]["child"] = min(
+                1.0, agent.anima["attachments"].get("child", 0.0) + 0.30)
+        elif kind == "loss":
+            agent.anima["attachments"]["lost"] = 0.0
+        # --- croyances sociales ---
+        other_eids = [e for e in actors if e != agent.eid]
+        if kind == "food_given" and other_eids:
+            for oid in other_eids:
+                agent.anima_update_social_belief(
+                    oid, tick, trust_delta=0.08,
+                    generosity_delta=0.06, reliability_delta=0.03)
+        elif kind == "food_received" and other_eids:
+            for oid in other_eids:
+                agent.anima_update_social_belief(
+                    oid, tick, trust_delta=0.10, confidence_delta=0.04)
+        elif kind in ("theft", "betrayal") and other_eids:
+            for oid in other_eids:
+                agent.anima_update_social_belief(
+                    oid, tick, trust_delta=-0.20, danger_delta=0.15,
+                    reliability_delta=-0.15)
+        elif kind == "monster_attack" and other_eids:
+            for oid in other_eids:
+                agent.anima_update_social_belief(
+                    oid, tick, trust_delta=-0.10, danger_delta=0.08)
+        elif kind == "help" and other_eids:
+            for oid in other_eids:
+                agent.anima_update_social_belief(
+                    oid, tick, trust_delta=0.06, reliability_delta=0.05)
+        elif kind == "talk" and other_eids:
+            for oid in other_eids:
+                agent.anima_update_social_belief(
+                    oid, tick, trust_delta=0.03, confidence_delta=0.02)
+        elif kind == "loss" and other_eids:
+            for oid in other_eids:
+                agent.anima_update_social_belief(
+                    oid, tick, trust_delta=-0.05, danger_delta=0.03)
+        elif kind == "resource_deposited" and other_eids:
+            for oid in other_eids:
+                agent.anima_update_social_belief(
+                    oid, tick, reliability_delta=0.02)
+        elif kind == "message_received" and other_eids:
+            for oid in other_eids:
+                agent.anima_update_social_belief(
+                    oid, tick, confidence_delta=0.01)
+        # --- croyance lieu (danger percu) ---
+        if kind in ("monster_attack", "injury", "fire") and event.get("place"):
+            cx, cy = event["place"][0] // 8, event["place"][1] // 8
+            agent.anima["beliefs"]["places"][(cx, cy)] = min(
+                1.0, max(agent.anima["beliefs"]["places"].get((cx, cy), 0.0),
+                         importance))
 
     # ------------------------------------------------------------------ step
     def step(self):
@@ -242,6 +411,14 @@ class Sim:
             if a.alive:
                 self._perceive(a)
                 self._agent(a)
+                # Lot C : decroissance trauma + identite (tous les 100 ticks)
+                if w.tick % 100 == 0:
+                    a.anima_decay_identity()
+                    n_near = len([o for o in self.agents
+                                  if o.alive and o.eid != a.eid
+                                  and abs(o.tx - a.tx) + abs(o.ty - a.ty) < 8])
+                    safety = 1.0 if a.needs[4] > 0.6 else 0.35
+                    a.anima_decay_trauma(safety=safety, support=n_near / 4.0)
         for s in self.sheep:
             if s.alive:
                 self._sheep(s)
@@ -287,6 +464,24 @@ class Sim:
             self.universal_knowledge.sync_from_world(self.w, self.am, self.w.tick)
         if w.tick % 3600 == 0:
             self.social_memory.decay(self.w.tick)
+        if w.tick % 1800 == 0:
+            for a in self.agents:
+                if a.alive and not a.child:
+                    accepted = self.academy.consider(a, self.w.tick)
+                    if accepted:
+                        self.log(f"Nouveau champion : {a.name} ({a.age_years:.1f} ans)",
+                                 (88, 148, 228), "laboratoire")
+        if w.tick % DAY_TICKS == 0:
+            self.lab.snapshot(self)
+        if __debug__ and w.tick % 600 == 0:
+            from .invariants import validate_simulation
+            for error in validate_simulation(self):
+                self.log(f"INVARIANT: {error}", (214, 84, 84), "monde")
+        if w.tick % 1800 == 0:
+            for a in self.agents:
+                expired = [k for k, (_, until) in a.failed_targets.items() if w.tick > until]
+                for k in expired:
+                    del a.failed_targets[k]
         if w.tick % 60 == 0:
             self._grow_crops()
 
@@ -317,43 +512,46 @@ class Sim:
                                    eid=plot.owner_eid, tx=tx, ty=ty)
 
     # ------------------------------------------------------------------ messages
+    SEMANTIC_VOCABULARY = {
+        "danger_here": {"urgency": 0.8, "decay": 0.001},
+        "food_here": {"urgency": 0.3, "decay": 0.0005},
+        "water_here": {"urgency": 0.3, "decay": 0.0005},
+        "need_help": {"urgency": 0.7, "decay": 0.002},
+        "need_resource": {"urgency": 0.5, "decay": 0.001},
+        "build_site": {"urgency": 0.2, "decay": 0.0003},
+        "follow_me": {"urgency": 0.4, "decay": 0.001},
+        "trust_warning": {"urgency": 0.6, "decay": 0.001},
+        "thanks": {"urgency": 0.1, "decay": 0.003},
+        "grief": {"urgency": 0.5, "decay": 0.001},
+    }
+
     def send_fact(self, sender, receiver, category, tx, ty, confidence=0.6):
         trust = receiver.trust(sender.eid)
         if trust < -0.3:
             return False
+        # Lot G : fiabilité du message basée sur la source
+        source_belief = receiver.anima_social_belief(sender.eid, self.w.tick)
+        source_reliability = source_belief.get("reliability", 0.5)
+        effective_confidence = confidence * (0.5 + 0.5 * source_reliability)
         receiver.remember(category, tx, ty)
         receiver.episodes.append((self.w.tick, "message", {
             "from": sender.eid,
             "category": category,
             "tx": tx,
             "ty": ty,
-            "confidence": confidence,
+            "confidence": effective_confidence,
         }))
         self.lab.event(self.w.tick, "message_sent",
                        sender_eid=sender.eid, receiver_eid=receiver.eid,
-                       category=category, tx=tx, ty=ty, confidence=confidence)
+                       category=category, tx=tx, ty=ty, confidence=effective_confidence)
         self.lab.event(self.w.tick, "message_received",
                        sender_eid=sender.eid, receiver_eid=receiver.eid,
                        category=category, tx=tx, ty=ty, trust=trust)
+        self._record_anima(
+            receiver, "message_received", (tx, ty),
+            actors=[receiver.eid, sender.eid], action="receive_message",
+            outcome="received", surprise=0.1)
         return True
-        if w.tick % 1800 == 0:
-            for a in self.agents:
-                if a.alive and not a.child:
-                    accepted = self.academy.consider(a, self.w.tick)
-                    if accepted:
-                        self.log(f"Nouveau champion : {a.name} ({a.age_years:.1f} ans)",
-                                 (88, 148, 228), "laboratoire")
-        if w.tick % DAY_TICKS == 0:
-            self.lab.snapshot(self)
-        if __debug__ and w.tick % 600 == 0:
-            from .invariants import validate_simulation
-            for error in validate_simulation(self):
-                self.log(f"INVARIANT: {error}", (214, 84, 84), "monde")
-        if w.tick % 1800 == 0:
-            for a in self.agents:
-                expired = [k for k, (_, until) in a.failed_targets.items() if w.tick > until]
-                for k in expired:
-                    del a.failed_targets[k]
 
     def _bucket(self):
         self.item_bucket = {}
@@ -361,11 +559,14 @@ class Sim:
         keep = []
         for it in self.w.items:
             it.life -= 1
-            if it.life > 0:
-                keep.append(it)
-                self.item_bucket.setdefault((int(it.x // 32), int(it.y // 32)), []).append(it)
-                if it.kind == "food":
-                    self.food_cells.setdefault((int(it.x // 128), int(it.y // 128)), []).append(it)
+            if it.life <= 0:
+                continue
+            if it.kind == "food" and it.spoil_tick > 0 and self.w.tick >= it.spoil_tick:
+                continue
+            keep.append(it)
+            self.item_bucket.setdefault((int(it.x // 32), int(it.y // 32)), []).append(it)
+            if it.kind == "food":
+                self.food_cells.setdefault((int(it.x // 128), int(it.y // 128)), []).append(it)
         self.w.items = keep
 
     def _near(self, x, y, pred, r=1):
@@ -491,6 +692,11 @@ class Sim:
         a._near_agents = near_agents
         a._near_sheep = near_sheep
         a._near_monsters = near_monsters
+        for monster in near_monsters:
+            a.belief_places[(monster.tx // 8, monster.ty // 8)] = min(
+                1.0,
+                a.belief_places.get((monster.tx // 8, monster.ty // 8), 0.0) + 0.20,
+            )
 
         # ====== CONTEXTE LOCAL STRUCTURE ======
         def local_density(category):
@@ -593,67 +799,82 @@ class Sim:
         s[92] = math.cos(f * 6.283)
         s[93] = self.clock.temp
         s[94] = self.clock.rain
-        # === Nouvelles entrees Lot 7 (95-127) ===
-        s[95] = min(1.0, a.inv.get("bois", 0) / 8.0)
-        s[96] = min(1.0, a.inv.get("pierre", 0) / 8.0)
-        s[97] = min(1.0, a.inv.get("graine", 0) / 8.0)
-        s[98] = min(1.0, a.inv.get("or", 0) / 8.0)
-        s[99] = 1.0 if a.tool >= 0 else 0.0
-        s[100] = min(1.0, a.tool_durability / 20.0) if a.tool >= 0 else 0.0
+        # === Nouvelles entrees (95-127) ===
+        INVCAP = 8.0
+        s[INPUT["wood_inventory"]] = min(1.0, a.inv.get("bois", 0) / INVCAP)
+        s[INPUT["stone_inventory"]] = min(1.0, a.inv.get("pierre", 0) / INVCAP)
+        s[INPUT["seed_inventory"]] = min(1.0, a.inv.get("graine", 0) / INVCAP)
+        s[INPUT["gold_inventory"]] = min(1.0, a.inv.get("or", 0) / INVCAP)
+        s[INPUT["tool_equipped"]] = 1.0 if a.tool >= 0 else 0.0
+        s[INPUT["tool_durability"]] = min(1.0, a.tool_durability / 20.0) if a.tool >= 0 else 0.0
         tool_kind = ""
         if a.tool >= 0:
             tool_kind = self.am.assets[a.tool].meta.get("tool_kind", "")
-        s[101] = 1.0 if tool_kind == "hache" else 0.0
-        s[102] = 1.0 if tool_kind == "pioche" else 0.0
-        s[103] = 1.0 if tool_kind == "marteau" else 0.0
+        s[INPUT["tool_axe"]] = 1.0 if tool_kind == "hache" else 0.0
+        s[INPUT["tool_pickaxe"]] = 1.0 if tool_kind == "pioche" else 0.0
+        s[INPUT["tool_hammer"]] = 1.0 if tool_kind == "marteau" else 0.0
         ctx = getattr(a, 'context', {})
-        s[104] = ctx.get("food_density", 0.0)
-        s[105] = ctx.get("wood_density", 0.0)
-        s[106] = ctx.get("stone_density", 0.0)
-        s[107] = ctx.get("sheep_count", 0.0)
-        s[108] = ctx.get("ally_count", 0.0)
-        s[109] = ctx.get("enemy_count", 0.0)
-        s[110] = ctx.get("storage_near", 0.0)
+        s[INPUT["food_density"]] = ctx.get("food_density", 0.0)
+        s[INPUT["wood_density"]] = ctx.get("wood_density", 0.0)
+        s[INPUT["stone_density"]] = ctx.get("stone_density", 0.0)
+        s[INPUT["sheep_near"]] = ctx.get("sheep_count", 0.0)
+        s[INPUT["allies_near"]] = ctx.get("ally_count", 0.0)
+        s[INPUT["enemies_near"]] = ctx.get("enemy_count", 0.0)
+        s[INPUT["storage_near"]] = ctx.get("storage_near", 0.0)
         stor = self.nearest_storage(tx, ty, max_dist=14)
         if stor:
-            s[111] = min(1.0, stor.inventory.get("food", 0) / max(1, stor.capacity))
-            s[112] = min(1.0, stor.inventory.get("bois", 0) / max(1, stor.capacity))
-        s[113] = ctx.get("site_near", 0.0)
+            s[INPUT["storage_food"]] = min(1.0, stor.inventory.get("food", 0) / max(1, stor.capacity))
+            s[INPUT["storage_wood"]] = min(1.0, stor.inventory.get("bois", 0) / max(1, stor.capacity))
+        s[INPUT["site_near"]] = ctx.get("site_near", 0.0)
         site = self.nearest_site(tx, ty, max_dist=10)
         if site:
-            s[114] = site.progress()
+            s[INPUT["site_progress"]] = site.progress()
             missing = sum(1 for t in site.tasks if t.key not in site.placed)
-            s[115] = min(1.0, missing / 10.0)
+            s[INPUT["site_missing"]] = min(1.0, missing / 10.0)
         food_mem = a.recall("food", tx, ty)
-        s[116] = min(1.0, (food_mem[2] / 100.0) if food_mem else 1.0)
+        s[INPUT["food_distance"]] = min(1.0, (food_mem[2] / 100.0) if food_mem else 1.0)
         water_mem = a.recall("water", tx, ty)
-        s[117] = min(1.0, (water_mem[2] / 100.0) if water_mem else 1.0)
+        s[INPUT["water_distance"]] = min(1.0, (water_mem[2] / 100.0) if water_mem else 1.0)
         shelter_mem = a.recall("shelter", tx, ty)
-        s[118] = min(1.0, (shelter_mem[2] / 100.0) if shelter_mem else 1.0)
+        s[INPUT["shelter_distance"]] = min(1.0, (shelter_mem[2] / 100.0) if shelter_mem else 1.0)
         if a.bonded is not None:
             partner = self._by_eid(a.bonded)
             if partner:
                 d = max(abs(partner.tx - tx), abs(partner.ty - ty))
-                s[119] = min(1.0, d / 40.0)
-        s[120] = ctx.get("route_danger", 0.0)
-        s[121] = min(1.0, len(a._near_agents) / 3.0)
-        s[122] = max(-1.0, min(1.0, a.rep / 8.0))
-        s[123] = 1.0 if self.clock.is_winter else 0.0
+                s[INPUT["partner_distance"]] = min(1.0, d / 40.0)
+        s[INPUT["route_danger"]] = ctx.get("route_danger", 0.0)
+        s[INPUT["neighbor_need"]] = min(1.0, len(a._near_agents) / 3.0)
+        s[INPUT["local_reputation"]] = max(-1.0, min(1.0, a.rep / 8.0))
+        s[INPUT["winter"]] = 1.0 if self.clock.is_winter else 0.0
         if a.home:
             hx, hy = a.home
             if 0 <= hx < self.w.g and 0 <= hy < self.w.g:
                 stor_home = self.w.storages.get((hx, hy))
                 if stor_home:
-                    s[124] = min(1.0, stor_home.total() / max(1, stor_home.capacity))
-        s[125] = min(1.0, sum(max(0, v) for v in a.inv.values()) / 32.0)
-        s[126] = float(a.emotions[0])
-        s[127] = min(1.0, a.age / float(AGE_ELDER_TICKS * 3))
+                    s[INPUT["home_storage"]] = min(1.0, stor_home.total() / max(1, stor_home.capacity))
+        s[INPUT["inventory_load"]] = min(1.0, sum(max(0, v) for v in a.inv.values()) / 32.0)
+        s[INPUT["local_fear"]] = float(a.emotions[0])
+        s[INPUT["life_progress"]] = min(1.0, a.age / float(AGE_ELDER_TICKS * 3))
+        # Anima: mémoire épisodique émotionnelle
+        anima = a.anima
+        s[INPUT["trauma_attack"]] = min(1.0, anima["trauma"]["attack"])
+        belief_near = 0.0
+        cx, cy = tx // 8, ty // 8
+        for dx in range(-2, 3):
+            for dy in range(-2, 3):
+                v = anima["beliefs"]["places"].get((cx + dx, cy + dy), 0.0)
+                if v > belief_near:
+                    belief_near = v
+        s[INPUT["belief_danger"]] = min(1.0, belief_near)
+        s[INPUT["episode_count"]] = min(1.0, len(anima["episodic_memory"]) / 20.0)
+        s[INPUT["anima_fighter"]] = min(1.0, anima["identity"]["fighter"])
         return s
 
     # ------------------------------------------------------------------ arbitrage
     def _bias(self, a: Being):
         """Personnalite + emotions + besoins + croyances + risque -> bias de logits."""
         p, e, n = a.personality, a.emotions, a.needs
+        ctx = getattr(a, "context", {})
         bias = np.zeros(N_OUT)
         for act in range(N_OUT):
             tr, wgt = ACTION_TRAIT[act]
@@ -686,6 +907,26 @@ class Sim:
         bias[BUILD] += 0.25 * a.skills[1]
         bias[TALK] += 0.2 * a.skills[3]
         bias += 0.5 * a.habits * (1.0 - 0.7 * p[6])
+        knows_wood = bool(a.recall("wood", a.tx, a.ty))
+        knows_stone = bool(a.recall("stone", a.tx, a.ty))
+        has_materials = (
+            a.inv.get("bois", 0) > 0 or a.inv.get("pierre", 0) > 0
+        )
+        if not has_materials and (knows_wood or knows_stone):
+            bias[HARVEST] += 0.18
+        if ctx.get("wood_density", 0.0) > 0.20:
+            bias[HARVEST] += 0.10 * ctx["wood_density"]
+        if ctx.get("stone_density", 0.0) > 0.20:
+            bias[HARVEST] += 0.08 * ctx["stone_density"]
+        if ctx.get("storage_near", 0.0) > 0.3:
+            bias[GIVE] += 0.06 * ctx["storage_near"]
+        if ctx.get("site_near", 0.0) > 0.3:
+            bias[BUILD] += 0.08 * ctx["site_near"]
+        if a.inv.get("bois", 0) >= 3 or a.inv.get("pierre", 0) >= 1:
+            bias[BUILD] += 0.10
+        if a.tool >= 0 and a.tool_durability < 5:
+            bias[HARVEST] -= 0.04
+            bias[BUILD] += 0.03
         if a.hated is not None:
             t = self._by_eid(a.hated)
             if t is not None:
@@ -726,6 +967,82 @@ class Sim:
             bias[FLEE] -= 0.3 * phero
             bias[ATTACK] -= 0.2 * phero
 
+        # ── Anima : beliefs + trauma modulent les decisions ──
+        anima = a.anima
+        trauma_atk = anima["trauma"]["attack"]
+        # danger percu local
+        cx, cy = a.tx // 8, a.ty // 8
+        belief_local = 0.0
+        for dx in range(-2, 3):
+            for dy in range(-2, 3):
+                v = anima["beliefs"]["places"].get((cx + dx, cy + dy), 0.0)
+                if v > belief_local:
+                    belief_local = v
+        # trauma → FLEE, evite zones dangereuses
+        if trauma_atk > 0.2:
+            bias[FLEE] += 0.4 * trauma_atk
+            bias[EXPLORE] -= 0.2 * trauma_atk
+        # croyance lieu dangereux → FLEE, evite zone
+        if belief_local > 0.3:
+            bias[FLEE] += 0.3 * belief_local
+            bias[HARVEST] -= 0.15 * belief_local
+        # identity.fighter → ATTACK plus tentant
+        if anima["identity"]["fighter"] > 0.3:
+            bias[ATTACK] += 0.2 * anima["identity"]["fighter"]
+        # identity.builder → BUILD plus tentant
+        if anima["identity"]["builder"] > 0.2:
+            bias[BUILD] += 0.15 * anima["identity"]["builder"]
+        # identity.explorer → EXPLORE plus tentant
+        if anima["identity"]["explorer"] > 0.2:
+            bias[EXPLORE] += 0.12 * anima["identity"]["explorer"]
+
+        # ── Lot 4 : valeurs actives ──
+        vals = anima.get("values", {})
+        survival = float(vals.get("survival", 0.5))
+        family = float(vals.get("family", 0.5))
+        security = float(vals.get("security", 0.5))
+        community = float(vals.get("community", 0.5))
+        knowledge = float(vals.get("knowledge", 0.5))
+        wealth = float(vals.get("wealth", 0.5))
+        generosity = float(vals.get("generosity", 0.5))
+        bias[FLEE] += 0.30 * (security - 0.5)
+        bias[REST] += 0.12 * (survival - 0.5)
+        bias[SLEEP] += 0.12 * (survival - 0.5)
+        bias[EAT] += 0.16 * (survival - 0.5)
+        bias[DRINK] += 0.16 * (survival - 0.5)
+        bias[BUILD] += 0.18 * (security - 0.5) + 0.10 * (family - 0.5)
+        bias[GIVE] += 0.22 * (community - 0.5) + 0.24 * (generosity - 0.5)
+        bias[TALK] += 0.16 * (community - 0.5)
+        bias[SOCIAL] += 0.16 * (family - 0.5) + 0.12 * (community - 0.5)
+        bias[EXPLORE] += 0.22 * (knowledge - 0.5)
+        bias[HARVEST] += 0.14 * (wealth - 0.5)
+        bias[TAKE] += 0.08 * (wealth - 0.5) - 0.12 * (generosity - 0.5)
+
+        # ── Lot D : intention persistante → biais ──
+        intent = a.anima.get("intention")
+        if intent and intent.get("priority", 0) > 0.3:
+            ik = intent.get("kind", "")
+            ip = intent["priority"]
+            INTENTION_BIAS = {
+                "secure_food": {HARVEST: 0.25, EAT: 0.10, EXPLORE: 0.05},
+                "protect_family": {FLEE: 0.15, ATTACK: 0.10, SOCIAL: 0.10},
+                "build_home": {BUILD: 0.30, HARVEST: 0.15},
+                "recover_from_loss": {REST: 0.20, SOCIAL: 0.10},
+                "avoid_danger": {FLEE: 0.30, EXPLORE: -0.10},
+                "help_ally": {GIVE: 0.20, SOCIAL: 0.15, TALK: 0.10},
+                "explore_unknown": {EXPLORE: 0.30},
+            }
+            for act_key, bdelta in INTENTION_BIAS.get(ik, {}).items():
+                bias[act_key] += bdelta * ip
+
+        # ── Lot E : plans courts → biais additionnel ──
+        plans = getattr(a, '_cached_plans', None)
+        if plans and plans[0].get("score", 0) > 0.2:
+            top = plans[0]
+            for step in top.get("steps", []):
+                if 0 <= step < len(bias):
+                    bias[step] += 0.08 * top["score"]
+
         return bias
 
     def _feasible(self, a: Being):
@@ -738,7 +1055,12 @@ class Sim:
             and a.needs[2] < 0.8 and a.hunger < 0.92 and a.energy > 0.08
         f[EAT] = a.hunger > 0.28 and (bool(a.recall("food", a.tx, a.ty))
                                        or self._has_food_near(a.x, a.y))
-        f[HARVEST] = bool(a.recall("wood", a.tx, a.ty) or a.recall("stone", a.tx, a.ty))
+        f[HARVEST] = bool(
+            a.recall("wood", a.tx, a.ty)
+            or a.recall("stone", a.tx, a.ty)
+            or a.seen.get("wood")
+            or a.seen.get("stone")
+        )
         f[DRINK] = a.needs[2] > 0.32 and (a._loc[4] > 0 or bool(a.recall("water", a.tx, a.ty)))
         f[DROP] = a.carry() > 0
         f[BUILD] = ((a.inv.get("bois", 0) >= 3 or a.inv.get("pierre", 0) >= 1)
@@ -779,6 +1101,10 @@ class Sim:
                 act = REST
         a.habits *= 0.992
         a.habits[act] = min(1.0, a.habits[act] + 0.02)
+        # Lot M : comptage actions
+        from .brain_api import ACTION_NAMES_EXP
+        act_name = ACTION_NAMES_EXP.get(act, str(act))
+        self.debug_action_counts[act_name] = self.debug_action_counts.get(act_name, 0) + 1
         self._set_goal(a, act)
 
     def _known_or_universal(self, a, category, tx, ty):
@@ -797,6 +1123,8 @@ class Sim:
     def _set_goal(self, a, act):
         w = self.w
         tx, ty = a.tx, a.ty
+        strategy = getattr(a.brain, '_strategy', IMMEDIAT)
+        target = getattr(a.brain, '_target', SOI)
         g = {"act": act, "x": tx, "y": ty, "ref": None, "intensity": 1.0,
              "until": w.tick + 420}
         if act == EAT:
@@ -821,21 +1149,33 @@ class Sim:
                     break
                 g["x"], g["y"] = wx, wy
         elif act == HARVEST:
-            mw = self._known_or_universal(a, "wood", tx, ty)
-            ms = self._known_or_universal(a, "stone", tx, ty)
-            m = None
-            if mw and ms:
-                m = ms if (a.inv["pierre"] < 2 and ms[2] <= mw[2] * 2.2) or a.inv["bois"] >= 6 else mw
+            if target == BOIS:
+                mw = self._known_or_universal(a, "wood", tx, ty)
+                m = mw
+            elif target == PIERRE:
+                ms = self._known_or_universal(a, "stone", tx, ty)
+                m = ms
             else:
-                m = mw or ms
+                mw = self._known_or_universal(a, "wood", tx, ty)
+                ms = self._known_or_universal(a, "stone", tx, ty)
+                m = None
+                if mw and ms:
+                    m = ms if (a.inv["pierre"] < 2 and ms[2] <= mw[2] * 2.2) or a.inv["bois"] >= 6 else mw
+                else:
+                    m = mw or ms
             if not m:
                 a.goal = None
                 return
             g["x"], g["y"] = m[0], m[1]
         elif act in (SOCIAL, GIVE, TAKE, TALK, ATTACK):
             if a._near_agents:
-                e = a._near_agents[0] if act != ATTACK else \
-                    max(a._near_agents, key=lambda t: t.health)
+                if act == ATTACK:
+                    e = max(a._near_agents, key=lambda t: t.health)
+                elif act in (SOCIAL, GIVE, TALK):
+                    e = max(a._near_agents,
+                            key=lambda o: a.anima_social_score(o.eid))
+                else:
+                    e = a._near_agents[0]
                 g["x"], g["y"], g["ref"] = e.tx, e.ty, e
             elif act == ATTACK and a._near_sheep:
                 e = a._near_sheep[0]
@@ -892,12 +1232,36 @@ class Sim:
             else:
                 g["x"], g["y"] = tx, ty
         elif act == BUILD:
-            m = self._known_or_universal(a, "shelter", tx, ty)
-            if m and m[2] < 14 and self.rng.random() < 0.7:
-                g["x"], g["y"] = m[0], m[1]
+            if target == DEPOT_CHANTIER:
+                site = self.nearest_site(a.tx, a.ty, max_dist=20)
+                if site is not None:
+                    g["x"], g["y"] = site.origin_tx, site.origin_ty
+                else:
+                    storage = self.nearest_storage(a.tx, a.ty, max_dist=20)
+                    if storage is not None:
+                        g["x"], g["y"] = storage.tx, storage.ty
+                    else:
+                        new_site = self.create_house_site(a)
+                        if new_site is None:
+                            a.goal = None
+                            return
+                        g["x"], g["y"] = new_site.origin_tx, new_site.origin_ty
+            elif target == ABRI:
+                m = self._known_or_universal(a, "shelter", tx, ty)
+                if m and m[2] < 14 and self.rng.random() < 0.7:
+                    g["x"], g["y"] = m[0], m[1]
+            else:
+                m = self._known_or_universal(a, "shelter", tx, ty)
+                if m and m[2] < 14 and self.rng.random() < 0.7:
+                    g["x"], g["y"] = m[0], m[1]
         if self.target_is_blocked(a, act, g["x"], g["y"]):
             a.goal = None
             return
+        if strategy == PRUDENT:
+            danger = a.belief_places.get((g["x"] // 8, g["y"] // 8), 0.0)
+            if danger > 0.45:
+                a.goal = None
+                return
         a.goal = g
         a.goal_t = 0
         a.stuck = 0
@@ -950,6 +1314,10 @@ class Sim:
         self.lab.event(self.w.tick, "storage_deposit",
                        eid=a.eid, tx=storage.tx, ty=storage.ty,
                        material=material, amount=moved)
+        self._record_anima(
+            a, "resource_deposited", (storage.tx, storage.ty),
+            actors=[a.eid], action="deposit", outcome="success",
+            achievement=0.05)
         return True
 
     def withdraw_from_storage(self, a, storage, material):
@@ -962,6 +1330,9 @@ class Sim:
         self.lab.event(self.w.tick, "storage_withdraw",
                        eid=a.eid, tx=storage.tx, ty=storage.ty,
                        material=material, amount=moved)
+        self._record_anima(
+            a, "resource_withdrawn", (storage.tx, storage.ty),
+            actors=[a.eid], action="withdraw", outcome="success")
         return True
 
     # ------------------------------------------------------------------ agent
@@ -981,6 +1352,13 @@ class Sim:
         soft = g is not None and g["act"] in (REST, MARK, SOCIAL, TALK)
         urgent = (a.hunger > 0.85 or a.needs[2] > 0.85 or a.energy < 0.12
                   or a.emotions[0] > 0.7 or a.pain > 0.6)
+        if self.w.tick - a.born_tick < 240:
+            memories = (
+                a.seen.get("food", []) + a.seen.get("wood", [])
+                + a.seen.get("stone", []) + a.seen.get("water", [])
+            )
+            if not memories:
+                self.bootstrap_resource_memory(a, radius=12)
         if g is None or expired or a.stuck > 20 + 50 * a.personality[8]:
             self._decide(a)
         elif a.goal_t % a.brain.te == 0:
@@ -1003,10 +1381,109 @@ class Sim:
             self._reward(a, 0.08 * delta)
         a.prev_wellbeing = after
 
+        # ── Lot D : generation d'intentions (tous les 200 ticks) ──
+        if w.tick % 200 == 0 and not a.anima_intention_valid(w.tick):
+            self._generate_intention(a)
+        # ── Lot E : generation de plans (tous les 100 ticks) ──
+        if w.tick % 100 == 0:
+            a._cached_plans = self._generate_plans(a)
+        # ── Lot F+H : décroissance traces causales + observation learning ──
+        if w.tick % 150 == 0:
+            a.anima_decay_causal_traces()
+            a.anima_apply_observation_learning()
+
         if a.age >= a.natural_death_age:
             self._die(a, cause="vieillesse")
         elif a.health <= 0:
             self._die(a)
+
+    def _generate_intention(self, a: Being):
+        """Génère une intention Anima basée sur l'état courant."""
+        w = self.w
+        vals = a.anima.get("values", {})
+        trauma = a.anima.get("trauma", {})
+        # priorité par besoin
+        if a.hunger > 0.7:
+            a.anima_set_intention("secure_food", "faim", priority=0.7,
+                                  tick=w.tick, duration=600)
+        elif trauma.get("loss", 0) > 0.2:
+            a.anima_set_intention("recover_from_loss", "deuil", priority=0.5,
+                                  tick=w.tick, duration=800)
+        elif trauma.get("attack", 0) > 0.3:
+            a.anima_set_intention("avoid_danger", "peur", priority=0.6,
+                                  tick=w.tick, duration=400)
+        elif a.home is None and a.inv.get("bois", 0) >= 2:
+            a.anima_set_intention("build_home", "sans abri", priority=0.6,
+                                  tick=w.tick, duration=1000)
+        elif vals.get("community", 0.5) > 0.6 and a._near_agents:
+            target = max(a._near_agents,
+                         key=lambda o: a.anima_social_score(o.eid))
+            a.anima_set_intention("help_ally", "communauté",
+                                  target=target.eid, priority=0.4,
+                                  tick=w.tick, duration=500)
+        elif vals.get("knowledge", 0.5) > 0.6:
+            a.anima_set_intention("explore_unknown", "curiosité",
+                                  priority=0.35, tick=w.tick, duration=600)
+
+    # ── Lot E : plans courts et alternatives ──
+
+    def _generate_plans(self, a: Being):
+        """Génère 1 à 4 plans alternatifs de 1-3 étapes."""
+        w = self.w
+        plans = []
+        f = self._feasible(a)
+        vals = a.anima.get("values", {})
+        ident = a.anima.get("identity", {})
+        trauma_sum = sum(a.anima.get("trauma", {}).values())
+        # plan 1: nourriture
+        if f[HARVEST]:
+            plans.append({
+                "steps": [HARVEST, DROP],
+                "need_gain": 0.3 * (1.0 - a.hunger),
+                "value_fit": vals.get("wealth", 0.5) * 0.2,
+                "identity_fit": ident.get("provider", 0) * 0.15,
+                "risk": 0.05, "energy_cost": 0.1,
+                "social_gain": 0.0, "confidence": 0.6,
+            })
+        # plan 2: construire
+        if f[BUILD]:
+            plans.append({
+                "steps": [BUILD],
+                "need_gain": 0.2 * (1.0 if a.home is None else 0.1),
+                "value_fit": vals.get("security", 0.5) * 0.25,
+                "identity_fit": ident.get("builder", 0) * 0.2,
+                "risk": 0.02, "energy_cost": 0.15,
+                "social_gain": 0.0, "confidence": 0.5,
+            })
+        # plan 3: aide sociale
+        if f[GIVE] and a._near_agents:
+            plans.append({
+                "steps": [GIVE],
+                "need_gain": 0.05,
+                "value_fit": vals.get("community", 0.5) * 0.3 + vals.get("generosity", 0.5) * 0.2,
+                "identity_fit": ident.get("provider", 0) * 0.1,
+                "risk": 0.03, "energy_cost": 0.05,
+                "social_gain": 0.25, "confidence": 0.4,
+            })
+        # plan 4: explorer
+        if f[EXPLORE]:
+            plans.append({
+                "steps": [EXPLORE],
+                "need_gain": 0.1,
+                "value_fit": vals.get("knowledge", 0.5) * 0.3,
+                "identity_fit": ident.get("explorer", 0) * 0.2,
+                "risk": 0.15, "energy_cost": 0.12,
+                "social_gain": 0.0, "confidence": 0.35,
+            })
+        # score et trie
+        for p in plans:
+            p["score"] = (
+                p["need_gain"] + p["value_fit"] + p["identity_fit"]
+                + p["social_gain"] + p["confidence"]
+                - p["risk"] - p["energy_cost"] - 0.1 * trauma_sum
+            )
+        plans.sort(key=lambda p: p["score"], reverse=True)
+        return plans[:4]
 
     def _wellbeing(self, a):
         return (
@@ -1107,16 +1584,18 @@ class Sim:
                 def is_goal(tx, ty):
                     return (tx, ty) == (gx, gy) or (abs(tx - gx) <= 1 and abs(ty - gy) <= 1)
                 step_x, step_y = self._local_bfs(a.tx, a.ty, is_goal, max_r=20)
-                if step_x != 0 or step_y != 0:
-                    target_wx = (a.tx + step_x) * TILE + 8
-                    target_wy = (a.ty + step_y) * TILE + 8
-                    ndx, ndy = target_wx - a.x, target_wy - a.y
-                    nd = math.hypot(ndx, ndy) or 1
-                    a.set_dir(ndx / nd * sp, ndy / nd * sp)
-                    self._move(a, ndx / nd * sp, ndy / nd * sp)
-                    a.energy -= MOVE_DRAIN * a.drain_f()
-                    a.state = "run"
+                if step_x == 0 and step_y == 0:
+                    self.register_goal_failure(a, "local_path_failed")
                     return
+                target_wx = (a.tx + step_x) * TILE + 8
+                target_wy = (a.ty + step_y) * TILE + 8
+                ndx, ndy = target_wx - a.x, target_wy - a.y
+                nd = math.hypot(ndx, ndy) or 1
+                a.set_dir(ndx / nd * sp, ndy / nd * sp)
+                self._move(a, ndx / nd * sp, ndy / nd * sp)
+                a.energy -= MOVE_DRAIN * a.drain_f()
+                a.state = "run"
+                return
             elif a.stuck > 4:
                 best_d, best_move = 1e9, (0, 0)
                 for ddx, ddy in ((1,0),(-1,0),(0,1),(0,-1),(1,1),(-1,1),(1,-1),(-1,-1)):
@@ -1186,8 +1665,18 @@ class Sim:
                 done = True
         elif act == EXPLORE:
             self.stats["explored"] += 1
+            first_visit = self.w.heat[gy, gx] < 0.15
             a.emotions[1] = min(1.0, a.emotions[1] + 0.04)
-            self._reward(a, 0.12 if w.heat[gy, gx] < 0.15 else 0.03)
+            if first_visit:
+                self._reward(a, 0.12)
+                a.anima_add_identity("explorer", 0.02)
+                # Anima: episode new_area_discovered
+                self._record_anima(
+                    a, "new_area_discovered", (gx, gy),
+                    action="explore", outcome="discovered",
+                    surprise=0.3, achievement=0.15)
+            else:
+                self._reward(a, 0.01)
             done = True
         elif act == TALK:
             done = self._do_talk(a, ref)
@@ -1240,7 +1729,8 @@ class Sim:
     def _do_eat(self, a, gx, gy):
         w = self.w
         cx, cy = gx * TILE + 8, gy * TILE + 8
-        for it in list(w.items):
+        cell_key = (int(cx // 128), int(cy // 128))
+        for it in list(self.food_cells.get(cell_key, ())):
             if it.kind == "food" and (it.x - cx) ** 2 + (it.y - cy) ** 2 < 20 * 20:
                 w.items.remove(it)
                 self._eat(a, it.nutrition)
@@ -1337,6 +1827,17 @@ class Sim:
             if w.hp[gy, gx] <= 0:
                 self._deplete(gx, gy, asd)
             self._reward(a, 0.12)
+            # Anima: episode food_found
+            material = h.get("material", "")
+            if material == "bois":
+                self._record_anima(
+                    a, "food_found", (gx, gy), action="harvest",
+                    outcome="success", achievement=0.3)
+            elif material in ("pierre", "or"):
+                self._record_anima(
+                    a, "danger_discovered", (gx, gy), action="harvest",
+                    outcome="success", achievement=0.2)
+            a.anima_add_identity("provider", 0.03)
             if a.tool >= 0:
                 a.tool_durability -= 1
                 if a.tool_durability <= 0:
@@ -1392,6 +1893,17 @@ class Sim:
             self.emit_sound(a.x, a.y, "voice", 0.4)
             self._reward(a, 0.2)
             self.social_memory.record(e.eid, a.eid, "help", 0.20, self.w.tick)
+            # Anima: episodes food_given / food_received
+            self._record_anima(
+                a, "food_given", (a.tx, a.ty),
+                actors=[a.eid, e.eid], action="give",
+                outcome="success", social_impact=0.4, achievement=0.2)
+            self._record_anima(
+                e, "food_received", (e.tx, e.ty),
+                actors=[e.eid, a.eid], action="receive",
+                outcome="success", social_impact=0.5)
+            e.anima["attachments"][a.eid] = min(
+                1.0, e.anima["attachments"].get(a.eid, 0.0) + 0.10)
         return True
 
     def _do_take(self, a, ref):
@@ -1482,9 +1994,26 @@ class Sim:
                 target.alive = False
                 self.monsters = [x for x in self.monsters if x.alive]
                 self._entity_cells.pop(target.eid, None)
+                for _ in range(2):
+                    self._drop_food(
+                        self.am.pool("meat_res"),
+                        target.x + self.rng.uniform(-6, 6),
+                        target.y + self.rng.uniform(-6, 6),
+                        nutrition=45,
+                    )
                 self.lab.event(self.w.tick, "monster_killed",
                                eid=a.eid, monster_eid=target.eid,
                                tx=int(target.x), ty=int(target.y))
+                self._reward(a, 0.30)
+                self._record_anima(
+                    a, "monster_survival",
+                    (a.tx, a.ty),
+                    actors=[a.eid, target.eid], action="kill",
+                    outcome="survived",
+                    health_loss=0.0, fear=0.0, surprise=0.3,
+                    achievement=0.5,
+                )
+                a.anima_add_identity("fighter", 0.08)
                 a.goal = None
             return
         # consequences sociales
@@ -1533,8 +2062,10 @@ class Sim:
 
     def _do_talk(self, a, ref):
         w = self.w
-        e = ref if isinstance(ref, Being) and ref.alive else (
-            a._near_agents[0] if a._near_agents else None)
+        e = ref if isinstance(ref, Being) and ref.alive else None
+        if e is None and a._near_agents:
+            e = max(a._near_agents,
+                    key=lambda o: a.anima_social_score(o.eid))
         if e is None:
             return True
         self.stats["talks"] += 1
@@ -1542,7 +2073,17 @@ class Sim:
         self.emit_sound(a.x, a.y, "voice", 0.6)
         a.state = "talk"
         msg = "chat"
-        if a.emotions[1] > 0.5:
+        if a.needs[2] > 0.65:
+            memory = a.recall("water", a.tx, a.ty)
+            if memory is not None:
+                self.send_fact(a, e, "water", memory[0], memory[1])
+                msg = "fait"
+        elif a.hunger > 0.65:
+            memory = a.recall("food", a.tx, a.ty)
+            if memory is not None:
+                self.send_fact(a, e, "food", memory[0], memory[1])
+                msg = "fait"
+        elif a.emotions[1] > 0.5:
             msg = "salut"
         elif a.emotions[0] > 0.5:
             msg = "alerte"
@@ -1597,6 +2138,10 @@ class Sim:
             if e.child and a.skills[0] > e.skills[0]:
                 e.skills[0] = min(1.0, e.skills[0] + 0.05)   # enseignement oral
         a.skills[3] = min(1.0, a.skills[3] + 0.01)
+        if msg in ("salut", "cour"):
+            self.social_memory.record(e.eid, a.eid, "help", 0.12, self.w.tick)
+        elif msg == "alerte":
+            self.social_memory.record(e.eid, a.eid, "help", 0.15, self.w.tick)
         self._reward(a, 0.1)
         return True
 
@@ -1613,6 +2158,7 @@ class Sim:
             a.emotions[7] = min(1.0, a.emotions[7] + 0.08)
             e.emotions[7] = min(1.0, e.emotions[7] + 0.05)
             self._reward(a, 0.15)
+            self.social_memory.record(e.eid, a.eid, "help", 0.10, self.w.tick)
             return True
         return False
 
@@ -1647,15 +2193,15 @@ class Sim:
             return True
 
         # ── construction brique par brique ──
-        return self.do_build_block(a, tx, ty)
-        if a.home is None:
+        result = self.do_build_block(a, tx, ty)
+        if result and a.home is None:
             a.home = (tx, ty)
             a.life.append("première maison")
-        self._fx("dust", tx * TILE + 8, ty * TILE + 8)
-        self._check_village(tx, ty)
-        self._teach_near(a, 1)
-        self._reward(a, 0.35)
-        return True
+            self._fx("dust", tx * TILE + 8, ty * TILE + 8)
+            self._check_village(tx, ty)
+            self._teach_near(a, 1)
+            self._reward(a, 0.35)
+        return result
 
     def can_place_blueprint(self, tasks):
         w = self.w
@@ -1700,6 +2246,10 @@ class Sim:
         self.w.add_site(site)
         a.home = (tx + 2, ty + 2)
         self.log(f"{a.name} a commence le plan d'une maison.", (178, 228, 168), "batiment")
+        self._record_anima(
+            a, "construction_started", (tx, ty),
+            actors=[a.eid], action="build", outcome="started",
+            achievement=0.1)
         return site
 
     def _choose_blueprint(self, a):
@@ -1745,6 +2295,10 @@ class Sim:
         if blueprint == "small_house":
             a.home = (tx + 2, ty + 2)
         self.log(f"{a.name} a commence un chantier ({blueprint}).", (178, 228, 168), "batiment")
+        self._record_anima(
+            a, "construction_started", (tx, ty),
+            actors=[a.eid], action="build", outcome="started",
+            achievement=0.1)
         return site
 
     def nearest_site(self, tx, ty, max_dist=15):
@@ -1780,15 +2334,26 @@ class Sim:
             return False
         if not self.ensure_material_for_task(a, task):
             return False
-        if w.content_at(task.tx, task.ty) >= 0:
+        if task.phase == "foundation":
+            if w.foundation[task.ty, task.tx] >= 0:
+                return False
+        elif task.phase == "roof":
+            if w.roof[task.ty, task.tx] >= 0:
+                return False
+        elif w.content_at(task.tx, task.ty) >= 0:
             return False
         role = self.role_for_block_task(task)
         pool = self.am.pool(role)
         if not pool:
             return False
         aid = int(self.am.pick(pool, self.rng))
-        w.place(task.tx, task.ty, aid, self.am, hp=6,
-                solid=task.solid, shelter=False, size=1)
+        if task.phase == "foundation":
+            w.foundation[task.ty, task.tx] = aid
+        elif task.phase == "roof":
+            w.roof[task.ty, task.tx] = aid
+        else:
+            w.place(task.tx, task.ty, aid, self.am, hp=6,
+                    solid=task.solid, shelter=False, size=1)
         a.inv[task.material] -= 1
         site.mark_placed(a.eid, task)
         a.skills[1] = min(1.0, a.skills[1] + 0.012)
@@ -1804,10 +2369,19 @@ class Sim:
             self.complete_site(site, a)
         return True
 
+    def site_has_required_phases(self, site):
+        phases = {
+            task.phase
+            for task in site.tasks
+            if task.key in site.placed
+        }
+        return {"foundation", "wall", "door", "roof"}.issubset(phases)
+
     def complete_site(self, site, finisher):
         w = self.w
         bp = site.blueprint_name
-        # shelter pour les maisons
+        if not self.site_has_required_phases(site):
+            return
         if bp in ("small_house", "storage_hut", "atelier", "grenier"):
             for ty in range(site.origin_ty + 1, site.origin_ty + 4):
                 for tx in range(site.origin_tx + 1, site.origin_tx + 4):
@@ -1842,6 +2416,16 @@ class Sim:
                 c.skills[1] = min(1.0, c.skills[1] + 0.04)
                 c.needs[6] = max(0.0, c.needs[6] - 0.12)
                 self._reward(c, 0.25)
+        # Anima: episode construction
+        if finisher and finisher.alive:
+            self._record_anima(
+                finisher, "construction_complete",
+                (site.origin_tx, site.origin_ty),
+                actors=list(site.contributors),
+                action="build", outcome="completed",
+                achievement=0.6, social_impact=0.3,
+            )
+            finisher.anima_add_identity("builder", 0.10)
         self.log(f"{bp} termine : {len(site.contributors)} contributeur(s).",
                  (108, 208, 128), "batiment")
         self.lab.event(self.w.tick, "site_completed",
@@ -1987,6 +2571,14 @@ class Sim:
                     other.bonded = None
                     other.married = False
                     other.partner_id = None
+                # Anima: episode loss for mourners
+                self._record_anima(
+                    other, "loss", (a.tx, a.ty),
+                    actors=[other.eid, a.eid], action="witness_death",
+                    outcome="lost",
+                    fear=0.3, social_impact=0.5)
+                other.anima["trauma"]["loss"] = min(
+                    1.0, other.anima["trauma"]["loss"] + 0.08)
         if a.bonded:
             b = self._by_eid(a.bonded)
             if b and b.alive:
@@ -2090,12 +2682,29 @@ class Sim:
         a.emotions[1] = min(1.0, a.emotions[1] + 0.25)
         mate.emotions[1] = min(1.0, mate.emotions[1] + 0.25)
         a.life.append(("enfant", child.name))
+        # ── Lot K : héritage partiel des valeurs Anima ──
+        for vk in child.anima.get("values", {}):
+            pa_val = a.anima.get("values", {}).get(vk, 0.5)
+            pb_val = mate.anima.get("values", {}).get(vk, 0.5)
+            child.anima["values"][vk] = child.anima_clamp(
+                0.5 * ((pa_val + pb_val) / 2) + 0.2 * self.rng.random()
+                + 0.3 * child.anima["values"][vk]
+            )
         self.stats["births"] += 1
         if self.stats["births"] % 3 == 1:
             self.log(f"{a.name} et {mate.name} ont un enfant : {child.name} "
                      f"(cerveau {n} neurones).", (78, 168, 232), "vie")
         self.lab.event(self.w.tick, "birth", eid=child.eid, parent1=a.eid, parent2=mate.eid,
                        name=child.name, brain_size=n)
+        # Anima: episode birth
+        self._record_anima(
+            a, "birth", (a.tx, a.ty),
+            actors=[a.eid, mate.eid, child.eid], action="birth",
+            outcome="success", social_impact=0.6, achievement=0.3)
+        self._record_anima(
+            mate, "birth", (mate.tx, mate.ty),
+            actors=[mate.eid, a.eid, child.eid], action="birth",
+            outcome="success", social_impact=0.6, achievement=0.3)
 
     def _are_related(self, a, b):
         """Vérifie parenté directe (parent/enfant ou frères/sœurs)."""
@@ -2266,6 +2875,16 @@ class Sim:
             if dist < 14:
                 target.health -= m.damage
                 m.state = "attack" if hasattr(m, "state") else "idle"
+                if isinstance(target, Being):
+                    self._record_anima(
+                        target, "monster_attack",
+                        (target.tx, target.ty),
+                        actors=[target.eid, m.eid], action="hit",
+                        outcome="injured",
+                        health_loss=m.damage,
+                        fear=min(1.0, m.damage * 2.5),
+                        surprise=0.6,
+                    )
             elif dist > 0:
                 mvx = dx / dist
                 mvy = dy / dist

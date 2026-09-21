@@ -4,9 +4,9 @@ import sys, os, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def test_brain_128():
+def test_brain_132():
     from game.brain import Brain, N_IN, N_OUT, N_STRATEGIES, N_TARGETS
-    assert N_IN == 128
+    assert N_IN == 132
     assert N_OUT == 15
     assert N_STRATEGIES == 6
     assert N_TARGETS == 8
@@ -23,7 +23,7 @@ def test_brain_128():
     b.learn(0.5)
     b2 = b.copy()
     assert b2.n == b.n
-    print("OK test_brain_128")
+    print("OK test_brain_132")
 
 
 def test_construction_blueprints():
@@ -63,7 +63,7 @@ def test_headless_2000():
 
 if __name__ == "__main__":
     import numpy as np
-    test_brain_128()
+    test_brain_132()
     test_construction_blueprints()
     test_headless_2000()
     print("ALL TESTS PASSED")

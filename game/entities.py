@@ -33,6 +33,10 @@ class ClanKnowledge:
         self.places = {}       # (cat, tx//8, ty//8) -> (founder_eid, tick, strength)
         self.dangers = {}      # (tx//8, ty//8) -> (reporter_eid, tick, level)
         self.reservations = {} # (tx, ty) -> eid (agent qui occupe la place)
+        # Lot I : connaissances culturelles
+        self.culture = {}      # (claim, tx//8, ty//8) -> {confidence, sources, confirmations, last_update}
+        # Lot J : institutions émergentes
+        self.institutions = {}  # (kind, tx//8, ty//8) -> {members, practices, trust, age, stability}
 
     def share_place(self, cat, tx, ty, eid, tick):
         key = (cat, tx // 8, ty // 8)
@@ -73,6 +77,74 @@ class ClanKnowledge:
                 out.append((cx8 * 8, cy8 * 8, s, d))
         out.sort(key=lambda t: t[2] / (1 + t[3] * 0.1), reverse=True)
         return out
+
+    # ── Lot I : culture ──
+
+    def report_culture(self, claim, tx, ty, eid, tick):
+        """Signale une connaissance culturelle."""
+        key = (claim, tx // 8, ty // 8)
+        entry = self.culture.get(key)
+        if entry is None:
+            self.culture[key] = {
+                "confidence": 0.2, "sources": [eid],
+                "confirmations": 1, "last_update": tick,
+            }
+        else:
+            if eid not in entry["sources"]:
+                entry["sources"].append(eid)
+            entry["confirmations"] += 1
+            entry["confidence"] = min(1.0, entry["confidence"] + 0.15)
+            entry["last_update"] = tick
+
+    def is_cultural(self, claim, tx, ty):
+        """Une connaissance est culturelle si confirmée par plusieurs sources."""
+        key = (claim, tx // 8, ty // 8)
+        entry = self.culture.get(key)
+        if entry is None:
+            return False
+        return (len(entry["sources"]) >= 2
+                or entry["confirmations"] >= 3) and entry["confidence"] > 0.4
+
+    # ── Lot J : institutions émergentes ──
+
+    def add_institution(self, kind, tx, ty, eid, tick):
+        """Ajoute un membre à une institution existante ou en crée une."""
+        key = (kind, tx // 8, ty // 8)
+        inst = self.institutions.get(key)
+        if inst is None:
+            self.institutions[key] = {
+                "kind": kind, "members": [eid],
+                "practices": {}, "trust": 0.3,
+                "age": 0, "stability": 0.1,
+                "created_tick": tick,
+            }
+        else:
+            if eid not in inst["members"]:
+                inst["members"].append(eid)
+            inst["trust"] = min(1.0, inst["trust"] + 0.05)
+            inst["stability"] = min(1.0, inst["stability"] + 0.03)
+
+    def record_practice(self, kind, tx, ty, eid, action, tick):
+        """Enregistre une pratique répétée dans une institution."""
+        key = (kind, tx // 8, ty // 8)
+        inst = self.institutions.get(key)
+        if inst is None:
+            return
+        practices = inst.setdefault("practices", {})
+        count = practices.get(action, 0)
+        practices[action] = count + 1
+        if count + 1 >= 3:
+            inst["stability"] = min(1.0, inst["stability"] + 0.05)
+        inst["age"] = tick - inst.get("created_tick", tick)
+
+    def decay_institutions(self, tick, rate=0.001):
+        """Dégrade les institutions inactives."""
+        for key in list(self.institutions.keys()):
+            inst = self.institutions[key]
+            if tick - inst.get("last_practice_tick", inst.get("created_tick", 0)) > 5000:
+                inst["stability"] *= (1.0 - rate)
+                if inst["stability"] < 0.05:
+                    del self.institutions[key]
 
 
 class Being:
@@ -150,6 +222,24 @@ class Being:
         self.dangers = []
         self.gave = {}
         self.talk_cd = {}
+        # ---- Anima (memoire episodique emotive)
+        self.anima = {
+            "episodic_memory": deque(maxlen=32),
+            "beliefs": {"places": {}, "beings": {}},
+            "identity": {
+                "builder": 0.0, "provider": 0.0, "fighter": 0.0,
+                "explorer": 0.0, "caretaker": 0.0, "survivor": 0.0,
+                "mediator": 0.0,
+            },
+            "values": {
+                "survival": 0.8, "family": 0.6, "security": 0.7,
+                "community": 0.5, "knowledge": 0.4,
+                "wealth": 0.5, "generosity": 0.5,
+            },
+            "trauma": {"attack": 0.0, "hunger": 0.0, "loss": 0.0, "betrayal": 0.0, "fire": 0.0},
+            "attachments": {},
+            "intention": None,
+        }
         # ---- Volonte
         self.goal = None                             # intention structuree (dict)
         self.goal_t = 0
@@ -313,6 +403,249 @@ class Being:
     def remember_event(self, kind, data=None):
         self.episodes.append((self.born_tick, kind, data))
 
+    def remember_anima_episode(self, tick, kind, place, actors=None,
+                               action="", outcome="", emotion=None,
+                               importance=0.0):
+        """Enregistre un episode dans la memoire episodique Anima."""
+        if emotion is None:
+            emotion = {}
+        ep = {
+            "tick": tick, "kind": kind, "place": place,
+            "actors": actors or [], "action": action,
+            "outcome": outcome, "emotion": emotion,
+            "importance": importance,
+        }
+        if importance < 0.20:
+            return ep
+        self.anima["episodic_memory"].append(ep)
+        if importance >= 0.70:
+            self._anima_strong_belief(kind, place, importance, emotion)
+        else:
+            self._anima_weak_belief(kind, place, importance)
+        return ep
+
+    def _anima_strong_belief(self, kind, place, importance, emotion):
+        a = self.anima
+        fear = emotion.get("fear", 0.0)
+        cx, cy = place[0] // 8, place[1] // 8
+        key = (cx, cy)
+        old = a["beliefs"]["places"].get(key, 0.0)
+        a["beliefs"]["places"][key] = min(1.0, max(old, importance * fear))
+        if "attack" in kind:
+            a["trauma"]["attack"] = min(1.0, a["trauma"]["attack"] + 0.15 * importance)
+            a["identity"]["survivor"] = min(1.0, a["identity"]["survivor"] + 0.05)
+        if "hunger" in kind:
+            a["trauma"]["hunger"] = min(1.0, a["trauma"]["hunger"] + 0.10 * importance)
+        if "loss" in kind:
+            a["trauma"]["loss"] = min(1.0, a["trauma"]["loss"] + 0.12 * importance)
+
+    def _anima_weak_belief(self, kind, place, importance):
+        cx, cy = place[0] // 8, place[1] // 8
+        key = (cx, cy)
+        old = self.anima["beliefs"]["places"].get(key, 0.0)
+        self.anima["beliefs"]["places"][key] = min(1.0, max(old, importance * 0.5))
+
+    def anima_perceived_danger(self, tx, ty, base_danger):
+        """Danger percu = visible + croyance + trauma - confiance allies."""
+        a = self.anima
+        cx, cy = tx // 8, ty // 8
+        belief = a["beliefs"]["places"].get((cx, cy), 0.0)
+        trauma_fear = min(1.0, a["trauma"]["attack"] * 0.4)
+        ally_trust = min(0.3, len([e for e in a["attachments"].values()
+                                    if e > 0.3]) * 0.1)
+        perceived = base_danger + belief * 0.35 + trauma_fear - ally_trust
+        return max(0.0, min(1.0, perceived))
+
+    # ── Anima Phase 2 : API centralisee ──
+
+    @staticmethod
+    def anima_clamp(value: float) -> float:
+        return max(0.0, min(1.0, float(value)))
+
+    def anima_add_identity(self, key: str, delta: float) -> float:
+        identity = self.anima.setdefault("identity", {})
+        old = float(identity.get(key, 0.0))
+        identity[key] = self.anima_clamp(old + float(delta))
+        return identity[key]
+
+    def anima_add_value(self, key: str, delta: float) -> float:
+        values = self.anima.setdefault("values", {})
+        old = float(values.get(key, 0.5))
+        values[key] = self.anima_clamp(old + float(delta))
+        return values[key]
+
+    def anima_dominant_identity(self):
+        identity = self.anima.get("identity", {})
+        if not identity:
+            return None
+        key, score = max(identity.items(), key=lambda item: item[1])
+        return key if score >= 0.20 else None
+
+    def anima_decay_identity(self, amount: float = 0.001):
+        for key, value in self.anima.get("identity", {}).items():
+            self.anima["identity"][key] = self.anima_clamp(
+                value * (1.0 - amount))
+
+    # ── Lot C : trauma, résilience, attachement ──
+
+    def anima_decay_trauma(self, safety: float = 1.0, support: float = 0.0):
+        """Décroissance du trauma basée sur sécurité et soutien social."""
+        recovery = 0.0005 + 0.0015 * self.personality[5]
+        rate = recovery * max(0.35, safety) * (0.6 + 0.4 * min(1.0, support))
+        for key in self.anima.get("trauma", {}):
+            self.anima["trauma"][key] = self.anima_clamp(
+                self.anima["trauma"][key] * (1.0 - rate))
+
+    def anima_add_attachment(self, key, delta: float):
+        """Ajoute un delta d'attachement pour une cible (eid, lieu, etc.)."""
+        att = self.anima.setdefault("attachments", {})
+        att[key] = self.anima_clamp(att.get(key, 0.0) + delta)
+
+    def anima_get_attachment(self, key) -> float:
+        return self.anima.get("attachments", {}).get(key, 0.0)
+
+    def anima_home_preference(self) -> float:
+        """Préférence de retour au foyer basée sur attachement."""
+        if self.home is None:
+            return 0.0
+        key = f"home:{self.home[0]}:{self.home[1]}"
+        return self.anima_get_attachment(key) * 0.3
+
+    # ── Lot D : intention psychologique persistante ──
+
+    def anima_set_intention(self, kind: str, reason: str = "",
+                            target=None, place=None,
+                            priority: float = 0.5, tick: int = 0,
+                            duration: int = 500):
+        """Définit ou remplace l'intention Anima courante."""
+        self.anima["intention"] = {
+            "kind": kind,
+            "reason": reason,
+            "target": target,
+            "place": place,
+            "priority": self.anima_clamp(priority),
+            "created_tick": tick,
+            "expires_tick": tick + duration,
+            "progress": 0.0,
+        }
+
+    def anima_clear_intention(self):
+        self.anima["intention"] = None
+
+    def anima_get_intention(self):
+        return self.anima.get("intention")
+
+    def anima_intention_valid(self, tick: int) -> bool:
+        """Vérifie si l'intention courante est encore valide."""
+        intent = self.anima.get("intention")
+        if intent is None:
+            return False
+        if tick > intent.get("expires_tick", 0):
+            self.anima["intention"] = None
+            return False
+        return True
+
+    def anima_update_intention_progress(self, delta: float, tick: int):
+        """Met à jour la progression de l'intention."""
+        intent = self.anima.get("intention")
+        if intent is None:
+            return
+        intent["priority"] = self.anima_clamp(intent["priority"] + delta)
+        intent["expires_tick"] = tick + 500
+
+    # ── Lot F : apprentissage causal différé ──
+
+    def anima_add_causal_trace(self, action, place, tick, expected_effect=""):
+        """Enregistre une trace causale pour crédit différé."""
+        traces = self.anima.setdefault("causal_traces", [])
+        traces.append({
+            "tick": tick, "action": action, "place": place,
+            "eligibility": 1.0, "contribution": 0.0,
+            "expected_effect": expected_effect,
+        })
+        if len(traces) > 32:
+            traces.pop(0)
+
+    def anima_decay_causal_traces(self, rate: float = 0.02):
+        traces = self.anima.get("causal_traces", [])
+        for t in traces:
+            t["eligibility"] *= (1.0 - rate)
+        self.anima["causal_traces"] = [t for t in traces if t["eligibility"] > 0.05]
+
+    def anima_credit_for(self, effect_kind, tick, max_delay=2000):
+        """Retourne et consomme le crédit causale pour un effet donné."""
+        traces = self.anima.get("causal_traces", [])
+        credit = 0.0
+        for t in traces:
+            if t.get("expected_effect") == effect_kind and t["eligibility"] > 0.1:
+                delay = tick - t.get("tick", 0)
+                if 0 < delay < max_delay:
+                    credit += t["eligibility"] * max(0.0, 1.0 - delay / max_delay)
+                    t["contribution"] = min(1.0, t["contribution"] + 0.3)
+                    t["eligibility"] *= 0.5
+        return min(1.0, credit)
+
+    # ── Lot H : imitation réelle ──
+
+    def anima_record_observation(self, action, reward, tick):
+        """Enregistre l'observation d'une action réussie par autrui."""
+        obs = self.anima.setdefault("observations", deque(maxlen=24))
+        obs.append({"action": int(action), "reward": float(reward), "tick": tick})
+
+    def anima_apply_observation_learning(self):
+        """Modifie les habitudes basées sur les observations."""
+        obs = self.anima.get("observations")
+        if not obs:
+            return
+        for o in list(obs):
+            act = o.get("action", -1)
+            reward = o.get("reward", 0.0)
+            if 0 <= act < len(self.habits) and reward > 0:
+                self.habits[act] = self.anima_clamp(
+                    self.habits[act] + 0.01 * reward)
+        obs.clear()
+
+    # ── Lot 2 : memoire sociale personnelle ──
+
+    def anima_social_belief(self, other_eid: int, tick: int):
+        beliefs = self.anima.setdefault("beliefs", {}).setdefault("beings", {})
+        eid = int(other_eid)
+        existing = beliefs.get(eid)
+        if existing is None or not isinstance(existing, dict):
+            beliefs[eid] = {
+                "trust": 0.5, "danger": 0.0, "generosity": 0.5,
+                "reliability": 0.5, "confidence": 0.0,
+                "last_update": int(tick),
+            }
+        return beliefs[eid]
+
+    def anima_update_social_belief(self, other_eid: int, tick: int,
+                                   trust_delta=0.0, danger_delta=0.0,
+                                   generosity_delta=0.0,
+                                   reliability_delta=0.0,
+                                   confidence_delta=0.0):
+        belief = self.anima_social_belief(other_eid, tick)
+        for key, delta in {
+            "trust": trust_delta, "danger": danger_delta,
+            "generosity": generosity_delta,
+            "reliability": reliability_delta,
+            "confidence": confidence_delta,
+        }.items():
+            belief[key] = self.anima_clamp(
+                float(belief.get(key, 0.0)) + float(delta))
+        belief["last_update"] = int(tick)
+        return belief
+
+    def anima_social_score(self, other_eid: int) -> float:
+        belief = (self.anima.get("beliefs", {})
+                  .get("beings", {}).get(int(other_eid)))
+        if not belief or not isinstance(belief, dict):
+            return 0.0
+        trust = float(belief.get("trust", 0.5))
+        reliability = float(belief.get("reliability", 0.5))
+        danger = float(belief.get("danger", 0.0))
+        return (trust - 0.5) * 0.8 + (reliability - 0.5) * 0.4 - danger * 0.9
+
     def set_dir(self, dx, dy):
         dx, dy = float(dx), float(dy)
         if abs(dx) + abs(dy) < 0.08:
@@ -353,7 +686,7 @@ class Sheep:
 
 class Monster:
     __slots__ = ("eid", "x", "y", "vx", "vy", "energy", "health", "kind",
-                 "alive", "anim_t", "frame", "hostile", "damage", "sight")
+                 "alive", "anim_t", "frame", "hostile", "damage", "sight", "state")
 
     def __init__(self, eid, x, y, kind="wolf"):
         self.eid = eid
@@ -365,6 +698,7 @@ class Monster:
         self.alive = True
         self.anim_t = 0
         self.frame = 0
+        self.state = "idle"
         stats = {"bear": {"hostile": True, "damage": 0.18, "sight": 6},
                  "wolf": {"hostile": True, "damage": 0.12, "sight": 8},
                  "snake": {"hostile": True, "damage": 0.10, "sight": 5},

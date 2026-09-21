@@ -228,11 +228,11 @@ def tile_snapshot(sim, tx: int, ty: int) -> dict[str, Any]:
     if gen is not None:
         try:
             from . import worldgen as wg
-            result["biome"] = wg.biome_name_at(gen, tx, ty)
+            result["biome"] = wg.biome_name(gen, tx, ty)
             result["altitude"] = float(wg.height_at(gen, tx, ty))
             result["pente"] = float(wg.slope(gen)[ty, tx])
-        except Exception:
-            pass
+        except Exception as exc:
+            result["diagnostic_error"] = f"{type(exc).__name__}: {exc}"
 
     return result
 

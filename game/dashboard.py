@@ -286,8 +286,9 @@ def _goal_txt(a):
 #  3. DASHBOARD
 # ══════════════════════════════════════════════════════════════════════
 class Dashboard:
-    def __init__(self, am):
+    def __init__(self, am, controller=None):
         self.am = am
+        self.controller = controller
         # — largeurs : bornées pour ne jamais écraser la carte —
         self.panel_l = min(LEFT_W, 320)
         self.panel_r = min(DASH_W, 420)
@@ -319,7 +320,8 @@ class Dashboard:
         self.portraits = {}
         self._load_portraits()
 
-        self.brain_size = 128
+        from game.brain import N_IN as _N_IN
+        self.brain_size = _N_IN
         self._init_state()
 
     def _load_portraits(self):
@@ -403,9 +405,10 @@ class Dashboard:
                               (214, 84, 84), "monde")
 
     def brain_memory_estimate_mb(self, n=None):
-        """Poids Elman float64 : Wx(95*n)+Wd(n*n)+Wo(15*n)+biais."""
+        """Poids Elman float64 : Wx(N_IN*n)+Wd(n)+b1(n)+Wo(N_OUT*n)+b2(N_OUT)."""
+        from game.brain import N_IN, N_OUT
         n = int(n if n is not None else self.brain_size)
-        params = 128 * n + n * n + n + 15 * n + 15
+        params = N_IN * n + 2 * n + N_OUT * n + N_OUT
         return params * 8 / (1024 * 1024)
 
     def _init_state(self):
@@ -1870,6 +1873,141 @@ class Dashboard:
                     T.MUTED, x0 + w - T.S3, y, right=True, max_w=150)
             y += 18
 
+        # ── ANIMA : memoire episodique emotionnelle ──
+        anima = getattr(agent, "anima", None)
+        if anima:
+            y += 4
+            self._t(screen, T.F_BODY, "ANIMA", (180, 140, 220), x0 + T.S3, y, bold=True)
+            y += 19
+            # identite dominante
+            ID_LABELS = {
+                "builder": "Constructeur", "provider": "Pourvoyeur",
+                "fighter": "Combattant", "explorer": "Explorateur",
+                "caretaker": "Protecteur", "survivor": "Survivant",
+                "mediator": "Mediateur",
+            }
+            ident = anima["identity"]
+            dom = max(ident.items(), key=lambda kv: kv[1]) if ident else None
+            if dom and dom[1] >= 0.20:
+                self._t(screen, T.F_SMALL,
+                        f"Identite: {ID_LABELS.get(dom[0], dom[0])} ({dom[1]:.2f})",
+                        (140, 200, 140), x0 + T.S3, y, max_w=w - 2 * T.S3)
+                y += 17
+            # top 3 identites
+            top_id = sorted(ident.items(), key=lambda kv: -kv[1])[:3]
+            top_id = [(k, v) for k, v in top_id if v > 0.05]
+            if top_id:
+                parts = [f"{ID_LABELS.get(k, k)} {v:.2f}" for k, v in top_id]
+                self._t(screen, T.F_MICRO, "ID: " + " · ".join(parts),
+                        (120, 160, 120), x0 + T.S3, y, max_w=w - 2 * T.S3)
+                y += 15
+            # top 3 valeurs
+            V_LABELS = {
+                "survival": "Survie", "family": "Famille",
+                "security": "Securite", "community": "Communaute",
+                "knowledge": "Connaissance", "wealth": "Ressources",
+                "generosity": "Generosite",
+            }
+            vals = anima.get("values", {})
+            top_v = sorted(vals.items(), key=lambda kv: -kv[1])[:3]
+            if top_v:
+                parts = [f"{V_LABELS.get(k, k)} {v:.2f}" for k, v in top_v]
+                self._t(screen, T.F_MICRO, "Valeurs: " + " · ".join(parts),
+                        (160, 160, 200), x0 + T.S3, y, max_w=w - 2 * T.S3)
+                y += 15
+            # dernier episode
+            eps = anima["episodic_memory"]
+            if eps:
+                last = eps[-1]
+                kind_labels = {
+                    "monster_attack": "attaque monstre",
+                    "monster_survival": "monstre tue",
+                    "food_found": "nourriture trouvee",
+                    "food_given": "nourriture donnee",
+                    "food_received": "nourriture recue",
+                    "construction_complete": "construction terminee",
+                    "new_area_discovered": "nouvelle zone",
+                    "loss": "perte d'un proche",
+                    "danger_discovered": "danger repere",
+                    "help": "aide",
+                    "talk": "conversation",
+                    "theft": "vol",
+                }
+                label = kind_labels.get(last["kind"], last["kind"])
+                imp = last["importance"]
+                fear_v = last["emotion"].get("fear", 0)
+                self._t(screen, T.F_MICRO, f"Event: {label}",
+                        T.TEXT, x0 + T.S3, y, max_w=w - 2 * T.S3)
+                self._t(screen, T.F_MICRO,
+                        f"imp {imp:.2f} · peur {fear_v:.2f}",
+                        T.MUTED, x0 + w - T.S3, y, right=True)
+                y += 15
+            # trauma
+            trauma = anima["trauma"]
+            trauma_items = [(k, v) for k, v in trauma.items() if v > 0.05]
+            if trauma_items:
+                self._t(screen, T.F_MICRO, "Trauma: " + " · ".join(
+                    f"{k} {v:.2f}" for k, v in trauma_items),
+                    (200, 120, 120), x0 + T.S3, y, max_w=w - 2 * T.S3)
+                y += 15
+            # confiance sociale
+            beings = anima.get("beliefs", {}).get("beings", {})
+            if beings:
+                top_b = sorted(beings.items(),
+                               key=lambda kv: -kv[1].get("trust", 0))[:3]
+                shown = [(k, v) for k, v in top_b
+                         if v.get("trust", 0) != 0.5 or v.get("danger", 0) > 0.05]
+                if shown:
+                    parts = []
+                    for eid, b in shown:
+                        nm = next((x.name for x in sim.agents
+                                   if x.eid == eid), f"#{eid}")
+                        tr = b.get("trust", 0.5)
+                        dg = b.get("danger", 0.0)
+                        parts.append(f"{nm}:conf{tr:.2f}")
+                        if dg > 0.05:
+                            parts[-1] += f"/danger{dg:.2f}"
+                    self._t(screen, T.F_MICRO, "Sociale: " + " · ".join(parts),
+                            (180, 160, 200), x0 + T.S3, y, max_w=w - 2 * T.S3)
+                    y += 15
+            # ── intention ──
+            intent = anima.get("intention")
+            if intent:
+                ik = intent.get("kind", "?")
+                ip = intent.get("priority", 0)
+                INT_LABELS = {
+                    "secure_food": "Securiser nourriture",
+                    "protect_family": "Proteger famille",
+                    "build_home": "Construire abri",
+                    "recover_from_loss": "Recuperer perte",
+                    "avoid_danger": "Eviter danger",
+                    "help_ally": "Aider allie",
+                    "explore_unknown": "Explorer",
+                }
+                self._t(screen, T.F_MICRO,
+                        f"Intent: {INT_LABELS.get(ik, ik)} ({ip:.2f})",
+                        (200, 180, 140), x0 + T.S3, y, max_w=w - 2 * T.S3)
+                y += 15
+            else:
+                self._t(screen, T.F_MICRO, "Intent: aucune",
+                        T.FAINT, x0 + T.S3, y)
+                y += 15
+            # ── attachements ──
+            att = anima.get("attachments", {})
+            top_att = sorted(att.items(), key=lambda kv: -kv[1])[:3]
+            top_att = [(k, v) for k, v in top_att if v > 0.05]
+            if top_att:
+                parts = []
+                for k, v in top_att:
+                    if isinstance(k, int):
+                        nm = next((x.name for x in sim.agents if x.eid == k), f"#{k}")
+                        parts.append(f"{nm}:{v:.2f}")
+                    else:
+                        parts.append(f"{k}:{v:.2f}")
+                self._t(screen, T.F_MICRO, "Att: " + " · ".join(parts),
+                        (200, 160, 180), x0 + T.S3, y, max_w=w - 2 * T.S3)
+                y += 15
+
         return y + T.S2
 
     def _tab_decor(self, screen, sim, y):
@@ -2375,6 +2513,32 @@ class Dashboard:
         dessiner l'aperçu circulaire des outils de terrain."""
         return self.brush_size if self.mode in (
             "water", "land", "wall", "carve", "restore", "erase") else 0
+
+    def process_action(self, sim):
+        """Route l'action courante via le controller si disponible, sinon legacy.
+
+        Appelé par main.py après handle_event(). Retourne le résultat.
+        """
+        if self.action is None:
+            return None
+        action = self.action
+        self.action = None
+
+        if self.controller is not None:
+            cmd = self.controller.translate_action(action)
+            if cmd is not None:
+                result = self.controller.execute(cmd)
+                return result
+            # Actions qui modifient le dashboard lui-même (pas le sim)
+            kind, val = action
+            if kind == "grid":
+                return {"kind": "grid"}
+            elif kind == "legend":
+                return {"kind": "legend"}
+            return None
+
+        # Legacy : retourne le tuple pour main.py
+        return action
 
     def set_ghost(self, cam):
         self._cam = cam

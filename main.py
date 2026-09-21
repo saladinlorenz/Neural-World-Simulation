@@ -166,7 +166,7 @@ def main():
             elif ev.type == pygame.KEYDOWN:
                 if dash.handle_event(ev, sim):
                     continue
-                if dash.focus_search or dash.hab_focus:
+                if dash.focus_search or dash.hab_focus or dash.creator_focus:
                     continue
                 if ev.key == pygame.K_ESCAPE:
                     running = False

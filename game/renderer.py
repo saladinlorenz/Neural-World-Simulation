@@ -276,6 +276,8 @@ class Renderer:
             cys, cxs = np.nonzero(csub >= 0)
             for j, i in zip(cys, cxs):
                 aid = int(csub[j, i])
+                if aid < 0 or aid >= len(self.am.assets):
+                    continue
                 a_def = self.am.assets[aid]
                 bottom_y = ((y0 + j) + a_def.size_tiles) * TILE
                 draws.append((bottom_y, 3, self._draw_asset,
@@ -786,6 +788,8 @@ class Renderer:
             for j, i in zip(ys, xs):
                 tx, ty = x0 + int(i), y0 + int(j)
                 aid = int(csub[j, i])
+                if aid < 0 or aid >= len(self.am.assets):
+                    continue
                 a = self.am.assets[aid]
                 if a.edible > 0:
                     col = (96, 215, 114)
@@ -887,9 +891,7 @@ class Renderer:
                 r = max(4, int(8 * cam.zoom))
                 pygame.draw.rect(screen, (92, 164, 236),
                                  pygame.Rect(int(sx - r), int(sy - r), 2 * r, 2 * r), 2)
-                total_work = sum(site.recipe.values())
-                done_work = sum(site.stored.values())
-                prog = done_work / max(1, total_work)
+                prog = site.progress()
                 pygame.draw.arc(screen, (96, 215, 114),
                                 pygame.Rect(int(sx - r - 2), int(sy - r - 2),
                                             2 * r + 4, 2 * r + 4),

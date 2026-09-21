@@ -260,7 +260,7 @@ def build_world(am, seed, procedural=False, *, populate_dense=True,
 
     for _ in range(max(0, int(n_agents))):
         x, y = _spawn_spot(w, rng)
-        sim.spawn_agent(x=x * TILE + TILE / 2, y=y * TILE + TILE / 2)
+        sim.spawn_agent(x=x * TILE + TILE / 2, y=y * TILE + TILE / 2, parents=None)
 
     sim.paused = True
     if gen is not None:

@@ -1,0 +1,29 @@
+PASS: test_brain_schema_inputs (66 cles definies)
+PASS: test_migrate_input_weights
+PASS: test_harvest_to_build_chain
+PASS: test_house_needs_all_layers
+PASS: test_storage
+PASS: test_site_has_required_phases
+PASS: test_bootstrap_resource_memory
+PASS: test_complete_site_creates_shelter
+PASS: test_anima_episodic_memory
+PASS: test_anima_belief_update
+PASS: test_anima_perceived_danger
+PASS: test_anima_bias_modulation
+PASS: test_anima_brain_schema
+PASS: test_anima_migration_128_to_132
+PASS: test_anima_low_importance_forgotten
+PASS: test_identity_api
+PASS: test_values_api
+PASS: test_social_belief_init
+PASS: test_social_belief_update
+PASS: test_social_score
+PASS: test_identity_decay
+PASS: test_social_target_selection
+PASS: test_anima_social_beliefs_save_load
+PASS: test_anima_old_save_defaults_do_not_crash
+PASS: test_anima_values_modulate_bias_without_forcing_action
+PASS: test_anima_no_nan_inf
+
+=== TOUS LES 26 TESTS PASSENT ===
+compileall: 0 erreur

@@ -35,6 +35,8 @@ def save_game(sim, cam=None, slot=0):
         "fire": w.fire,
         "smell": w.smell,
         "heat": w.heat,
+        "foundation": w.foundation,
+        "roof": w.roof,
         "cemetery": list(w.cemetery),
         "sites": {
             f"{tx},{ty}": {
@@ -68,6 +70,7 @@ def save_game(sim, cam=None, slot=0):
                 "tx": cp.tx, "ty": cp.ty, "owner_eid": cp.owner_eid,
                 "planted_tick": cp.planted_tick, "growth": cp.growth,
                 "water_need": cp.water_need, "crop_type": cp.crop_type,
+                "watered": cp.watered,
             }
             for (tx, ty), cp in w.crop_plots.items()
         },
@@ -100,6 +103,8 @@ def save_game(sim, cam=None, slot=0):
             "places": sim.clan_knowledge.places,
             "dangers": sim.clan_knowledge.dangers,
             "reservations": sim.clan_knowledge.reservations,
+            "culture": sim.clan_knowledge.culture,
+            "institutions": sim.clan_knowledge.institutions,
         },
         "trade": sim._trade,
         "dominance": dict(sim._dominance),
@@ -126,6 +131,14 @@ def save_game(sim, cam=None, slot=0):
         # --- monsters ---
         "n_monsters": len(sim.monsters),
         "monsters": [_serialize_monster(m) for m in sim.monsters],
+        "social_memory": {
+            f"{obs},{tgt}": {
+                "trust": r.trust, "violence": r.violence,
+                "theft": r.theft, "generosity": r.generosity,
+                "last_tick": r.last_tick,
+            }
+            for (obs, tgt), r in sim.social_memory.records.items()
+        },
     }
     if w.gen is not None:
         data["gen_height_base"] = w.gen.height_base
@@ -144,11 +157,18 @@ def save_game(sim, cam=None, slot=0):
 
     path = _slot_path(slot)
     tmp = path + ".tmp"
-    with open(tmp, "wb") as f:
-        pickle.dump(data, f, protocol=5)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
+    try:
+        with open(tmp, "wb") as f:
+            pickle.dump(data, f, protocol=5)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
     size_mb = os.path.getsize(path) / (1024 * 1024)
     return path, size_mb
 
@@ -172,6 +192,8 @@ def load_game(am, slot=0):
     w.land = data["land"]
     w.water = data["water"]
     w.mountains = data.get("mountains", w.blocked.copy())
+    w.foundation = data.get("foundation", np.zeros_like(w.blocked))
+    w.roof = data.get("roof", np.zeros_like(w.blocked))
     w.floor = data["floor"]
     w.content = data["content"]
     w.owner = data["owner"]
@@ -227,6 +249,7 @@ def load_game(am, slot=0):
             water_need=float(raw_cp.get("water_need", 0.5)),
             crop_type=raw_cp.get("crop_type", "grain"),
         )
+        cp.watered = raw_cp.get("watered", False)
         w.crop_plots[(cp.tx, cp.ty)] = cp
     w.tick = data["w_tick"]
     w.items = []
@@ -280,6 +303,8 @@ def load_game(am, slot=0):
         sim.clan_knowledge.places = {_parse_key(k): v for k, v in ck.get("places", {}).items()}
         sim.clan_knowledge.dangers = {_parse_key(k): v for k, v in ck.get("dangers", {}).items()}
         sim.clan_knowledge.reservations = {_parse_key(k): v for k, v in ck.get("reservations", {}).items()}
+        sim.clan_knowledge.culture = {_parse_key(k): v for k, v in ck.get("culture", {}).items()}
+        sim.clan_knowledge.institutions = {_parse_key(k): v for k, v in ck.get("institutions", {}).items()}
     # social / commerce
     sim._trade = {ast.literal_eval(k) if isinstance(k, str) else k: v for k, v in data.get("trade", {}).items()}
     sim._dominance = data.get("dominance", {})
@@ -300,6 +325,12 @@ def load_game(am, slot=0):
     sim.academy.champion_label = acad.get("label", "aucun")
     # lab
     sim.lab.daily = list(data.get("lab_daily", []))
+    # social memory
+    from .social_memory import SocialRecord
+    sim.social_memory.records = {}
+    for key, raw in data.get("social_memory", {}).items():
+        observer, target = map(int, key.split(","))
+        sim.social_memory.records[(observer, target)] = SocialRecord(**raw)
 
     # --- agents ---
     sim.agents = []
@@ -398,17 +429,43 @@ def _serialize_agent(a):
         "life": list(a.life),
         "episodes": list(a.episodes),
         "talk_cd": dict(a.talk_cd),
+        # Anima Phase 1+
+        "anima": {
+            "episodic_memory": list(a.anima["episodic_memory"]),
+            "beliefs": {
+                "places": {f"{k[0]}|{k[1]}": v
+                           for k, v in a.anima["beliefs"]["places"].items()},
+                "beings": {str(k): v
+                           for k, v in a.anima["beliefs"]["beings"].items()},
+            },
+            "identity": dict(a.anima["identity"]),
+            "values": dict(a.anima["values"]),
+            "trauma": dict(a.anima["trauma"]),
+            "attachments": {str(k): v
+                            for k, v in a.anima.get("attachments", {}).items()},
+            "intention": a.anima.get("intention"),
+            "causal_traces": list(a.anima.get("causal_traces", [])),
+            "observations": list(a.anima.get("observations", [])),
+        },
     }
 
 
 def _deserialize_agent(d):
     from collections import deque as _dq
-    from .brain import Brain
+    from .brain import Brain, N_IN, OLD_NIN, migrate_input_weights
     brain = Brain(n_hid=d["brain_n"], params=d["brain_p"])
     brain.h = d["brain_h"]
     brain.last_out = d["brain_last_out"]
     brain.probs = d["brain_probs"]
     brain.base = d["brain_base"]
+    # Migration 128→132 entrées pour anciennes saves
+    from .brain import N_OUT
+    denom = OLD_NIN + 2 + N_OUT
+    old_h = (d["brain_p"].size - N_OUT) // denom
+    if old_h > 0 and (d["brain_p"].size - N_OUT) % denom == 0:
+        expected_old = old_h * denom + N_OUT
+        if d["brain_p"].size == expected_old:
+            brain.p, _ = migrate_input_weights(d["brain_p"], old_n=OLD_NIN, new_n=N_IN)
     if d.get("brain_rng") is not None:
         brain.rng.bit_generator.state = d["brain_rng"]
     if d.get("brain_trace"):
@@ -462,6 +519,45 @@ def _deserialize_agent(d):
     a.life = _dq(d.get("life", []), maxlen=48)
     a.episodes = _dq(d.get("episodes", []), maxlen=64)
     a.talk_cd = d.get("talk_cd", {})
+    # Anima Phase 1
+    ad = d.get("anima")
+    if ad:
+        a.anima["episodic_memory"] = _dq(ad.get("episodic_memory", []), maxlen=32)
+        places_raw = ad.get("beliefs", {}).get("places", {})
+        a.anima["beliefs"]["places"] = {
+            (int(k.split("|")[0]), int(k.split("|")[1])): v
+            for k, v in places_raw.items()
+        }
+        beings_raw = ad.get("beliefs", {}).get("beings", {})
+        loaded_beings = {}
+        for k, v in beings_raw.items():
+            eid = int(k)
+            if isinstance(v, dict):
+                loaded_beings[eid] = v
+            else:
+                loaded_beings[eid] = {
+                    "trust": 0.5, "danger": 0.0, "generosity": 0.5,
+                    "reliability": 0.5, "confidence": 0.0,
+                    "last_update": 0,
+                }
+        a.anima["beliefs"]["beings"] = loaded_beings
+        for k in ("identity", "values", "trauma"):
+            if k in ad:
+                a.anima[k].update(ad[k])
+        att_raw = ad.get("attachments", {})
+        loaded_att = {}
+        for k, v in att_raw.items():
+            try:
+                loaded_att[int(k)] = v
+            except (ValueError, TypeError):
+                loaded_att[k] = v
+        a.anima["attachments"] = loaded_att
+        # Lot D/F/H : champs nouveaux
+        if ad.get("intention") is not None:
+            a.anima["intention"] = ad["intention"]
+        a.anima["causal_traces"] = list(ad.get("causal_traces", []))
+        from collections import deque as _dq2
+        a.anima["observations"] = _dq2(ad.get("observations", []), maxlen=24)
     return a
 
 

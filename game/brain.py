@@ -42,7 +42,7 @@ think/learn/breed/copy, memes constantes N_IN/N_OUT/ACTION_*) :
 import numpy as np
 from collections import deque
 
-N_IN = 128
+N_IN = 132
 N_OUT = 15
 N_STRATEGIES = 6
 N_TARGETS = 8
@@ -160,10 +160,16 @@ class Brain:
         self._trace_decay = float(elig_decay)
         # têtes supplémentaires : stratégie + cible (Lot 7.2)
         scale = 0.4 / np.sqrt(self.n)
-        self._Wo_strat = rng.normal(0, scale, (N_STRATEGIES, self.n)).astype(np.float64)
-        self._b2_strat = rng.normal(0, 0.15, N_STRATEGIES).astype(np.float64)
-        self._Wo_targ = rng.normal(0, scale, (N_TARGETS, self.n)).astype(np.float64)
-        self._b2_targ = rng.normal(0, 0.15, N_TARGETS).astype(np.float64)
+        if rng is not None:
+            self._Wo_strat = rng.normal(0, scale, (N_STRATEGIES, self.n)).astype(np.float64)
+            self._b2_strat = rng.normal(0, 0.15, N_STRATEGIES).astype(np.float64)
+            self._Wo_targ = rng.normal(0, scale, (N_TARGETS, self.n)).astype(np.float64)
+            self._b2_targ = rng.normal(0, 0.15, N_TARGETS).astype(np.float64)
+        else:
+            self._Wo_strat = np.zeros((N_STRATEGIES, self.n), dtype=np.float64)
+            self._b2_strat = np.zeros(N_STRATEGIES, dtype=np.float64)
+            self._Wo_targ = np.zeros((N_TARGETS, self.n)).astype(np.float64)
+            self._b2_targ = np.zeros(N_TARGETS).astype(np.float64)
         self._strat_probs = np.full(N_STRATEGIES, 1.0 / N_STRATEGIES)
         self._targ_probs = np.full(N_TARGETS, 1.0 / N_TARGETS)
         self._strategy = IMMEDIAT
@@ -193,7 +199,7 @@ class Brain:
             self.h = np.nan_to_num(self.h, nan=0.0, posinf=1.0, neginf=-1.0)
         logits = (self.h @ self._Wo.T + self._b2) * 0.45
         if bias is not None:
-            logits = logits + bias * 1.8
+            logits = logits + bias * 0.6
 
         eff_temp = max(0.15, temperature)
         if curiosity is not None or caution is not None:
@@ -363,3 +369,26 @@ class Brain:
         b._target = self._target
         b._sync()
         return b
+
+
+OLD_NIN = 128
+
+def migrate_input_weights(old_p, old_n=OLD_NIN, new_n=N_IN):
+    """Etend un vecteur de poids historique vers la version courante.
+
+    Layout: Wx(N_IN*n) + Wd(n) + b1(n) + Wo(N_OUT*n) + b2(N_OUT)
+    = n*(N_IN + 2 + N_OUT) + N_OUT
+    Les anciennes colonnes d'entree (Wx) sont conservees, les nouvelles
+    sont initialisees a zero.  Wd, b1, Wo, b2 sont conserves.
+    Supporte 95->132 (anciennes saves) et 128->132 (Anima Phase 1).
+    """
+    denom = old_n + 2 + N_OUT
+    n_hid = (old_p.size - N_OUT) // denom
+    if n_hid <= 0 or (old_p.size - N_OUT) % denom != 0:
+        return old_p, new_n
+    Wx_old = old_p[:old_n * n_hid].reshape(old_n, n_hid)
+    rest = old_p[old_n * n_hid:]
+    Wx_new = np.zeros((new_n, n_hid), dtype=np.float64)
+    Wx_new[:old_n, :] = Wx_old
+    new_p = np.concatenate([Wx_new.ravel(), rest])
+    return new_p, new_n

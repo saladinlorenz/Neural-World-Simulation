@@ -93,3 +93,22 @@ TOOL_RECIPES = {
     "pioche":  {"bois": 1, "pierre": 3, "durability": 45},
     "marteau": {"bois": 3, "pierre": 2, "durability": 50},
 }
+
+# ---- métabolisme (lois biologiques)
+HUNGER_RATE = 0.00012
+THIRST_RATE = 0.00008
+SLEEP_RATE_D = 0.00006
+SLEEP_RATE_N = 0.00020
+E_DRAIN = 0.00004
+MOVE_DRAIN = 0.00018
+REST_GAIN = 0.00180
+SLEEP_GAIN = 0.00420
+SHELTER_BONUS = 1.9
+STARVE_HP = 0.00012
+THIRST_HP = 0.00012
+LOWE_HP = 0.00008
+INV_CAP = 8
+ATTACK_DMG = 0.16
+ATTACK_DMG_TOOL = 0.30
+WORK_TICKS = 6
+PERCEPT_CELLS = 70
