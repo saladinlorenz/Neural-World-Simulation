@@ -9,12 +9,9 @@ import numpy as np
 
 def _make_sim():
     """Cree une simulation legere pour les tests."""
-    import pygame
-    pygame.init()
-    pygame.display.set_mode((1, 1), pygame.HIDDEN)
     from game.assets_manager import AssetManager
     from game.engine import build_world
-    am = AssetManager(headless=False).discover()
+    am = AssetManager(headless=True).discover()
     am.ensure_procedural_blocks()
     am.ensure_procedural_tools()
     am.ensure_kaykit_resources()

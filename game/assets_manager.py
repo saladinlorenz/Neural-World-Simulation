@@ -9,8 +9,7 @@ import os
 from collections import OrderedDict
 
 import numpy as np
-import pygame
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from .affordance_definitions import render_asset, build_recipe_for
 from .config import ASSETS_DIR, CLAN_COLORS
@@ -693,9 +692,7 @@ class AssetManager:
     def _to_surf(self, pil, w, h):
         if (pil.width, pil.height) != (w, h):
             pil = pil.resize((max(1, int(w)), max(1, int(h))), Image.LANCZOS)
-        if self.headless:
-            return pil
-        return pygame.image.fromstring(pil.tobytes(), pil.size, "RGBA").convert_alpha()
+        return pil
 
     def surface(self, aid, frame=0, scale=1.0):
         a = self.assets[aid]
@@ -703,9 +700,9 @@ class AssetManager:
             base = a._procedural_surface
             if abs(scale - 1.0) < 1e-6:
                 return base
-            w = max(1, int(base.get_width() * scale))
-            h = max(1, int(base.get_height() * scale))
-            return pygame.transform.scale(base, (w, h))
+            w = max(1, int(base.width * scale))
+            h = max(1, int(base.height * scale))
+            return base.resize((w, h), Image.LANCZOS)
         k = (aid, frame, round(scale, 2))
         hit = self._surf_cache.get(k)
         if hit is not None:
@@ -751,8 +748,7 @@ class AssetManager:
             pil.thumbnail((size, size), Image.LANCZOS)
             surf = self._to_surf(pil, pil.width, pil.height)
         except Exception:
-            surf = pygame.Surface((size, size), pygame.SRCALPHA)
-            surf.fill((60, 40, 70, 255))
+            surf = Image.new("RGBA", (size, size), (60, 40, 70, 255))
         self._thumb_cache[k] = surf
         if len(self._thumb_cache) > 1400:
             self._thumb_cache.popitem(last=False)
@@ -790,8 +786,7 @@ class AssetManager:
     def avatar(self, idx, size=44):
         sheets = self.ui.get("avatars", [])
         if not sheets:
-            s = pygame.Surface((size, size), pygame.SRCALPHA)
-            return s
+            return Image.new("RGBA", (size, size), (60, 40, 70, 255))
         k = (idx % (len(sheets) * 16), size)
         hit = self._avatar_cache.get(k)
         if hit is not None:
@@ -869,14 +864,14 @@ class AssetManager:
         for role, label, fill, edge, solid in specs:
             if self.by_role.get(role):
                 continue
-            surf = pygame.Surface((16, 16), pygame.SRCALPHA)
-            surf.fill(fill)
-            pygame.draw.rect(surf, edge, surf.get_rect(), 2)
+            img = Image.new("RGBA", (16, 16), (*fill, 255))
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([0, 0, 15, 15], outline=(*edge, 255), width=2)
             if role == "block_door":
-                pygame.draw.circle(surf, (220, 190, 80), (12, 8), 1)
+                draw.ellipse([10, 6, 14, 10], fill=(220, 190, 80, 255))
             elif role == "block_roof":
-                pygame.draw.line(surf, edge, (1, 5), (15, 5), 1)
-                pygame.draw.line(surf, edge, (1, 10), (15, 10), 1)
+                draw.line([1, 5, 15, 5], fill=(*edge, 255), width=1)
+                draw.line([1, 10, 15, 10], fill=(*edge, 255), width=1)
             aid = len(self.assets)
             a = AssetDef(
                 id=aid, name=f"{role}.png",
@@ -887,7 +882,7 @@ class AssetManager:
                 meta={"procedural": True},
             )
             a.afford = ("block", "hit")
-            a._procedural_surface = surf
+            a._procedural_surface = img
             self.assets.append(a)
             self.by_role.setdefault(role, []).append(aid)
             self.by_cat.setdefault("batiments", []).append(aid)
@@ -902,9 +897,10 @@ class AssetManager:
             role_key = f"tool_{kind}"
             if self.by_role.get(role_key):
                 continue
-            surf = pygame.Surface((14, 14), pygame.SRCALPHA)
-            pygame.draw.polygon(surf, color, [(2, 12), (10, 2), (12, 4), (4, 14)])
-            pygame.draw.polygon(surf, (40, 40, 44), [(2, 12), (10, 2), (12, 4), (4, 14)], 1)
+            img = Image.new("RGBA", (14, 14), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(img)
+            draw.polygon([(2, 12), (10, 2), (12, 4), (4, 14)], fill=(*color, 255))
+            draw.polygon([(2, 12), (10, 2), (12, 4), (4, 14)], outline=(40, 40, 44, 255))
             aid = len(self.assets)
             a = AssetDef(
                 id=aid, name=f"{kind}.png", label=kind.capitalize(), path="",
@@ -913,19 +909,21 @@ class AssetManager:
                 placable=True, meta={"tool_kind": kind, "procedural": True},
             )
             a.afford = ("use", "carry", "hit")
-            a._procedural_surface = surf
+            a._procedural_surface = img
             self.assets.append(a)
             self.by_role.setdefault("tool", []).append(aid)
             self.by_role.setdefault(role_key, []).append(aid)
             self.by_cat.setdefault("outils", []).append(aid)
 
     def register_custom_tool(self, path, tool_kind, label=None):
-        img = pygame.image.load(path).convert_alpha()
+        with Image.open(path) as img:
+            img = img.convert("RGBA")
+            w, h = img.size
         aid = len(self.assets)
         a = AssetDef(
             id=aid, name=os.path.basename(path), label=label or tool_kind,
             path=path, pack="custom_tools", category="outils", role="tool",
-            kind="single", frames=1, fw=img.get_width(), fh=img.get_height(),
+            kind="single", frames=1, fw=w, fh=h,
             px=20, tool=True, meta={"tool_kind": tool_kind}, placable=True,
         )
         a.afford = ("use", "carry", "hit")
@@ -982,15 +980,17 @@ class AssetManager:
             ):
                 continue
             try:
-                img = pygame.image.load(path).convert_alpha()
-            except pygame.error:
+                with Image.open(path) as img:
+                    img = img.convert("RGBA")
+                    w, h = img.size
+            except Exception:
                 continue
             aid = len(self.assets)
             a = AssetDef(
                 id=aid, name=f"{fname}.png", label=label,
                 path=path, pack="kaykit", category=cat, role=role,
                 kind="single", frames=1,
-                fw=img.get_width(), fh=img.get_height(),
+                fw=w, fh=h,
                 px=kw.pop("px", 16),
                 solid=kw.pop("solid", False),
                 blocked_footprint=1, placable=True,

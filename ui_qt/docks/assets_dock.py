@@ -159,6 +159,11 @@ class AssetsDock(QDockWidget):
             am = self.controller.sim.am
             pix = am.thumbnail(aid, size=(48, 48))
             if pix is not None:
+                from PIL import Image as PILImage
+                if isinstance(pix, PILImage.Image):
+                    data = pix.tobytes("raw", "RGBA")
+                    qimg = QImage(data, pix.width, pix.height, QImage.Format.Format_RGBA8888)
+                    return QPixmap.fromImage(qimg)
                 from PyQt6.QtGui import QImage
                 if isinstance(pix, QImage):
                     return QPixmap.fromImage(pix)

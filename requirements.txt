@@ -1,4 +1,3 @@
-pygame>=2.6
 numpy>=1.26
 Pillow>=10
 PyQt6>=6.6

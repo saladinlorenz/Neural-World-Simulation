@@ -236,8 +236,6 @@ def build_world(am, seed, procedural=False, *, populate_dense=True,
     `procedural=False` conserve l'ancien comportement (terre pleine, pas de
     relief) ; `procedural=True` génère les chaînes de montagnes.
     """
-    from game import renderer as _ren
-    _ren.set_blank_mode(False)
 
     rng = np.random.default_rng(seed)
     w = World()
@@ -282,8 +280,6 @@ def build_world(am, seed, procedural=False, *, populate_dense=True,
 def build_world_blank(am, seed):
     """Monde vierge : tout eau, aucun asset, aucun habitant.
     L'utilisateur peint ses îles avec les outils de terrain."""
-    from game import renderer as _ren
-    _ren.set_blank_mode(True)
 
     w = World()
     w.set_land(np.zeros((GRID, GRID), dtype=np.uint8))

@@ -9,17 +9,11 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-os.environ["SDL_VIDEODRIVER"] = "dummy"
-os.environ["SDL_AUDIODRIVER"] = "dummy"
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 
 def _make_controller():
     """Construit un Sim + SimulationController pour les tests."""
-    import pygame
-    pygame.init()
-    pygame.display.set_mode((1, 1))
-
     from game.assets_manager import AssetManager
     from game.assets_api import _set_asset_manager
     from game.engine import build_world
