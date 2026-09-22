@@ -197,7 +197,7 @@ class Brain:
         # que de laisser NaN se propager dans toute la simulation
         if not np.all(np.isfinite(self.h)):
             self.h = np.nan_to_num(self.h, nan=0.0, posinf=1.0, neginf=-1.0)
-        logits = (self.h @ self._Wo.T + self._b2) * 0.45
+        logits = (self.h @ self._Wo.T + self._b2) * 0.85
         if bias is not None:
             logits = logits + bias * 0.6
 

@@ -19,6 +19,7 @@ def save_game(sim, cam=None, slot=0):
     """Sauvegarde complète : monde, simulation, agents, cerveaux, camera."""
     w = sim.w
     data = {
+        "version": 2,
         # --- world arrays ---
         "land": w.land,
         "water": w.water,
@@ -180,6 +181,13 @@ def load_game(am, slot=0):
         return None, None
     with open(path, "rb") as f:
         data = pickle.load(f)
+
+    ver = data.get("version", 1)
+    if ver > 2:
+        raise ValueError(
+            f"Sauvegarde version {ver} incompatible (version supportée : 2). "
+            "Mettez à jour le logiciel."
+        )
 
     from .world import World
     from .simulation import Sim

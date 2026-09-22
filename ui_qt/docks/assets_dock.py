@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                               QLabel, QListWidget, QListWidgetItem,
                               QSplitter, QFrame)
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QPixmap, QColor, QPainter, QPen, QIcon
+from PyQt6.QtGui import QPixmap, QColor, QPainter, QPen, QIcon, QImage
 
 from game.assets_api import CATEGORY_LABELS as _CAT_LIST
 
@@ -164,7 +164,6 @@ class AssetsDock(QDockWidget):
                     data = pix.tobytes("raw", "RGBA")
                     qimg = QImage(data, pix.width, pix.height, QImage.Format.Format_RGBA8888)
                     return QPixmap.fromImage(qimg)
-                from PyQt6.QtGui import QImage
                 if isinstance(pix, QImage):
                     return QPixmap.fromImage(pix)
                 if isinstance(pix, QPixmap):

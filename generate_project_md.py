@@ -10,7 +10,7 @@ from pathlib import Path
 # Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 
-DEFAULT_OUTPUT = "PROJECT.md"
+DEFAULT_OUTPUT = "E://PROJECT.md"
 
 INCLUDED_EXTENSIONS = {
     ".py",

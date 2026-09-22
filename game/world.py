@@ -41,6 +41,8 @@ class World:
         self.kidx = {k: {} for k in ("food", "wood", "stone", "gold", "tool", "shelter")}
         self._kcell = 8
         self.gen = None  # WorldGen instance (worldgen.py)
+        self.rng_fire = np.random.default_rng(11)
+        self._rng_regrow = np.random.default_rng(42)
 
     def set_land(self, mask):
         self.land = mask.astype(np.uint8)
@@ -112,8 +114,6 @@ class World:
                            and self.rng_fire.random() < 0.16:
                             self.fire[ny, nx] = 200
         return int(burning[0].size)
-
-    rng_fire = np.random.default_rng(11)
 
     def _kadd(self, cat, x, y):
         cell = (x // self._kcell, y // self._kcell)
@@ -278,15 +278,15 @@ class World:
             self.heat *= 0.996
             # repousse des souches -> arbre (la pluie et le froid ralentissent)
             slow = 1.0 if clock is None else clock.growth_f
-            reg = np.nonzero(self.regrow > 0)
-            rng = np.random.default_rng(42)
             trees = am.pool("tree")
             if trees:
-                for y, x in zip(*reg):
-                    self.regrow[y, x] -= 3 * slow
-                    if self.regrow[y, x] <= 0:
+                mask = self.regrow > 0
+                if mask.any():
+                    self.regrow[mask] -= 3 * slow
+                    ripe = mask & (self.regrow <= 0)
+                    for y, x in zip(*np.nonzero(ripe)):
                         if self.is_land(x, y) and not self.blocked[y, x] and self.content_at(x, y) < 0:
-                            aid = int(am.pick(trees, rng))
+                            aid = int(am.pick(trees, self._rng_regrow))
                             self.place(int(x), int(y), aid, am, hp=6, solid=True,
                                        size=am.assets[aid].size_tiles)
                             self.regrow[y, x] = 0

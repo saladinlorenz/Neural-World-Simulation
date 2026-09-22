@@ -214,12 +214,13 @@ class MainWindow(QMainWindow):
         # Synchroniser l'état
         self.controller.sync_from_simulation()
 
-        # Mettre à jour les docks (assets seulement 1x par seconde — c'est lent)
-        self._pop_dock.refresh()
-        self._inspector_dock.refresh()
-        self._journal_dock.refresh()
-        self._society_dock.refresh()
-        self._tools_dock.refresh()
+        # Mettre à jour les docks (assets 1x/sec, les autres 4x/sec)
+        if self._tick_count % 4 == 0:
+            self._pop_dock.refresh()
+            self._inspector_dock.refresh()
+            self._journal_dock.refresh()
+            self._society_dock.refresh()
+            self._tools_dock.refresh()
         if self._tick_count % 60 == 0:
             self._assets_dock.refresh()
 

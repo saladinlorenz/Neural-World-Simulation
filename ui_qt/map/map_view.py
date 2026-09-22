@@ -174,7 +174,7 @@ class MapView(QWidget):
                 painter.drawRect(sx, sy, sw, sh)
 
             painter.setPen(QPen(QColor(230, 230, 230)))
-            painter.drawText(bx + 10 + 16 + 8, y + fm.ascent() / 2, label)
+            painter.drawText(QPointF(bx + 10 + 16 + 8, y + fm.ascent() / 2), label)
 
             y += fm.height() + 6
 

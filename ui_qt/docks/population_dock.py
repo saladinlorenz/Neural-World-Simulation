@@ -99,7 +99,7 @@ class PopulationDock(QDockWidget):
                 eid = row.get("eid")
                 if eid is not None:
                     try:
-                        portrait = am.portrait(eid, size=(24, 24))
+                        portrait = am.avatar(eid, size=24)
                         if portrait is not None:
                             portraits[eid] = portrait
                     except Exception:

@@ -2,7 +2,6 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS_DIR = os.path.join(ROOT, "assets")
-MAP_FILE = os.path.join(ROOT, "map", "sea_blue_16000x16000.png")
 
 TILE = 16
 GRID = 1000
@@ -61,7 +60,6 @@ DAYS_PER_SEASON = 5
 SEASONS = ("Printemps", "Été", "Automne", "Hiver")
 DAYS_PER_YEAR = DAYS_PER_SEASON * len(SEASONS)
 DAY_TICKS = TICKS_PER_YEAR // DAYS_PER_YEAR
-NIGHT_START = 0.72          # fraction du jour où la nuit tombe
 
 # ---- âges biologiques (dérivés du calendrier)
 AGE_CHILD_YEARS = 18

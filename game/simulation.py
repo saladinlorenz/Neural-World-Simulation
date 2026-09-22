@@ -680,8 +680,10 @@ class Sim:
         loc = a._loc if hasattr(a, "_loc") else np.zeros(8)
         fx, fy = tx + (a.fx or 1), ty + a.fy
         loc[0] = 1.0 if (0 <= fx < w.g and 0 <= fy < w.g and w.blocked[fy, fx]) else 0.0
-        loc[1] = 1.0 if any(w.content_at(x, y) >= 0 and self.am.assets[w.content_at(x, y)].harvest
-                            for x, y in self._ring(tx, ty)) else 0.0
+        loc[1] = 1.0 if any(
+            (lambda aid: aid >= 0 and self.am.assets[aid].harvest)(w.content_at(x, y))
+            for x, y in self._ring(tx, ty)
+        ) else 0.0
         loc[2] = 1.0 if near_agents else 0.0
         loc[3] = 1.0 if near_sheep else 0.0
         loc[4] = 1.0 if w.near_water(tx, ty) else 0.0
@@ -2630,7 +2632,7 @@ class Sim:
         if len(self.agents) >= MAX_POP or a.energy < 0.55 or a.repro_cd > 0 \
            or a.child or a.age > AGE_ELDER_TICKS:
             return
-        #必须 marié pour avoir un enfant
+        # Doit être marié pour avoir un enfant
         if not a.married or a.partner_id is None:
             return
         mate = self._by_eid(a.partner_id)
@@ -2725,7 +2727,11 @@ class Sim:
         has_shelter = False
         has_food = False
         for dy in range(-6, 7):
+            if has_shelter and has_food:
+                break
             for dx in range(-6, 7):
+                if has_shelter and has_food:
+                    break
                 x, y = mx + dx, my + dy
                 if not (0 <= x < self.w.g and 0 <= y < self.w.g):
                     continue

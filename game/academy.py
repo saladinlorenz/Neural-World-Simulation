@@ -12,6 +12,8 @@ import time
 
 import numpy as np
 
+from .brain import N_IN
+
 
 @dataclass
 class ModelManifest:
@@ -66,7 +68,7 @@ class Academy:
             version=1,
             created_at=time.time(),
             brain_size=int(self.champion_size),
-            input_count=95,
+            input_count=N_IN,
             action_count=15,
             score=float(self.champion_score),
             label=label,
@@ -83,7 +85,7 @@ class Academy:
         data = np.load(path.with_suffix(".npz"))
         info = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
         m = info["manifest"]
-        if m["input_count"] != 95 or m["action_count"] != 15:
+        if m["input_count"] != N_IN or m["action_count"] != 15:
             raise ValueError("Modele incompatible avec le vecteur/action actuel")
         self.champion_params = np.asarray(data["params"], dtype=np.float64)
         self.champion_size = int(m["brain_size"])

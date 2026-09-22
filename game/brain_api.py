@@ -22,7 +22,7 @@ import numpy as np
 from game.brain import (
     REST, SLEEP, EAT, DRINK, HARVEST, DROP, BUILD, GIVE, TAKE, ATTACK,
     FLEE, EXPLORE, TALK, MARK, SOCIAL,
-    ACTION_NAMES, ACTION_COLORS, N_IN, N_OUT,
+    ACTION_NAMES, ACTION_COLORS, ACTION_TRAIT, SIZES, N_IN, N_OUT,
     N_STRATEGIES, N_TARGETS, STRATEGY_NAMES, STRATEGY_COLORS,
     TARGET_NAMES, TARGET_COLORS, IMMEDIAT, PRUDENT, ECONOMIQUE,
     COOPERATIF, EXPLORATION, DEFENSIF,
@@ -168,38 +168,12 @@ def new_brain(n_hid: int = 128,
 
 
 # ---- Déploiement des constantes partagées ----
-# Ces tuples/lists sont aussi définis dans brain.py ; on les réexporte ici
-# afin que les autres couches puissent les importer sans importer brain.py
-# directement (pour éviter toute dépendance circulaire potentielle).
+# Aliases vers brain.py : une seule source de vérité pour les noms,
+# traits et tailles de cerveau.
 
-ACTION_NAMES_EXP = {
-    REST: "Repos", SLEEP: "Dormir", EAT: "Manger", DRINK: "Boire",
-    HARVEST: "Récolter", DROP: "Poser", BUILD: "Construire",
-    GIVE: "Offrir", TAKE: "Prendre", ATTACK: "Attaquer",
-    FLEE: "Fuir", EXPLORE: "Explorer", TALK: "Parler", MARK: "Marquer",
-    SOCIAL: "Rejoindre",
-}
-
-ACTION_TRAIT_EXP = {
-    REST: (8, -0.28),
-    SLEEP: (11, -0.20),
-    EAT: (3, -0.08),
-    DRINK: (3, -0.08),
-    HARVEST: (8, 0.30),
-    DROP: (11, 0.10),
-    BUILD: (8, 0.36),
-    GIVE: (10, 0.48),
-    TAKE: (1, 0.30),
-    ATTACK: (1, 0.42),
-    FLEE: (3, 0.30),
-    EXPLORE: (2, 0.44),
-    TALK: (0, 0.42),
-    MARK: (9, 0.22),
-    SOCIAL: (0, 0.40),
-}
-
-SIZES_EXP = (25, 50, 75, 100, 128, 256, 512, 768, 1000)
-
+ACTION_NAMES_EXP = ACTION_NAMES
+ACTION_TRAIT_EXP = ACTION_TRAIT
+SIZES_EXP = SIZES
 ACTION_COLORS_EXP = ACTION_COLORS
 
 
