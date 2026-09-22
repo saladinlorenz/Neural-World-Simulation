@@ -1,4 +1,6 @@
 """WorldOverlay — couches de visualisation superposées à la carte."""
+import math
+
 from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import QColor, QPen, QBrush
 
@@ -43,8 +45,20 @@ def _hex_to_qcolor(h):
 
 
 class WorldOverlay:
+    #: Budget max d'itérations Python par frame pour les boucles tuile par
+    #: tuile. Au-delà, on sous-échantillonne : sans cette limite, un overlay
+    #: au zoom par défaut (100 000+ tuiles visibles) gèle l'interface.
+    TILE_LOOP_BUDGET = 40000
+
     def __init__(self):
         pass
+
+    @classmethod
+    def _tile_step(cls, x0, y0, x1, y1):
+        count = max(1, (x1 - x0) * (y1 - y0))
+        if count <= cls.TILE_LOOP_BUDGET:
+            return 1
+        return max(1, int(math.sqrt(count / cls.TILE_LOOP_BUDGET)))
 
     def mode_label(self, mode):
         return _MODE_LABELS.get(mode, mode)
@@ -78,11 +92,12 @@ class WorldOverlay:
 
     def _paint_danger(self, painter, transform, sim, sw, sh):
         w = sim.w
-        x0, y0, x1, y1 = transform.visible_tiles(TILE, GRID)
-        ts = max(2, int(TILE * transform.zoom))
+        x0, y0, x1, y1 = transform.visible_tiles(TILE, GRID, sw, sh)
+        step = self._tile_step(x0, y0, x1, y1)
+        ts = max(2, int(TILE * transform.zoom) * step)
         painter.setPen(QPen(QColor(0, 0, 0), 0))
-        for ty in range(y0, y1):
-            for tx in range(x0, x1):
+        for ty in range(y0, y1, step):
+            for tx in range(x0, x1, step):
                 if not (0 <= tx < w.g and 0 <= ty < w.g):
                     continue
                 danger = 0.0
@@ -100,11 +115,12 @@ class WorldOverlay:
 
     def _paint_ressources(self, painter, transform, sim, sw, sh):
         w = sim.w
-        x0, y0, x1, y1 = transform.visible_tiles(TILE, GRID)
-        ts = max(2, int(TILE * transform.zoom))
+        x0, y0, x1, y1 = transform.visible_tiles(TILE, GRID, sw, sh)
+        step = self._tile_step(x0, y0, x1, y1)
+        ts = max(2, int(TILE * transform.zoom) * step)
         painter.setPen(QPen(QColor(0, 0, 0), 0))
-        for ty in range(y0, y1):
-            for tx in range(x0, x1):
+        for ty in range(y0, y1, step):
+            for tx in range(x0, x1, step):
                 if not (0 <= tx < w.g and 0 <= ty < w.g):
                     continue
                 res = float(w.regrow[ty, tx]) if hasattr(w, "regrow") else 0.0
@@ -118,8 +134,9 @@ class WorldOverlay:
 
     def _paint_memoire(self, painter, transform, sim, sw, sh):
         w = sim.w
-        x0, y0, x1, y1 = transform.visible_tiles(TILE, GRID)
-        ts = max(2, int(TILE * transform.zoom))
+        x0, y0, x1, y1 = transform.visible_tiles(TILE, GRID, sw, sh)
+        step = self._tile_step(x0, y0, x1, y1)
+        ts = max(2, int(TILE * transform.zoom) * step)
         painter.setPen(QPen(QColor(255, 255, 100), 1))
         painter.setBrush(QBrush(QColor(255, 255, 100, 40)))
         for agent in sim.agents:
@@ -134,8 +151,8 @@ class WorldOverlay:
             sx, sy = transform.to_screen(agent.x, agent.y)
             if -20 < sx < sw + 20 and -20 < sy < sh + 20:
                 painter.drawEllipse(QPointF(sx, sy), 12, 12)
-        for ty in range(y0, y1):
-            for tx in range(x0, x1):
+        for ty in range(y0, y1, step):
+            for tx in range(x0, x1, step):
                 if not (0 <= tx < w.g) or not (0 <= ty < w.g):
                     continue
                 sx, sy = transform.to_screen(tx * TILE, ty * TILE)

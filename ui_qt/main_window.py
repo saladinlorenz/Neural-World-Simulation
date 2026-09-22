@@ -44,6 +44,7 @@ class MainWindow(QMainWindow):
 
     def _setup_toolbar(self):
         tb = QToolBar("Controle")
+        tb.setObjectName("toolbar_controle")
         tb.setMovable(False)
         self.addToolBar(tb)
 
@@ -115,9 +116,10 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
         # Overlay mode selector
         from PyQt6.QtWidgets import QComboBox
+        overlay = WorldOverlay()
         self._overlay_combo = QComboBox()
         for m in ["normal", "danger", "ressources", "memoire", "relations", "besoins", "anima"]:
-            self._overlay_combo.addItem(WorldOverlay().mode_label(m) if hasattr(WorldOverlay, 'mode_label') else m, m)
+            self._overlay_combo.addItem(overlay.mode_label(m), m)
         self._overlay_combo.currentIndexChanged.connect(self._on_overlay_change)
         tb.addWidget(QLabel("Vue: "))
         tb.addWidget(self._overlay_combo)
@@ -136,20 +138,24 @@ class MainWindow(QMainWindow):
     def _setup_docks(self):
         # Dock Habitants (gauche)
         self._pop_dock = PopulationDock(self.controller, self)
+        self._pop_dock.setObjectName("dock_population")
         self._pop_dock.agent_selected.connect(self._on_agent_selected)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._pop_dock)
 
         # Dock Inspecteur (droite)
         self._inspector_dock = InspectorDock(self.controller, self)
+        self._inspector_dock.setObjectName("dock_inspecteur")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._inspector_dock)
 
         # Dock Société (droite, tabulé avec inspecteur)
         self._society_dock = SocietyDock(self.controller, self)
+        self._society_dock.setObjectName("dock_societe")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._society_dock)
         self.tabifyDockWidget(self._inspector_dock, self._society_dock)
 
         # Dock Assets (gauche, tabulé avec habitants)
         self._assets_dock = AssetsDock(self.controller, self)
+        self._assets_dock.setObjectName("dock_assets")
         if self.am:
             self._assets_dock.set_asset_manager(self.am)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._assets_dock)
@@ -157,22 +163,27 @@ class MainWindow(QMainWindow):
 
         # Dock Outils (gauche)
         self._tools_dock = ToolsDock(self.controller, self)
+        self._tools_dock.setObjectName("dock_outils")
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._tools_dock)
 
         # Dock Journal (bas)
         self._journal_dock = JournalDock(self.controller, self)
+        self._journal_dock.setObjectName("dock_journal")
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._journal_dock)
 
         # Studio docks
         self._param_dock = ParameterDock(self.controller, self)
+        self._param_dock.setObjectName("dock_parametres")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._param_dock)
         self._param_dock.hide()
 
         self._timeline_dock = TimelineDock(self.controller, self)
+        self._timeline_dock.setObjectName("dock_timeline")
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._timeline_dock)
         self._timeline_dock.hide()
 
         self._lab_dock = LaboratoryDock(self.controller, self)
+        self._lab_dock.setObjectName("dock_laboratoire")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._lab_dock)
         self._lab_dock.hide()
 
@@ -192,9 +203,10 @@ class MainWindow(QMainWindow):
         self._status.addWidget(self._status_label)
 
     def _setup_timer(self):
+        from game.config import FPS
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(16)  # ~60 FPS
+        self._timer.start(max(1, 1000 // FPS))
         self._tick_count = 0
 
     def _tick(self):
@@ -225,7 +237,8 @@ class MainWindow(QMainWindow):
             self._assets_dock.refresh()
 
         # Mettre à jour la carte
-        self._map.update()
+        if self._tick_count % 2 == 0:
+            self._map.update()
 
         # Mettre à jour la barre d'état (4x par seconde suffit)
         if self._tick_count % 4 == 0:
@@ -264,8 +277,8 @@ class MainWindow(QMainWindow):
     def _on_load(self):
         dlg = SaveDialog(self.controller, mode="load", parent=self)
         if dlg.exec():
-            new_sim = self.controller.sim
             self.controller.sync_from_simulation()
+            self._map.invalidate_all_caches()
             self._status.showMessage("Partie chargee", 3000)
 
     def _on_agent_selected(self, eid):

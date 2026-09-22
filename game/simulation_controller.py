@@ -75,6 +75,12 @@ class SimulationController:
     def execute(self, command: dict) -> dict[str, Any]:
         """Exécute une commande et synchronise l'état UI."""
         result = execute_command(self.sim, command)
+        if result.get("ok") and command.get("kind") == "load" and "sim" in result:
+            # Le chargement remplace la simulation active : sans cela,
+            # la partie chargée était silencieusement ignorée.
+            self.sim = result["sim"]
+            if result.get("cam") is not None:
+                self.camera = result["cam"]
         self.sync_from_simulation()
         return result
 
