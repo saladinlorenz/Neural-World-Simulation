@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                               QComboBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from game.config import MONSTER_KINDS
+from game.config import BLOCK_MATERIALS, MONSTER_KINDS
 from game.ui_registry import MODES, TAB_HINTS
 
 #: Libellés français des types de monstres.
@@ -15,11 +15,6 @@ MONSTER_LABELS = {
     "snake": "Serpent",
     "beatle": "Scarabée",
 }
-
-#: Matériaux réellement supportés par ``Sim.do_build_block_player`` : le
-#: moteur ne connaît que les rôles ``block_wood`` et ``block_stone``, donc
-#: proposer « or » ou « graine » produirait un bloc de bois en silence.
-BLOCK_MATERIALS = ("bois", "pierre")
 
 
 class ToolsDock(QDockWidget):

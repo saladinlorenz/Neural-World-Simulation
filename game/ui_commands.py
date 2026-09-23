@@ -751,12 +751,12 @@ def _ui_set_brush_size(ui_state, cmd):
 
 
 def _ui_set_block_material(ui_state, cmd):
-    from .storage import MATERIALS
+    from .config import BLOCK_MATERIALS
     material = str(cmd.get("material", "bois"))
-    if material not in MATERIALS:
+    if material not in BLOCK_MATERIALS:
         return {"ok": False,
-                "error": f"Matériau inconnu: {material} "
-                         f"(disponibles: {', '.join(sorted(MATERIALS))})"}
+                "error": f"Matériau non constructible: {material} "
+                         f"(disponibles: {', '.join(BLOCK_MATERIALS)})"}
     ui_state.block_material = material
     return {"ok": True, "material": material}
 

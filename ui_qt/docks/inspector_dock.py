@@ -27,16 +27,30 @@ class InspectorDock(QDockWidget):
         self._layout.setContentsMargins(8, 8, 8, 8)
         self._layout.setSpacing(6)
 
-        # === Identite ===
+        # === Identite (portrait + etat civil) ===
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        self._portrait = QLabel()
+        self._portrait.setFixedSize(52, 52)
+        self._portrait.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._portrait.setStyleSheet(
+            "background-color: #1a2332; border: 1px solid #39424f; border-radius: 4px;"
+        )
+        head.addWidget(self._portrait)
+
+        head_texts = QVBoxLayout()
+        head_texts.setSpacing(2)
         self._identity_label = QLabel("Aucun agent selectionne")
         self._identity_label.setWordWrap(True)
         self._identity_label.setStyleSheet("font-size: 14px; font-weight: bold;")
-        self._layout.addWidget(self._identity_label)
+        head_texts.addWidget(self._identity_label)
 
         # === Etat de base ===
         self._state_label = QLabel("")
         self._state_label.setWordWrap(True)
-        self._layout.addWidget(self._state_label)
+        head_texts.addWidget(self._state_label)
+        head.addLayout(head_texts, 1)
+        self._layout.addLayout(head)
 
         # === Groupes d'info ===
         self._create_info_groups()
@@ -115,10 +129,18 @@ class InspectorDock(QDockWidget):
         self._belief_label.setWordWrap(True)
         self._belief_label.setStyleSheet("font-size: 11px;")
         mem_layout.addWidget(self._belief_label)
+        self._spatial_label = QLabel("")
+        self._spatial_label.setWordWrap(True)
+        self._spatial_label.setStyleSheet("font-size: 11px;")
+        mem_layout.addWidget(self._spatial_label)
         self._autobio_label = QLabel("")
         self._autobio_label.setWordWrap(True)
         self._autobio_label.setStyleSheet("font-size: 11px;")
         mem_layout.addWidget(self._autobio_label)
+        self._life_label = QLabel("")
+        self._life_label.setWordWrap(True)
+        self._life_label.setStyleSheet("font-size: 11px;")
+        mem_layout.addWidget(self._life_label)
         self._layout.addWidget(self._memory_group)
 
         # === Relations ===
@@ -144,6 +166,7 @@ class InspectorDock(QDockWidget):
             ("cog", "Cognition", C_COG),
             ("perso", "Personnalite", C_PERSO),
             ("emo", "Emotions", C_EMO),
+            ("skills", "Competences", C_EXP),
         ]:
             group = QGroupBox(title)
             group.setStyleSheet(f"QGroupBox {{ font-weight: bold; color: {_hex(color)}; }}")
@@ -186,6 +209,21 @@ class InspectorDock(QDockWidget):
                 })
             )
         self._layout.addWidget(needs_group)
+
+        # === Famille ===
+        family_group = QGroupBox("Famille")
+        family_group.setStyleSheet(
+            f"QGroupBox {{ font-weight: bold; color: {_hex(C_PERSO)}; }}"
+        )
+        fam_layout = QVBoxLayout(family_group)
+        fam_layout.setContentsMargins(8, 16, 8, 8)
+        fam_layout.setSpacing(2)
+        self._family_label = QLabel("")
+        self._family_label.setWordWrap(True)
+        self._family_label.setStyleSheet("font-size: 11px;")
+        fam_layout.addWidget(self._family_label)
+        self._layout.addWidget(family_group)
+        self._groups["family"] = (family_group, None)
 
     def refresh(self):
         snap = selected_agent_snapshot(self.controller.sim, self.controller.ui_state)

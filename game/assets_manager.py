@@ -513,6 +513,10 @@ class AssetManager:
         for dp, _dn, fn in os.walk(ASSETS_DIR):
             if "__MACOSX" in dp or "_merged" in dp:
                 continue
+            # os.walk suit l'ordre du systeme de fichiers : sans tri des
+            # sous-dossiers, les ``aid`` positionnels changeraient d'une
+            # machine a l'autre et decaleraient les sauvegardes.
+            _dn[:] = sorted(_dn)
             for f in sorted(fn):
                 if f.startswith("._") or not f.lower().endswith(IMG_EXT):
                     continue

@@ -123,6 +123,7 @@ def agent_snapshot(sim, agent) -> dict[str, Any] | None:
         "age_ans": float(agent.age_years),
         "stage": agent.stage,
         "mort_naturelle_ans": float(agent.natural_death_age / 43200.0),
+        "avatar_idx": int(getattr(agent, "avatar", 0)),
         "position": {"x": float(agent.x), "y": float(agent.y),
                      "tx": int(agent.tx), "ty": int(agent.ty)},
         "etat": getattr(agent, "state", "idle"),

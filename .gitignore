@@ -12,6 +12,7 @@ venv/
 *.db
 *.sqlite
 *.log
+*.err
 *.bak
 *.tmp
 *.swp
@@ -21,3 +22,10 @@ venv/
 *.sublime-*
 .DS_Store
 Thumbs.db
+# Simulation saves & backups (large binaries, machine-local)
+data/saves/
+data/backups/
+*.pkl
+*.pickle
+# User-created custom tools (machine-local creations)
+assets/tools_custom/

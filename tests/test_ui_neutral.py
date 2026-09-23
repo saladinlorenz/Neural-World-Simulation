@@ -324,9 +324,12 @@ class TestUIStateCommands(unittest.TestCase):
         result = self._ui({"kind": "set_block_material", "material": "pierre"})
         self.assertTrue(result["ok"])
         self.assertEqual(self.state.block_material, "pierre")
-        bad = self._ui({"kind": "set_block_material", "material": "diamant"})
-        self.assertFalse(bad["ok"])
-        self.assertIn("error", bad)
+        for bad_material in ("diamant", "or"):
+            bad = self._ui({"kind": "set_block_material",
+                            "material": bad_material})
+            self.assertFalse(bad["ok"])
+            self.assertIn("error", bad)
+        self.assertEqual(self.state.block_material, "pierre")
 
     def test_set_overlay(self):
         result = self._ui({"kind": "set_overlay", "overlay": "relations"})

@@ -91,6 +91,11 @@ PERSONALITY_DEFS = ["sociabilité", "agressivité", "curiosité", "prudence", "p
 #: l'affichage à 200 ; les exports peuvent demander davantage.
 JOURNAL_MAXLEN = 2000
 
+#: Matériaux que ``Sim.do_build_block_player`` sait réellement poser : le
+#: moteur ne connaît que les rôles ``block_wood`` et ``block_stone``, donc
+#: proposer « or » ou « graine » produirait un bloc de bois en silence.
+BLOCK_MATERIALS = ("bois", "pierre")
+
 #: Types de monstres que ``Sim.spawn_monster`` peut produire. Source unique :
 #: l'UI valide ses choix contre cette liste.
 MONSTER_KINDS = ("bear", "wolf", "snake", "beatle")

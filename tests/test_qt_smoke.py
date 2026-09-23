@@ -135,6 +135,67 @@ class TestQtSmoke(unittest.TestCase):
         self.controller.sim.speed = 2
 
 
+class TestCreationDialogs(unittest.TestCase):
+    """Lot D : dialogue de création d'habitant et éditeur d'outil."""
+
+    @classmethod
+    def setUpClass(cls):
+        from PyQt6.QtWidgets import QApplication
+        cls.app = QApplication.instance()
+        if cls.app is None:
+            cls.app = QApplication(sys.argv)
+        cls.controller = _make_controller()
+
+    def test_spawn_dialog_accept_arms_placement(self):
+        from ui_qt.dialogs import SpawnAgentDialog
+        am = self.controller.sim.am
+        dlg = SpawnAgentDialog(self.controller, am)
+        opts = dlg.options()
+        self.assertEqual(len(opts["body"]), 5)
+        self.assertEqual(len(opts["cog"]), 4)
+        self.assertEqual(len(opts["personality"]), 12)
+        self.assertEqual(len(opts["emotions"]), 8)
+        self.assertEqual(len(opts["needs"]), 7)
+
+        ui = self.controller.ui_state
+        before_mode = ui.active_mode
+        dlg._name.setText("Smoke")
+        dlg.accept()
+        self.assertEqual(ui.active_mode, "agent")
+        self.assertIsNotNone(ui.pending_spawn_agent)
+        self.assertEqual(ui.pending_spawn_agent["name"], "Smoke")
+        self.assertEqual(ui.tpl_personality, opts["personality"])
+
+        # Annuler un second dialogue ne crée rien et n'écrase pas le pending.
+        population = len(self.controller.sim.agents)
+        SpawnAgentDialog(self.controller, am).reject()
+        self.assertEqual(len(self.controller.sim.agents), population)
+        self.assertIsNotNone(ui.pending_spawn_agent)
+
+        ui.pending_spawn_agent = None
+        ui.active_mode = before_mode
+
+    def test_tool_editor_saves_and_cleans_up(self):
+        import os
+
+        from ui_qt.dialogs import ToolEditorDialog
+        dlg = ToolEditorDialog(self.controller)
+        dlg._name.setText("smoke")
+        dlg._canvas.pixels[0] = (200, 80, 80, 255)
+        dlg._canvas.pixels[17] = (60, 60, 66, 255)
+        dlg._on_save()
+        try:
+            self.assertTrue(dlg.result())
+            am = self.controller.sim.am
+            adef = am.assets[int(dlg.created_aid)]
+            self.assertTrue(adef.tool)
+        finally:
+            # Le catalogue est positionnel : un PNG de test oublié décalerait
+            # les aid au prochain démarrage.
+            if getattr(dlg, "created_path", None):
+                os.remove(dlg.created_path)
+
+
 class TestMapAPI(unittest.TestCase):
     """Tests de mapapi.py (Lot 10)."""
 
