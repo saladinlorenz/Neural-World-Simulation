@@ -31,12 +31,14 @@ from .config import (CLAN_COLORS, GRID, MAX_POP, MAX_SHEEP, TILE, WORLD_PX,
                       HUNGER_RATE, THIRST_RATE, SLEEP_RATE_D, SLEEP_RATE_N,
                       E_DRAIN, MOVE_DRAIN, REST_GAIN, SLEEP_GAIN, SHELTER_BONUS,
                       STARVE_HP, THIRST_HP, LOWE_HP, INV_CAP,
-                      ATTACK_DMG, ATTACK_DMG_TOOL, WORK_TICKS, PERCEPT_CELLS)
+                      ATTACK_DMG, ATTACK_DMG_TOOL, WORK_TICKS, PERCEPT_CELLS,
+                      JOURNAL_MAXLEN, MONSTER_KINDS, MAX_MONSTERS)
 from .entities import Being, Sheep, Monster, ClanKnowledge
 from .world import Item
 from .universal_knowledge import UniversalKnowledge
 from .academy import Academy
 from .lab import LabRecorder
+from .history import WorldHistory
 from .construction import ConstructionSite, blueprint_from_name
 
 MAT_AIDS = {"bois": "item_wood", "pierre": "stone_res", "or": "gold_pile"}
@@ -46,6 +48,7 @@ class Sim:
     def __init__(self, world, am, seed=7):
         self.w = world
         self.am = am
+        self.seed = int(seed)
         self.rng = np.random.default_rng(seed)
         self.clock = Clock(np.random.default_rng(seed + 1))
         self.agents: list[Being] = []
@@ -67,7 +70,10 @@ class Sim:
         self.debug_action_counts = {}
         self.debug_failure_counts = {"path": 0, "feasible": 0, "affordance": 0}
         self.debug_anima_counts = {"episodes": 0, "intentions": 0, "plans": 0}
-        self.journal = deque(maxlen=120)
+        self.journal = deque(maxlen=JOURNAL_MAXLEN)
+        #: Habitants décédés récemment. ``tick()`` purge les cadavres de
+        #: ``agents`` : sans ce tampon, l'UI ne peut plus proposer « Tous ».
+        self.deceased = deque(maxlen=200)
         self.society = []
         self.pop_hist = deque(maxlen=220)
         self._recent_attacks = deque(maxlen=400)
@@ -81,6 +87,7 @@ class Sim:
         self.universal_knowledge = UniversalKnowledge(omniscient=False)
         self.academy = Academy()
         self.lab = LabRecorder()
+        self.history = WorldHistory()
         from .social_memory import SocialMemory
         self.social_memory = SocialMemory()
 
@@ -164,9 +171,8 @@ class Sim:
         self._entity_cells[s.eid] = (cx, cy)
 
     def spawn_monster(self, x=None, y=None, kind=None):
-        if len(self.monsters) >= 20:
-            return
-        kinds = ["bear", "wolf", "snake", "beatle"]
+        if len(self.monsters) >= MAX_MONSTERS:
+            return None
         for _ in range(30):
             if x is None:
                 tx = int(self.rng.integers(6, GRID - 6))
@@ -176,13 +182,14 @@ class Sim:
                 ty = min(GRID - 2, max(1, int(y // TILE)))
             if self.w.land[ty, tx] and not self.w.blocked[ty, tx]:
                 break
-        k = kind or self.rng.choice(kinds)
+        k = kind or self.rng.choice(MONSTER_KINDS)
         m = Monster(self.next_eid, tx * TILE + 8, ty * TILE + 8, kind=k)
         self.next_eid += 1
         self.monsters.append(m)
         cx, cy = int(m.x // 32), int(m.y // 32)
         self.grid_bucket.setdefault((cx, cy), []).append(m)
         self._entity_cells[m.eid] = (cx, cy)
+        return m
 
     def remove_agent(self, a, name="le gardien"):
         """Retrait manuel depuis le tableau de bord : l'habitant quitte le monde
@@ -400,6 +407,7 @@ class Sim:
         if burned and w.tick % 30 == 0:
             self.stats["fires"] += 1
         if self.clock.lightning():
+            self.clock.lightning_tick = w.tick
             for _ in range(3):
                 tx, ty = int(self.rng.integers(GRID)), int(self.rng.integers(GRID))
                 if w.land[ty, tx] and w.content_at(tx, ty) >= 0:
@@ -425,7 +433,7 @@ class Sim:
         for m in self.monsters:
             if m.alive:
                 self._monster(m)
-        self.agents = [a for a in self.agents if a.alive]
+        self._forget_dead_agents()
         self.sheep = [s for s in self.sheep if s.alive]
         self.monsters = [m for m in self.monsters if m.alive]
         # nettoyage grid_bucket : entités mortes
@@ -2980,13 +2988,21 @@ class Sim:
         return not w.blocked[y0:y1 + 1, x0:x1 + 1].any()
 
     # ------------------------------------------------------------------ appel global
+    def _forget_dead_agents(self):
+        """Purge les cadavres de ``agents`` en gardant une fiche pour l'UI."""
+        if any(not a.alive for a in self.agents):
+            from .diagnostics import deceased_row
+            for a in self.agents:
+                if not a.alive:
+                    self.deceased.append(deceased_row(self, a))
+            self.agents = [a for a in self.agents if a.alive]
+
     def tick(self):
         self.step()
         for a in list(self.agents):
             if a.alive:
                 self._reproduce(a)
-        if any(not a.alive for a in self.agents):
-            self.agents = [a for a in self.agents if a.alive]
+        self._forget_dead_agents()
 
     def natural_pop(self):
         return len(self.agents), len(self.sheep), len(self.w.items)

@@ -149,6 +149,12 @@ def save_game(sim, cam=None, slot=0):
         data["gen_carved"] = w.gen.carved
         data["gen_moisture"] = w.gen.moisture
         data["gen_g"] = w.gen.g
+        # métadonnées worldgen — sans elles, le WorldGen rechargé repart avec
+        # des valeurs par défaut (seed/période) incohérentes avec le terrain
+        data["gen_seed"] = int(w.gen.seed)
+        data["gen_tile_period"] = int(w.gen.tile_period)
+        data["gen_ridge_width"] = int(w.gen.ridge_width)
+        data["gen_version"] = int(w.gen.version)
     # --- camera ---
     if cam is not None:
         data["cam_x"] = cam.x
@@ -276,6 +282,10 @@ def load_game(am, slot=0):
             shade=data["gen_shade"],
             carved=data["gen_carved"],
             moisture=data["gen_moisture"],
+            tile_period=int(data.get("gen_tile_period", 250)),
+            ridge_width=int(data.get("gen_ridge_width", 55)),
+            seed=int(data.get("gen_seed", 42)),
+            version=int(data.get("gen_version", 0)),
         )
     else:
         w.gen = None

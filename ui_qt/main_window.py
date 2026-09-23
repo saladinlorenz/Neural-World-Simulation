@@ -1,6 +1,7 @@
 """MainWindow — QMainWindow principale de l'interface PyQt6."""
 from PyQt6.QtWidgets import (QMainWindow, QToolBar, QLabel,
-                              QSpinBox, QStatusBar, QPushButton)
+                              QSpinBox, QStatusBar, QPushButton,
+                              QInputDialog, QMessageBox)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
 
@@ -13,7 +14,8 @@ from ui_qt.docks.journal_dock import JournalDock
 from ui_qt.docks.society_dock import SocietyDock
 from ui_qt.docks.assets_dock import AssetsDock
 from ui_qt.docks.tools_dock import ToolsDock
-from ui_qt.dialogs import SaveDialog
+from ui_qt.docks.tile_dock import TileDock
+from ui_qt.dialogs import SaveDialog, SpawnAgentDialog, ToolEditorDialog
 from ui_qt.theme.theme import apply_theme
 from ui_qt.studio.parameter_dock import ParameterDock
 from ui_qt.studio.scenario_dialog import ScenarioDialog
@@ -37,8 +39,10 @@ class MainWindow(QMainWindow):
 
         self._setup_toolbar()
         self._setup_central()
-        self._setup_docks()
+        # La barre d'état porte le canal d'erreur : elle doit exister avant
+        # les docks, dont la construction peut déjà émettre des commandes.
         self._setup_statusbar()
+        self._setup_docks()
         self._setup_timer()
         self._restore_settings()
 
@@ -74,16 +78,49 @@ class MainWindow(QMainWindow):
 
         # Spawn
         spawn_btn = QAction("+ Habitants", self)
-        spawn_btn.triggered.connect(lambda: self.controller.execute({"kind": "spawn_agent"}))
+        spawn_btn.triggered.connect(
+            lambda: self.report_command_result(
+                self.controller.execute({"kind": "spawn_agent"})))
         tb.addAction(spawn_btn)
 
         spawn_sheep = QAction("+ Mouton", self)
-        spawn_sheep.triggered.connect(lambda: self.controller.execute({"kind": "spawn_sheep"}))
+        spawn_sheep.triggered.connect(
+            lambda: self.report_command_result(
+                self.controller.execute({"kind": "spawn_sheep"})))
         tb.addAction(spawn_sheep)
 
         spawn_monster = QAction("+ Monstre", self)
-        spawn_monster.triggered.connect(lambda: self.controller.execute({"kind": "spawn_monster"}))
+        spawn_monster.setToolTip(
+            "Type de monstre : aléatoire si aucun n'est choisi dans Outils")
+        spawn_monster.triggered.connect(self._on_spawn_monster)
         tb.addAction(spawn_monster)
+
+        tb.addSeparator()
+
+        spawn_custom = QAction("Créer un habitant...", self)
+        spawn_custom.setShortcut("Ctrl+H")
+        spawn_custom.setToolTip("Sexe, clan, classe, cerveau, energie, nom et "
+                                "gabarits : le prochain clic sur la carte pose "
+                                "cet habitant.")
+        spawn_custom.triggered.connect(self._open_spawn_dialog)
+        tb.addAction(spawn_custom)
+
+        tool_editor = QAction("Editeur d'outil...", self)
+        tool_editor.setToolTip("Dessine un outil 16x16 et l'enregistre au catalogue")
+        tool_editor.triggered.connect(self._open_tool_editor)
+        tb.addAction(tool_editor)
+
+        tb.addSeparator()
+
+        undo_action = QAction("Annuler", self)
+        undo_action.setShortcut("Ctrl+Z")
+        undo_action.triggered.connect(self._on_undo)
+        tb.addAction(undo_action)
+
+        redo_action = QAction("Retablir", self)
+        redo_action.setShortcut("Ctrl+Shift+Z")
+        redo_action.triggered.connect(self._on_redo)
+        tb.addAction(redo_action)
 
         tb.addSeparator()
 
@@ -95,9 +132,15 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        # Sauvegarde
-        save_action = QAction("Sauvegarder (F5)", self)
-        save_action.setShortcut("F5")
+        # Sauvegarde : F5 = slot 0 direct, Maj+F5 = dialogue
+        quick_action = QAction("Quicksave", self)
+        quick_action.setShortcut("F5")
+        quick_action.setToolTip("Sauvegarde immediate dans le slot 0")
+        quick_action.triggered.connect(self._on_quicksave)
+        tb.addAction(quick_action)
+
+        save_action = QAction("Sauvegarder sous...", self)
+        save_action.setShortcut("Shift+F5")
         save_action.triggered.connect(self._on_save)
         tb.addAction(save_action)
 
@@ -116,9 +159,12 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
         # Overlay mode selector
         from PyQt6.QtWidgets import QComboBox
+        from ui_qt.studio.world_overlay import MODES as OVERLAY_MODES
         overlay = WorldOverlay()
         self._overlay_combo = QComboBox()
-        for m in ["normal", "danger", "ressources", "memoire", "relations", "besoins", "anima"]:
+        # Les dix modes sont implémentés : n'en lister que sept rendait
+        # culture / institutions / territoires inatteignables.
+        for m in OVERLAY_MODES:
             self._overlay_combo.addItem(overlay.mode_label(m), m)
         self._overlay_combo.currentIndexChanged.connect(self._on_overlay_change)
         tb.addWidget(QLabel("Vue: "))
@@ -131,8 +177,22 @@ class MainWindow(QMainWindow):
             btn.clicked.connect(lambda checked, s=speed: self._set_speed(s))
             tb.addWidget(btn)
 
+        # Raccourcis clavier 1..8 : une touche = une vitesse
+        for speed in range(1, 9):
+            action = QAction("Vitesse %d" % speed, self)
+            action.setShortcut(str(speed))
+            action.triggered.connect(lambda checked, s=speed: self._set_speed(s))
+            self.addAction(action)
+
+        # Nouveau monde (destructif : confirme par _on_new_world)
+        new_world = QAction("Nouveau monde...", self)
+        new_world.setShortcut("Ctrl+N")
+        new_world.triggered.connect(self._on_new_world)
+        tb.addAction(new_world)
+
     def _setup_central(self):
         self._map = MapView(self.controller, self)
+        self._map.command_result.connect(self.report_command_result)
         self.setCentralWidget(self._map)
 
     def _setup_docks(self):
@@ -153,6 +213,12 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._society_dock)
         self.tabifyDockWidget(self._inspector_dock, self._society_dock)
 
+        # Dock Tuile (droite, tabulé avec inspecteur) : examinateur de tuile
+        self._tile_dock = TileDock(self.controller, self)
+        self._tile_dock.setObjectName("dock_tuile")
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._tile_dock)
+        self.tabifyDockWidget(self._inspector_dock, self._tile_dock)
+
         # Dock Assets (gauche, tabulé avec habitants)
         self._assets_dock = AssetsDock(self.controller, self)
         self._assets_dock.setObjectName("dock_assets")
@@ -160,10 +226,12 @@ class MainWindow(QMainWindow):
             self._assets_dock.set_asset_manager(self.am)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._assets_dock)
         self.tabifyDockWidget(self._pop_dock, self._assets_dock)
+        self._assets_dock.asset_selected.connect(self._on_asset_selected)
 
         # Dock Outils (gauche)
         self._tools_dock = ToolsDock(self.controller, self)
         self._tools_dock.setObjectName("dock_outils")
+        self._tools_dock.mode_changed.connect(self._on_mode_changed)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._tools_dock)
 
         # Dock Journal (bas)
@@ -196,11 +264,159 @@ class MainWindow(QMainWindow):
         studio_menu.addAction("Comparaison A/B", self._open_comparison)
         studio_menu.addAction("Configurer l'overlay", self._open_overlay_config)
 
+        # Menu Vue : sans lui, un dock ferme etait definitivement perdu.
+        vue = self.menuBar().addMenu("Vue")
+        for dock, title in (
+            (self._pop_dock, "Habitants"),
+            (self._assets_dock, "Assets"),
+            (self._tools_dock, "Outils"),
+            (self._inspector_dock, "Inspecteur"),
+            (self._tile_dock, "Tuile"),
+            (self._society_dock, "Societe"),
+            (self._journal_dock, "Journal"),
+            (self._param_dock, "Parametres"),
+            (self._timeline_dock, "Timeline"),
+            (self._lab_dock, "Laboratoire"),
+        ):
+            vue.addAction(self._dock_action(dock, title))
+        vue.addSeparator()
+        self._grid_action = QAction("Grille de tuiles", self)
+        self._grid_action.setCheckable(True)
+        self._grid_action.setChecked(self._map.debug_show_grid)
+        self._grid_action.triggered.connect(self._toggle_grid)
+        vue.addAction(self._grid_action)
+        self._legend_action = QAction("Legende", self)
+        self._legend_action.setCheckable(True)
+        self._legend_action.setChecked(self._map.show_legend)
+        self._legend_action.triggered.connect(self._toggle_legend)
+        vue.addAction(self._legend_action)
+
     def _setup_statusbar(self):
         self._status = QStatusBar()
         self.setStatusBar(self._status)
         self._status_label = QLabel()
         self._status.addWidget(self._status_label)
+        self._fps_label = QLabel()
+        self._status.addPermanentWidget(self._fps_label)
+        self._seed_label = QLabel()
+        self._status.addPermanentWidget(self._seed_label)
+        self._error_label = QLabel()
+        self._error_label.setStyleSheet("color: #e08a7a;")
+        self._status.addPermanentWidget(self._error_label)
+        self._error_seq = 0
+
+    def report_command_result(self, result):
+        """Canal d'erreur visible : aucun retour de commande n'est jeté."""
+        if not isinstance(result, dict):
+            return result
+        if result.get("ok"):
+            self._error_label.clear()
+        else:
+            self._error_seq += 1
+            seq = self._error_seq
+            self._error_label.setText(str(result.get("error", "Action refusée")))
+            QTimer.singleShot(4000, lambda s=seq: self._expire_error(s))
+        return result
+
+    def _expire_error(self, seq):
+        # Un message plus récent ne doit pas être effacé par un ancien timer.
+        if seq == self._error_seq:
+            self._error_label.clear()
+
+    def _on_spawn_monster(self):
+        cmd = {"kind": "spawn_monster"}
+        monster_kind = getattr(self.controller.ui_state, "monster_kind", "")
+        if monster_kind:
+            cmd["monster_kind"] = monster_kind
+        self.report_command_result(self.controller.execute(cmd))
+
+    def _open_spawn_dialog(self):
+        dlg = SpawnAgentDialog(self.controller, self.am, self)
+        if not dlg.exec():
+            return
+        self._tools_dock.refresh()
+        self._status.showMessage(
+            "Cliquez sur la carte pour poser l'habitant defini", 6000)
+
+    def _open_tool_editor(self):
+        dlg = ToolEditorDialog(self.controller, self)
+        if not dlg.exec():
+            return
+        self._map.asset_cache.clear()
+        self._assets_dock.refresh()
+        self._status.showMessage(
+            "Outil enregistre : %s" % getattr(dlg, "created_path", ""), 6000)
+
+    def _on_undo(self):
+        result = self.controller.execute({"kind": "undo"})
+        if result.get("changed"):
+            self._map.invalidate_all_caches()
+        self.report_command_result(result)
+
+    def _on_redo(self):
+        result = self.controller.execute({"kind": "redo"})
+        if result.get("changed"):
+            self._map.invalidate_all_caches()
+        self.report_command_result(result)
+
+    def _dock_action(self, dock, title):
+        action = QAction(title, self)
+        action.setCheckable(True)
+        action.setChecked(dock.isVisible())
+        action.toggled.connect(dock.setVisible)
+        dock.visibilityChanged.connect(action.setChecked)
+        return action
+
+    def _toggle_grid(self, checked):
+        self._map.debug_show_grid = bool(checked)
+        self._map.update()
+
+    def _toggle_legend(self, checked):
+        self._map.show_legend = bool(checked)
+        self._map.update()
+
+    def _on_quicksave(self):
+        result = self.controller.execute({"kind": "save", "slot": 0})
+        self.report_command_result(result)
+        if result.get("ok"):
+            self._status.showMessage("Sauvegardee (slot 0)", 3000)
+
+    def _on_new_world(self):
+        answer = QMessageBox.question(
+            self, "Nouveau monde",
+            "Le monde actuel sera perdu s'il n'est pas sauvegarde.\nContinuer ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        modes = ["procedural", "plat", "vierge"]
+        mode, ok = QInputDialog.getItem(self, "Nouveau monde", "Type de monde :",
+                                        modes, 0, False)
+        if not ok:
+            return
+        seed, ok = QInputDialog.getInt(self, "Nouveau monde", "Graine :",
+                                       int(getattr(self.controller.sim, "seed", 7)),
+                                       0, 2 ** 31 - 1)
+        if not ok:
+            return
+        result = self.controller.execute({"kind": "reset_world", "mode": mode,
+                                          "seed": seed})
+        self.report_command_result(result)
+        if not result.get("ok"):
+            return
+        self.controller.sync_from_simulation()
+        self._map._sync_transform_from_controller()
+        self._map.invalidate_all_caches()
+        self._refresh_all_docks()
+        self._status.showMessage("Nouveau monde (%s, graine %d)" % (mode, seed), 4000)
+
+    def _refresh_all_docks(self):
+        for dock in (self._pop_dock, self._inspector_dock, self._society_dock,
+                     self._journal_dock, self._tools_dock, self._assets_dock,
+                     self._tile_dock, self._param_dock, self._timeline_dock,
+                     self._lab_dock):
+            refresh = getattr(dock, "refresh", None)
+            if callable(refresh):
+                refresh()
 
     def _setup_timer(self):
         from game.config import FPS
@@ -210,10 +426,17 @@ class MainWindow(QMainWindow):
         self._tick_count = 0
 
     def _tick(self):
+        import time
+
+        now = time.perf_counter()
+        dt = now - getattr(self, "_last_tick_at", now)
+        self._last_tick_at = now
+
         sim = self.controller.sim
         self._tick_count += 1
 
         # Avancer la simulation
+        steps = 0
         if not sim.paused:
             from game.config import SIM_HZ, FPS
             acc = sim.speed * SIM_HZ / FPS
@@ -222,9 +445,22 @@ class MainWindow(QMainWindow):
                 sim.tick()
                 acc -= 1.0
                 n += 1
+            steps = n
 
         # Synchroniser l'état
         self.controller.sync_from_simulation()
+
+        # Suivi caméra : centrer sur l'habitant sélectionné si activé
+        if self.controller.ui_state.follow_selected:
+            sel = getattr(sim, "selected", None)
+            if sel is not None and sel.alive:
+                from game.config import GRID, TILE
+                self._map.transform.center_on(
+                    sel.x, sel.y,
+                    self._map.width(), self._map.height(),
+                    GRID * TILE,
+                )
+                self._map._sync_controller_from_transform()
 
         # Mettre à jour les docks (assets 1x/sec, les autres 4x/sec)
         if self._tick_count % 4 == 0:
@@ -233,6 +469,7 @@ class MainWindow(QMainWindow):
             self._journal_dock.refresh()
             self._society_dock.refresh()
             self._tools_dock.refresh()
+            self._tile_dock.refresh()
         if self._tick_count % 60 == 0:
             self._assets_dock.refresh()
 
@@ -240,7 +477,16 @@ class MainWindow(QMainWindow):
         if self._tick_count % 2 == 0:
             self._map.update()
 
-        # Mettre à jour la barre d'état (4x par seconde suffit)
+        # Indicateur FPS / TPS (moyennes glissantes)
+        if dt > 0:
+            self._fps_ema = 0.8 * getattr(self, "_fps_ema", 0.0) + 0.2 / dt
+            self._tps_ema = 0.8 * getattr(self, "_tps_ema", 0.0) + 0.2 * steps / dt
+        if self._tick_count % 4 == 0:
+            self._fps_label.setText(
+                "%.0f fps - %.1f tps" % (getattr(self, "_fps_ema", 0.0),
+                                         getattr(self, "_tps_ema", 0.0)))
+
+        # Mettre a jour la barre d'etat (4x par seconde suffit)
         if self._tick_count % 4 == 0:
             snap = simulation_snapshot(sim, self.controller.ui_state)
             clock = snap.get("clock", {})
@@ -249,6 +495,7 @@ class MainWindow(QMainWindow):
                 f"Pop: {snap['population']} | Speed: {snap['speed']} | "
                 f"{'Pause' if snap['paused'] else 'Running'}"
             )
+            self._seed_label.setText("graine %s" % getattr(sim, "seed", "?"))
 
         # Mettre à jour les contrôles
         self._pause_action.setText("Reprendre" if sim.paused else "Pause")
@@ -278,12 +525,29 @@ class MainWindow(QMainWindow):
         dlg = SaveDialog(self.controller, mode="load", parent=self)
         if dlg.exec():
             self.controller.sync_from_simulation()
+            self._map._sync_transform_from_controller()
             self._map.invalidate_all_caches()
+            self._refresh_all_docks()
             self._status.showMessage("Partie chargee", 3000)
 
     def _on_agent_selected(self, eid):
-        self.controller.ui_state.selected_agent_eid = eid
+        self.report_command_result(
+            self.controller.execute({"kind": "select_agent", "eid": eid}))
         self.controller.ui_state.active_tab = "etre"
+        self._inspector_dock.raise_()
+
+    def _on_asset_selected(self, aid):
+        """Un asset choisi dans le catalogue arme l'outil « Poser »."""
+        self.report_command_result(self.controller.execute({"kind": "set_mode",
+                                                            "mode": "place"}))
+        # Le dock Assets est construit avant le dock Outils : un signal émis
+        # pendant l'initialisation ne doit pas casser la fenêtre.
+        if hasattr(self, "_tools_dock"):
+            self._tools_dock.refresh()
+
+    def _on_mode_changed(self, mode):
+        # showMessage : ne pas ecraser le libelle tick/population de la barre.
+        self._status.showMessage("Outil : %s" % mode, 2500)
 
     def _toggle_theme(self):
         from ui_qt.theme.theme import get_theme_name, set_theme_name, apply_theme
@@ -334,8 +598,10 @@ class MainWindow(QMainWindow):
 
     def _on_overlay_change(self, index):
         mode = self._overlay_combo.currentData()
-        if hasattr(self, '_map') and self._map:
-            self._map.set_overlay_mode(mode)
+        result = self.controller.execute({"kind": "set_overlay", "overlay": mode})
+        self.report_command_result(result)
+        if result.get("ok") and hasattr(self, '_map') and self._map:
+            self._map.set_overlay_mode(self.controller.ui_state.active_overlay)
 
     def _set_speed(self, speed):
         self.controller.execute({"kind": "set_speed", "speed": speed})

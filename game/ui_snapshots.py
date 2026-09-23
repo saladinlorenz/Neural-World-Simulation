@@ -53,8 +53,13 @@ def simulation_snapshot(sim, ui_state=None) -> dict[str, Any]:
 # ══════════════════════════════════════════════════════════════════════
 #  Snapshot population
 # ══════════════════════════════════════════════════════════════════════
-def population_snapshot(sim) -> list[dict[str, Any]]:
-    """Liste d'habitants vivants, pour le tableau de population."""
+def population_snapshot(sim, include_dead: bool = False) -> list[dict[str, Any]]:
+    """Liste d'habitants, pour le tableau de population.
+
+    ``include_dead`` ajoute les fiches allégées des décédés récents
+    (``Sim.deceased``) : le moteur purge les cadavres à chaque tick, donc
+    sans ce tampon l'option « Tous » du dock serait identique à « Vivants ».
+    """
     from .diagnostics import agent_snapshot
 
     rows = []
@@ -64,6 +69,8 @@ def population_snapshot(sim) -> list[dict[str, Any]]:
         snap = agent_snapshot(sim, agent)
         if snap is not None:
             rows.append(snap)
+    if include_dead:
+        rows.extend(dict(r) for r in getattr(sim, "deceased", ()))
     return rows
 
 

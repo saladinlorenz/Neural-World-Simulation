@@ -6,7 +6,49 @@ from PyQt6.QtCore import Qt, pyqtSignal, QSortFilterProxyModel
 from PyQt6.QtGui import QColor
 
 from game.ui_snapshots import population_snapshot
+from ui_qt.qtimage import pil_to_pixmap
 from ..models.population_model import PopulationModel
+
+
+class _PopulationProxy(QSortFilterProxyModel):
+    """Filtre combiné : stade d'âge + recherche texte + vivants/tous.
+
+    Un seul ``QSortFilterProxyModel`` standard ne peut porter qu'une chaîne
+    de filtre : le stade et la recherche se marchaient dessus.
+    """
+
+    _SEARCH_COLUMNS = (1, 2, 7, 8)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._search = ""
+        self._stage = ""
+        self.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+
+    def set_search(self, text):
+        self._search = (text or "").strip().lower()
+        self.invalidateFilter()
+
+    def set_stage(self, stage):
+        self._stage = stage or ""
+        self.invalidateFilter()
+
+    def filterAcceptsRow(self, source_row, source_parent):
+        model = self.sourceModel()
+        if model is None:
+            return True
+        if self._stage:
+            index = model.index(source_row, 8, source_parent)
+            if str(model.data(index, Qt.ItemDataRole.DisplayRole) or "") != self._stage:
+                return False
+        if self._search:
+            for col in self._SEARCH_COLUMNS:
+                index = model.index(source_row, col, source_parent)
+                value = str(model.data(index, Qt.ItemDataRole.DisplayRole) or "")
+                if self._search in value.lower():
+                    return True
+            return False
+        return True
 
 
 class PopulationDock(QDockWidget):
@@ -18,9 +60,8 @@ class PopulationDock(QDockWidget):
         super().__init__("Habitants", parent)
         self.controller = controller
         self._model = PopulationModel()
-        self._proxy = QSortFilterProxyModel()
+        self._proxy = _PopulationProxy()
         self._proxy.setSourceModel(self._model)
-        self._proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -36,7 +77,7 @@ class PopulationDock(QDockWidget):
         search_layout = QHBoxLayout()
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filtrer par nom, clan, classe...")
-        self._search.textChanged.connect(self._proxy.setFilterFixedString)
+        self._search.textChanged.connect(self._proxy.set_search)
         search_layout.addWidget(self._search)
 
         clear_btn = QPushButton("X")
@@ -52,14 +93,14 @@ class PopulationDock(QDockWidget):
         self._stage_filter.addItem("Tous les stades", "")
         for stage in ("enfant", "adulte", "ancien"):
             self._stage_filter.addItem(stage, stage)
-        self._stage_filter.currentIndexChanged.connect(self._apply_filters)
+        self._stage_filter.currentIndexChanged.connect(self._on_stage_changed)
         filter_layout.addWidget(QLabel("Age:"))
         filter_layout.addWidget(self._stage_filter)
 
         self._alive_filter = QComboBox()
         self._alive_filter.addItem("Vivants", "alive")
         self._alive_filter.addItem("Tous", "all")
-        self._alive_filter.currentIndexChanged.connect(self._apply_filters)
+        self._alive_filter.currentIndexChanged.connect(self._on_alive_changed)
         filter_layout.addWidget(self._alive_filter)
 
         layout.addLayout(filter_layout)
@@ -91,35 +132,37 @@ class PopulationDock(QDockWidget):
         self.setWidget(widget)
 
     def refresh(self):
-        snap = population_snapshot(self.controller.sim)
+        include_dead = (self._alive_filter.currentData() or "alive") == "all"
+        snap = population_snapshot(self.controller.sim, include_dead=include_dead)
         portraits = {}
         try:
             am = self.controller.sim.am
             for row in snap:
                 eid = row.get("eid")
-                if eid is not None:
-                    try:
-                        portrait = am.avatar(eid, size=24)
-                        if portrait is not None:
-                            portraits[eid] = portrait
-                    except Exception:
-                        pass
+                if eid is None:
+                    continue
+                try:
+                    # ``avatar`` renvoie une image PIL : Qt ne sait pas la
+                    # dessiner via DecorationRole, la conversion est obligatoire.
+                    portraits[eid] = pil_to_pixmap(am.avatar(int(eid), size=24))
+                except Exception:
+                    pass
         except Exception:
             pass
         self._model.set_snapshot(snap, portraits)
-        self._count_label.setText(f"{len(snap)} habitants")
-        self._apply_filters()
-
-    def _apply_filters(self):
-        stage = self._stage_filter.currentData() or ""
-        # Le proxy filtre deja par texte ; le stade est gere via le model
-        # Pour le stade, on filtre manuellement
-        if stage:
-            self._proxy.setFilterKeyColumn(8)  # colonne Stage
-            self._proxy.setFilterFixedString(stage)
+        alive = sum(1 for row in snap if row.get("vivant", True))
+        if include_dead:
+            self._count_label.setText(f"{alive} vivants / {len(snap)} au total")
         else:
-            self._proxy.setFilterKeyColumn(-1)
-            self._proxy.setFilterFixedString(self._search.text())
+            self._count_label.setText(f"{len(snap)} habitants")
+        self._proxy.invalidateFilter()
+
+    def _on_stage_changed(self, *_args):
+        self._proxy.set_stage(self._stage_filter.currentData() or "")
+
+    def _on_alive_changed(self, *_args):
+        # « Vivants/Tous » change le jeu de données, pas seulement le filtre.
+        self.refresh()
 
     def _selected_eid(self):
         indexes = self._table.selectionModel().selectedRows()

@@ -15,7 +15,7 @@ class UIState:
     # ── Navigation ──
     active_tab: str = "etre"
     active_mode: str = "agent"
-    active_overlay: str = "none"
+    active_overlay: str = "normal"
 
     # ── Sélection ──
     selected_agent_eid: int | None = None
@@ -64,6 +64,18 @@ class UIState:
     template_color: str = "blue"
     template_class: str = "pawn"
     template_sex: str = "M"
+    #: Gabarits du créateur (listes de floats 0..1), lus par SpawnAgentDialog.
+    tpl_body: list = field(default_factory=list)
+    tpl_cog: list = field(default_factory=list)
+    tpl_personality: list = field(default_factory=list)
+    tpl_emotions: list = field(default_factory=list)
+    tpl_needs: list = field(default_factory=list)
+    brain_size: int = 128
+    #: Options du dialogue de création en attente d'un clic sur la carte.
+    pending_spawn_agent: dict | None = None
+
+    #: Type de monstre à poser. Vide = tirage aléatoire par le moteur.
+    monster_kind: str = ""
 
     # ── UI state signaux ──
     needs_save: bool = False
@@ -105,5 +117,6 @@ class UIState:
             "ghost_visible": self.ghost_visible,
             "ghost_tile": self.ghost_tile,
             "creator_open": self.creator_open,
+            "monster_kind": self.monster_kind,
             "needs_save": self.needs_save,
         }

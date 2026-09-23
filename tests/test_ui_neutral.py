@@ -292,6 +292,99 @@ class TestSimulationController(unittest.TestCase):
         self.sim.paused = was_paused
 
 
+class TestUIStateCommands(unittest.TestCase):
+    """Lot A.7 : les commandes d'état écrivent réellement l'UIState."""
+
+    def setUp(self):
+        from game.ui_state import UIState
+        self.state = UIState()
+
+    def _ui(self, cmd):
+        from game.ui_commands import execute_ui_command
+        return execute_ui_command(self.state, cmd)
+
+    def test_set_mode(self):
+        result = self._ui({"kind": "set_mode", "mode": "place"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.state.active_mode, "place")
+        bad = self._ui({"kind": "set_mode", "mode": "teleport"})
+        self.assertFalse(bad["ok"])
+        self.assertIn("error", bad)
+        self.assertEqual(self.state.active_mode, "place")
+
+    def test_set_brush_size_bounds(self):
+        self._ui({"kind": "set_brush_size", "size": 7})
+        self.assertEqual(self.state.brush_size, 7)
+        self._ui({"kind": "set_brush_size", "size": 99})
+        self.assertEqual(self.state.brush_size, 15)
+        self._ui({"kind": "set_brush_size", "size": 0})
+        self.assertEqual(self.state.brush_size, 1)
+
+    def test_set_block_material(self):
+        result = self._ui({"kind": "set_block_material", "material": "pierre"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.state.block_material, "pierre")
+        bad = self._ui({"kind": "set_block_material", "material": "diamant"})
+        self.assertFalse(bad["ok"])
+        self.assertIn("error", bad)
+
+    def test_set_overlay(self):
+        result = self._ui({"kind": "set_overlay", "overlay": "relations"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.state.active_overlay, "relations")
+
+
+class TestNewCommandContracts(unittest.TestCase):
+    """Lot D : undo/redo, reset_world, create_tool, equip_tool.
+
+    Contrat général : tout ``{"ok": False}`` porte une clé ``error``.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sim, cls.am = _make_sim()
+
+    def _run(self, cmd):
+        from game.ui_commands import execute_command
+        return execute_command(self.sim, cmd)
+
+    def test_undo_redo_without_history(self):
+        for kind in ("undo", "redo"):
+            result = self._run({"kind": kind})
+            self.assertTrue(result["ok"], result)
+            self.assertFalse(result.get("changed"))
+
+    def test_create_tool_validates_pixels(self):
+        result = self._run({"kind": "create_tool", "pixels": [0] * 10,
+                            "name": "x", "tool_kind": "hache"})
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+        result = self._run({"kind": "create_tool", "pixels": [0, 0, 0, 0] * 256,
+                            "name": "x", "tool_kind": "tronconneuse"})
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    def test_equip_tool_unknown_agent(self):
+        result = self._run({"kind": "equip_tool", "eid": 987654, "aid": 0})
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    def test_reset_world_blank(self):
+        from game.ui_commands import execute_command
+        result = execute_command(self.sim, {"kind": "reset_world",
+                                            "mode": "vierge", "seed": 3})
+        self.assertTrue(result["ok"], result)
+        self.assertIn("sim", result)
+        self.assertEqual(int(result["sim"].w.land.sum()), 0)
+
+    def test_reset_world_unknown_mode(self):
+        from game.ui_commands import execute_command
+        result = execute_command(self.sim, {"kind": "reset_world",
+                                            "mode": "lunaire", "seed": 3})
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+
 class TestUIRegistry(unittest.TestCase):
     def test_registry_imports(self):
         from game.ui_registry import (

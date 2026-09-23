@@ -50,6 +50,13 @@ class WorldOverlay:
     #: au zoom par défaut (100 000+ tuiles visibles) gèle l'interface.
     TILE_LOOP_BUDGET = 40000
 
+    #: Cellules de croyance dessinées par habitant (l'overlay mémoire peut
+    #: porter des centaines de cellules par agent sur un monde peuplé).
+    BELIEF_CELLS_PER_AGENT = 24
+    MEMORY_AGENT_BUDGET = 40
+    CULTURE_CELL_BUDGET = 400
+    INSTITUTION_BUDGET = 200
+
     def __init__(self):
         pass
 
@@ -119,11 +126,16 @@ class WorldOverlay:
         step = self._tile_step(x0, y0, x1, y1)
         ts = max(2, int(TILE * transform.zoom) * step)
         painter.setPen(QPen(QColor(0, 0, 0), 0))
+        has_content = hasattr(w, "content")
         for ty in range(y0, y1, step):
             for tx in range(x0, x1, step):
                 if not (0 <= tx < w.g and 0 <= ty < w.g):
                     continue
                 res = float(w.regrow[ty, tx]) if hasattr(w, "regrow") else 0.0
+                # Une repousse compte double ; un asset récoltable compte aussi,
+                # sinon l'overlay reste vide tant qu'aucun arbre n'est coupé.
+                if has_content and w.content[ty, tx] >= 0:
+                    res = max(res, 0.45)
                 if res <= 0:
                     continue
                 sx, sy = transform.to_screen(tx * TILE, ty * TILE)
@@ -133,61 +145,79 @@ class WorldOverlay:
                 painter.fillRect(int(sx), int(sy), ts, ts, c)
 
     def _paint_memoire(self, painter, transform, sim, sw, sh):
-        w = sim.w
-        x0, y0, x1, y1 = transform.visible_tiles(TILE, GRID, sw, sh)
-        step = self._tile_step(x0, y0, x1, y1)
-        ts = max(2, int(TILE * transform.zoom) * step)
-        painter.setPen(QPen(QColor(255, 255, 100), 1))
-        painter.setBrush(QBrush(QColor(255, 255, 100, 40)))
-        for agent in sim.agents:
-            if not agent.alive:
-                continue
-            beliefs = getattr(agent, "croyances_danger", {})
-            if not beliefs:
-                continue
-            for place_key in beliefs:
-                if not isinstance(place_key, (list, tuple)) and "_" in str(place_key):
-                    continue
+        """Cellules de croyance (danger mémorisé) + marqueurs d'habitants.
+
+        ``Being.belief_places`` est indexé par cellule de 8 tuiles :
+        ``(tx // 8, ty // 8) -> danger 0..1``.
+        """
+        cell = 8 * TILE
+        cs = max(2, int(cell * transform.zoom))
+        agents = [a for a in sim.agents if a.alive]
+        selected = getattr(sim, "selected", None)
+        selected_eid = getattr(selected, "eid", None) if selected is not None else None
+        if len(agents) > self.MEMORY_AGENT_BUDGET:
+            head = [a for a in agents if a.eid == selected_eid]
+            agents = head + [a for a in agents
+                             if a.eid != selected_eid][: self.MEMORY_AGENT_BUDGET - len(head)]
+
+        painter.setPen(QPen(QColor(255, 255, 100, 90), 1))
+        for agent in agents:
+            beliefs = getattr(agent, "belief_places", None)
+            if beliefs:
+                for i, (key, danger) in enumerate(beliefs.items()):
+                    if i >= self.BELIEF_CELLS_PER_AGENT:
+                        break
+                    if not isinstance(key, (tuple, list)) or len(key) != 2:
+                        continue
+                    try:
+                        val = min(1.0, max(0.0, float(danger)))
+                    except (TypeError, ValueError):
+                        val = 0.0
+                    sx, sy = transform.to_screen(key[0] * cell, key[1] * cell)
+                    if not (-cs < sx < sw + cs and -cs < sy < sh + cs):
+                        continue
+                    c = QColor(255, 255, 100, int(30 + 120 * val))
+                    painter.setBrush(QBrush(c))
+                    painter.drawRect(int(sx), int(sy), cs, cs)
             sx, sy = transform.to_screen(agent.x, agent.y)
             if -20 < sx < sw + 20 and -20 < sy < sh + 20:
-                painter.drawEllipse(QPointF(sx, sy), 12, 12)
-        for ty in range(y0, y1, step):
-            for tx in range(x0, x1, step):
-                if not (0 <= tx < w.g) or not (0 <= ty < w.g):
-                    continue
-                sx, sy = transform.to_screen(tx * TILE, ty * TILE)
-                painter.setPen(QPen(QColor(255, 255, 100, 30), 1))
-                painter.setBrush(QBrush(QColor(255, 255, 100, 15)))
-                painter.drawRect(int(sx), int(sy), ts, ts)
+                painter.setBrush(QBrush(QColor(255, 255, 100, 60)))
+                painter.drawEllipse(QPointF(sx, sy), 10, 10)
 
     def _paint_relations(self, painter, transform, sim, sw, sh):
-        pen = QPen(QColor(100, 180, 255, 120), 1.5)
-        painter.setPen(pen)
-        agent_map = {}
-        for a in sim.agents:
-            if a.alive:
-                agent_map[a.eid] = a
+        """Liens sociaux : ``Being.rel`` = ``{eid: [confiance, affection]}``."""
+        agent_map = {a.eid: a for a in sim.agents if a.alive}
         drawn = set()
-        for a in sim.agents:
-            if not a.alive:
+        for a in agent_map.values():
+            rel = getattr(a, "rel", None)
+            if not rel:
                 continue
-            rels = getattr(a, "relations", [])
-            for r in rels:
-                other_eid = r.get("eid")
-                if other_eid is None:
-                    continue
+            sx1, sy1 = transform.to_screen(a.x, a.y)
+            if not (-50 < sx1 < sw + 50 and -50 < sy1 < sh + 50):
+                continue
+            for other_eid, values in rel.items():
                 pair = (min(a.eid, other_eid), max(a.eid, other_eid))
                 if pair in drawn:
                     continue
                 drawn.add(pair)
                 other = agent_map.get(other_eid)
-                if other is None or not other.alive:
+                if other is None:
                     continue
-                sx1, sy1 = transform.to_screen(a.x, a.y)
+                try:
+                    confiance = float(values[0])
+                    affection = float(values[1]) if len(values) > 1 else 0.0
+                except (TypeError, ValueError, IndexError):
+                    continue
                 sx2, sy2 = transform.to_screen(other.x, other.y)
-                if (-50 < sx1 < sw + 50 and -50 < sy1 < sh + 50 and
-                        -50 < sx2 < sw + 50 and -50 < sy2 < sh + 50):
-                    painter.drawLine(QPointF(sx1, sy1), QPointF(sx2, sy2))
+                if not (-50 < sx2 < sw + 50 and -50 < sy2 < sh + 50):
+                    continue
+                score = (confiance + affection) / 2.0
+                if score >= 0:
+                    c = QColor(90, 200, 120, int(70 + 130 * min(1.0, score)))
+                else:
+                    c = QColor(230, 90, 90, int(70 + 130 * min(1.0, -score)))
+                painter.setPen(QPen(c, 1.5))
+                painter.drawLine(QPointF(sx1, sy1), QPointF(sx2, sy2))
 
     def _paint_besoins(self, painter, transform, sim, sw, sh):
         painter.setPen(QPen(QColor(0, 0, 0), 1))
@@ -197,7 +227,7 @@ class WorldOverlay:
             sx, sy = transform.to_screen(a.x, a.y)
             if not (-20 < sx < sw + 20 and -20 < sy < sh + 20):
                 continue
-            faim = getattr(a, "faim", 0.0)
+            faim = getattr(a, "hunger", 0.0)
             c = _hex_to_qcolor(level_color(faim))
             painter.setBrush(QBrush(c))
             painter.drawEllipse(QPointF(sx, sy), 7, 7)
@@ -210,45 +240,90 @@ class WorldOverlay:
             sx, sy = transform.to_screen(a.x, a.y)
             if not (-20 < sx < sw + 20 and -20 < sy < sh + 20):
                 continue
-            identity = getattr(a, "identity", {})
-            if identity:
-                dominant = max(identity, key=identity.get)
-            else:
-                dominant = None
+            identity = (getattr(a, "anima", None) or {}).get("identity") or {}
+            dominant = max(identity, key=identity.get) if identity else None
             c = _IDENTITY_COLORS.get(dominant, QColor(150, 150, 150))
             painter.setBrush(QBrush(c))
             painter.drawEllipse(QPointF(sx, sy), 7, 7)
 
     def _paint_culture(self, painter, transform, sim, sw, sh):
-        painter.setPen(QPen(QColor(200, 150, 50, 100), 1))
-        for a in sim.agents:
-            if not a.alive:
-                continue
-            sx, sy = transform.to_screen(a.x, a.y)
-            if not (-20 < sx < sw + 20 and -20 < sy < sh + 20):
-                continue
-            knowledge = getattr(a, "confirmed_knowledge", [])
-            if knowledge:
-                painter.setBrush(QBrush(QColor(200, 150, 50, 60)))
-                painter.drawRect(int(sx) - 8, int(sy) - 8, 16, 16)
+        """Savoirs partagés : culture de clan (cellules de 8 tuiles) et
+        connaissance universelle (faits ponctuels vérifiés)."""
+        cell = 8 * TILE
+        cs = max(2, int(cell * transform.zoom))
+        ck = getattr(sim, "clan_knowledge", None)
+        culture = getattr(ck, "culture", None) if ck is not None else None
+        if culture:
+            painter.setPen(QPen(QColor(200, 150, 50, 120), 1))
+            for i, (key, fact) in enumerate(culture.items()):
+                if i >= self.CULTURE_CELL_BUDGET:
+                    break
+                if not isinstance(key, (tuple, list)) or len(key) != 3:
+                    continue
+                conf = fact.get("confidence", 0.0) if isinstance(fact, dict) else 0.0
+                try:
+                    conf = min(1.0, max(0.0, float(conf)))
+                except (TypeError, ValueError):
+                    conf = 0.0
+                sx, sy = transform.to_screen(key[1] * cell, key[2] * cell)
+                if not (-cs < sx < sw + cs and -cs < sy < sh + cs):
+                    continue
+                painter.setBrush(QBrush(QColor(200, 150, 50, int(25 + 120 * conf))))
+                painter.drawRect(int(sx), int(sy), cs, cs)
+
+        uk = getattr(sim, "universal_knowledge", None)
+        places = getattr(uk, "places", None) if uk is not None else None
+        if places:
+            painter.setPen(QPen(QColor(120, 200, 230, 150), 1))
+            painter.setBrush(QBrush(QColor(120, 200, 230, 90)))
+            painted = 0
+            for facts in places.values():
+                for (tx, ty) in facts:
+                    if painted >= self.CULTURE_CELL_BUDGET:
+                        break
+                    sx, sy = transform.to_screen(tx * TILE + TILE / 2, ty * TILE + TILE / 2)
+                    if -cs < sx < sw + cs and -cs < sy < sh + cs:
+                        painter.drawEllipse(QPointF(sx, sy), 5, 5)
+                        painted += 1
 
     def _paint_institutions(self, painter, transform, sim, sw, sh):
-        institutions = getattr(sim, "institutions", [])
-        painter.setPen(QPen(QColor(180, 80, 200, 150), 2))
-        painter.setBrush(QBrush(QColor(180, 80, 200, 30)))
-        for inst in institutions:
-            members = inst.get("members", [])
-            if len(members) < 2:
+        """Institutions de clan : ``{(kind, tx//8, ty//8): {members, trust, …}}``."""
+        cell = 8 * TILE
+        cs = max(2, int(cell * transform.zoom))
+        ck = getattr(sim, "clan_knowledge", None)
+        institutions = getattr(ck, "institutions", None) if ck is not None else None
+        if not institutions:
+            return
+        agent_map = {a.eid: a for a in sim.agents if a.alive}
+        for i, (key, inst) in enumerate(institutions.items()):
+            if i >= self.INSTITUTION_BUDGET:
+                break
+            if not isinstance(key, (tuple, list)) or len(key) != 3:
                 continue
+            if not isinstance(inst, dict):
+                continue
+            sx, sy = transform.to_screen(key[1] * cell + cell / 2, key[2] * cell + cell / 2)
+            if not (-cs < sx < sw + cs and -cs < sy < sh + cs):
+                continue
+            try:
+                trust = min(1.0, max(0.0, float(inst.get("trust", 0.0))))
+            except (TypeError, ValueError):
+                trust = 0.0
+            painter.setPen(QPen(QColor(180, 80, 200, 170), 2))
+            painter.setBrush(QBrush(QColor(180, 80, 200, int(25 + 60 * trust))))
+            painter.drawRect(int(sx - cs / 2), int(sy - cs / 2), cs, cs)
+
             points = []
-            for a in sim.agents:
-                if a.alive and a.eid in members:
-                    sx, sy = transform.to_screen(a.x, a.y)
-                    points.append(QPointF(sx, sy))
-            if len(points) >= 2:
-                for i in range(len(points)):
-                    for j in range(i + 1, len(points)):
-                        painter.drawLine(points[i], points[j])
+            for eid in list(inst.get("members", []))[:8]:
+                member = agent_map.get(eid)
+                if member is None:
+                    continue
+                mx, my = transform.to_screen(member.x, member.y)
+                if -50 < mx < sw + 50 and -50 < my < sh + 50:
+                    points.append(QPointF(mx, my))
+            painter.setPen(QPen(QColor(200, 130, 230, 110), 1))
+            for p in points:
+                painter.drawLine(QPointF(sx, sy), p)
 
     def _paint_territoires(self, painter, transform, sim, sw, sh):
         clans = {}

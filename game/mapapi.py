@@ -88,6 +88,28 @@ class MapTransform:
         self.x = wx - anchor_screen[0] / self.zoom
         self.y = wy - anchor_screen[1] / (self.zoom * self.ys)
 
+    #: Bornes du tilt dynamique — alignees sur ``game/camera.py``.
+    TILT_MIN = 30.0
+    TILT_MAX = 70.0
+    #: Zoom auquel le tilt atteint ses bornes basse / haute.
+    AUTO_TILT_ZOOM = (0.20, 1.50)
+
+    def auto_tilt(self, target_zoom: float | None = None) -> float:
+        """Incline la camera avec le zoom : presque du dessus au loin,
+        vraie 2,5D pres du sol. Lissage exponentiel (0.12 par appel).
+
+        Le tilt n'intervient qu'au blit (``ys``) : aucun cache terrain n'est
+        invalide par ce mouvement, et les coordonnees monde restent intactes.
+        """
+        z = self.zoom if target_zoom is None else float(target_zoom)
+        lo, hi = self.AUTO_TILT_ZOOM
+        z = max(lo, min(hi, z))
+        frac = (z - lo) / (hi - lo)
+        cible = self.TILT_MIN + (self.TILT_MAX - self.TILT_MIN) * frac
+        self.tilt += (cible - self.tilt) * 0.12
+        self.tilt = max(self.TILT_MIN, min(self.TILT_MAX, self.tilt))
+        return self.tilt
+
 
 def map_tile_data(sim, tx: int, ty: int) -> dict[str, Any] | None:
     """Donnees d'une tuile pour le rendu (pas de surface Pygame).

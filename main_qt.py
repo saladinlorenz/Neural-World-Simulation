@@ -20,6 +20,9 @@ def main():
     ap.add_argument("--speed", type=int, default=2)
     ap.add_argument("--blank", type=int, default=0)
     ap.add_argument("--procedural", type=int, default=1)
+    ap.add_argument("--agents", type=int, default=60,
+                    help="nombre d'habitants au depart (0 = monde sans vie)")
+    ap.add_argument("--sheep", type=int, default=40)
     args = ap.parse_args()
 
     print("[BOOT] creation QApplication")
@@ -30,7 +33,7 @@ def main():
     # Importer le moteur (pas de Pygame nécessaire pour le moteur lui-même)
     from game.assets_manager import AssetManager
     from game.assets_api import _set_asset_manager
-    from game.engine import build_world, build_world_blank
+    from game.engine import build_world, build_world_blank, seed_life
     from game.simulation_controller import SimulationController
 
     print("[BOOT] chargement AssetManager")
@@ -47,8 +50,10 @@ def main():
         world, sim = build_world_blank(am, args.seed)
     else:
         world, sim = build_world(am, args.seed, procedural=bool(args.procedural))
+        seed_life(world, sim, sim.rng, n_agents=args.agents, n_sheep=args.sheep)
     sim.speed = args.speed
-    print("[BOOT] monde construit", world.g, "x", world.g)
+    print("[BOOT] monde construit", world.g, "x", world.g,
+          "habitants:", len(sim.agents), "moutons:", len(sim.sheep))
 
     from game.camera import Camera
     cam = Camera()

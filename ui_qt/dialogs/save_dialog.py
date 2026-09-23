@@ -42,7 +42,8 @@ class SaveDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def _load_slots(self):
-        saves_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "saves")
+        saves_dir = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))), "data", "saves")
         self._list.clear()
         for slot in range(10):
             path = os.path.join(saves_dir, f"slot_{slot}.pkl")

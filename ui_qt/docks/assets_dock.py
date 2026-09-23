@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QPixmap, QColor, QPainter, QPen, QIcon, QImage
 
 from game.assets_api import CATEGORY_LABELS as _CAT_LIST
+from ui_qt.qtimage import pil_to_pixmap
 
 CATEGORY_LABELS = dict(_CAT_LIST)
 
@@ -154,16 +155,17 @@ class AssetsDock(QDockWidget):
             self._list.addItem(item)
 
     def _load_thumbnail(self, aid, asset):
-        """Try to load a 48x48 thumbnail; fall back to a coloured placeholder."""
+        """Vignette réelle de l'asset ; repli sur un placeholder coloré."""
         try:
             am = self.controller.sim.am
-            pix = am.thumbnail(aid, size=(48, 48))
+            # ``AssetManager.thumbnail`` attend un entier, pas un tuple : un
+            # tuple faisait échouer à la fois le redimensionnement et le repli
+            # interne, donc tous les assets affichaient le placeholder.
+            pix = am.thumbnail(aid, size=48)
             if pix is not None:
                 from PIL import Image as PILImage
                 if isinstance(pix, PILImage.Image):
-                    data = pix.tobytes("raw", "RGBA")
-                    qimg = QImage(data, pix.width, pix.height, QImage.Format.Format_RGBA8888)
-                    return QPixmap.fromImage(qimg)
+                    return pil_to_pixmap(pix)
                 if isinstance(pix, QImage):
                     return QPixmap.fromImage(pix)
                 if isinstance(pix, QPixmap):
@@ -192,7 +194,7 @@ class AssetsDock(QDockWidget):
         aid = current.data(Qt.ItemDataRole.UserRole)
         if aid is None:
             return
-        self.controller.ui_state.selected_asset_id = aid
+        self.controller.execute({"kind": "select_asset", "aid": aid})
         self.asset_selected.emit(aid)
         if not self._am or not (0 <= aid < len(self._am.assets)):
             return

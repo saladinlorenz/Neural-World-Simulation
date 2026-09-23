@@ -228,6 +228,22 @@ def _paint_floors(w, am, rng, dense):
 # ══════════════════════════════════════════════════════════════════════
 #  Construction du monde
 # ══════════════════════════════════════════════════════════════════════
+def seed_life(w, sim, rng, *, n_agents=60, n_sheep=40, n_monsters=0):
+    """Peuple un monde déjà construit : habitants, moutons, prédateurs.
+
+    Séparé de `build_world` pour que `main_qt.py` et les outils hors écran
+    partagent exactement le même chemin d'apparition.
+    """
+    for _ in range(max(0, int(n_agents))):
+        x, y = _spawn_spot(w, rng)
+        sim.spawn_agent(x=x * TILE + TILE / 2, y=y * TILE + TILE / 2, parents=None)
+    for _ in range(max(0, int(n_sheep))):
+        sim.spawn_sheep()
+    for _ in range(max(0, int(n_monsters))):
+        sim.spawn_monster()
+    return sim
+
+
 def build_world(am, seed, procedural=False, *, populate_dense=True,
                 n_agents=0, tile_period=None, ridge_width=None,
                 water_frac=WATER_FRAC, mountain_frac=MOUNTAIN_FRAC):
@@ -256,9 +272,7 @@ def build_world(am, seed, procedural=False, *, populate_dense=True,
     # ← la v1 sautait cette étape : le monde naissait stérile
     populate(w, am, rng, dense=populate_dense)
 
-    for _ in range(max(0, int(n_agents))):
-        x, y = _spawn_spot(w, rng)
-        sim.spawn_agent(x=x * TILE + TILE / 2, y=y * TILE + TILE / 2, parents=None)
+    seed_life(w, sim, rng, n_agents=n_agents)
 
     sim.paused = True
     if gen is not None:

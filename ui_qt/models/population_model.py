@@ -61,9 +61,12 @@ class PopulationModel(QAbstractTableModel):
             if col == 0:
                 return ""
             elif col == 1:
-                return row.get("nom", "")
+                nom = row.get("nom", "")
+                # Les décédés viennent du tampon Sim.deceased : les marquer,
+                # sinon « Tous » ressemble exactement à « Vivants ».
+                return nom if row.get("vivant", True) else f"† {nom}"
             elif col == 2:
-                return row.get("sex", "")
+                return row.get("sexe", row.get("sex", ""))
             elif col == 3:
                 return f"{row.get('age_ans', 0):.1f}"
             elif col == 4:

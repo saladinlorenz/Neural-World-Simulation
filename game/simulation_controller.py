@@ -19,7 +19,7 @@ from .ui_snapshots import (
     anima_snapshot,
     tile_snapshot,
 )
-from .ui_commands import execute_command
+from .ui_commands import execute_command, execute_ui_command
 
 
 class SimulationController:
@@ -73,14 +73,28 @@ class SimulationController:
     # ── Commandes ──
 
     def execute(self, command: dict) -> dict[str, Any]:
-        """Exécute une commande et synchronise l'état UI."""
+        """Exécute une commande et synchronise l'état UI.
+
+        Les commandes d'interface (mode d'outil, pinceau, overlay, matériau)
+        sont traitées ici : elles ne concernent pas le moteur, mais passer
+        par ce canal les rend testables et sauvegardables.
+        """
+        ui_result = execute_ui_command(self.ui_state, command)
+        if ui_result is not None:
+            return ui_result
+
+        kind = command.get("kind")
         result = execute_command(self.sim, command)
-        if result.get("ok") and command.get("kind") == "load" and "sim" in result:
+        if result.get("ok") and kind in ("load", "reset_world") and "sim" in result:
             # Le chargement remplace la simulation active : sans cela,
             # la partie chargée était silencieusement ignorée.
             self.sim = result["sim"]
             if result.get("cam") is not None:
                 self.camera = result["cam"]
+        if result.get("ok") and kind == "select_tile":
+            # UIState est un concept d'interface : la commande valide les
+            # coordonnées, le contrôleur est seul à les mémoriser.
+            self.ui_state.selected_tile = (result["tx"], result["ty"])
         self.sync_from_simulation()
         return result
 

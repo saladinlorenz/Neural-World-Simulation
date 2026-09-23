@@ -18,6 +18,9 @@ class Clock:
         self.wind = (0.0, 0.0)
         self.growth_f = 1.0
         self._storm = 0
+        #: Tick du dernier eclair : l'interface en deduit un flash de 3
+        #: images sans tirer dans le rng du moteur a chaque frame de paint.
+        self.lightning_tick = -10
 
     @property
     def day_frac(self):

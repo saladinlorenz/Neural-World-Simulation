@@ -27,6 +27,7 @@ VIEW_H = SCREEN_H
 
 MAX_POP = 800
 MAX_SHEEP = 300
+MAX_MONSTERS = 20
 
 BG = (12, 14, 22)
 PANEL = (20, 24, 36)
@@ -85,6 +86,14 @@ COG_DEFS = ["mémoire", "anticipation", "imagination", "attention"]
 PERSONALITY_DEFS = ["sociabilité", "agressivité", "curiosité", "prudence", "patience",
                     "empathie", "impulsivité", "confiance", "persévérance", "ambition",
                     "générosité", "discipline"]
+
+#: Entrées du journal conservées en mémoire. ``journal_snapshot`` plafonne
+#: l'affichage à 200 ; les exports peuvent demander davantage.
+JOURNAL_MAXLEN = 2000
+
+#: Types de monstres que ``Sim.spawn_monster`` peut produire. Source unique :
+#: l'UI valide ses choix contre cette liste.
+MONSTER_KINDS = ("bear", "wolf", "snake", "beatle")
 
 TOOL_RECIPES = {
     "hache":   {"bois": 2, "pierre": 1, "durability": 40},

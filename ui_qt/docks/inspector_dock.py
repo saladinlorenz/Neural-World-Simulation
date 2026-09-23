@@ -286,39 +286,68 @@ class InspectorDock(QDockWidget):
             self._inventory_group.setVisible(True)
 
         # === Outil ===
+        # ``outil`` est une fiche ``asset_info`` (dict), pas une chaîne : un
+        # ``str(tool)`` affichait le dictionnaire brut.
         tool = snap.get("outil", None)
-        if tool:
+        if isinstance(tool, dict):
             dur = snap.get("durabilite_outil", 0)
-            tool_name = tool if isinstance(tool, str) else str(tool)
-            self._tool_label.setText(f"{tool_name} (durabilite: {dur})")
+            self._tool_label.setText(f"{tool.get('nom', '?')} (durabilité: {dur})")
+            self._tool_group.setVisible(True)
+        elif tool:
+            self._tool_label.setText(str(tool))
             self._tool_group.setVisible(True)
         else:
             self._tool_label.setText("Aucun")
             self._tool_group.setVisible(True)
 
         # === Memoire / croyances ===
-        beliefs = snap.get("croyances_danger", snap.get("memoire", {}))
+        # ``croyances_danger`` existe toujours : l'ancien repli sur
+        # ``memoire`` rendait la mémoire spatiale définitivement inaccessible.
+        beliefs = snap.get("croyances_danger", {}) or {}
+        spatial = snap.get("memoire", {}) or {}
         episodes = snap.get("episodes", [])
         has_belief = bool(beliefs)
+        has_spatial = any(bool(v) for v in spatial.values())
         has_episodes = bool(episodes)
-        if has_belief or has_episodes:
+        if has_belief or has_spatial or has_episodes:
             self._memory_group.setVisible(True)
             if has_belief:
                 belief_lines = []
-                for place_type, belief_val in beliefs.items():
-                    if isinstance(belief_val, dict):
-                        belief = belief_val.get("belief", belief_val.get("b", "?"))
-                        conf = belief_val.get("confidence", belief_val.get("c", 0))
+                for cell, danger in list(beliefs.items())[:12]:
+                    if isinstance(cell, (tuple, list)) and len(cell) == 2:
                         belief_lines.append(
-                            f"{place_type}: {belief} (confiance: {conf:.0%})"
+                            f"cellule ({cell[0]}, {cell[1]}) : danger {danger:.0%}"
+                        )
+                    elif isinstance(danger, dict):
+                        conf = danger.get("confidence", danger.get("c", 0))
+                        belief_lines.append(
+                            f"{cell}: {danger.get('belief', danger.get('b', '?'))} "
+                            f"(confiance: {conf:.0%})"
                         )
                     else:
-                        belief_lines.append(f"{place_type}: {belief_val}")
+                        belief_lines.append(f"{cell}: {danger}")
                 self._belief_label.setText(
                     "<b>Croyances:</b>\n" + "\n".join(belief_lines)
                 )
             else:
                 self._belief_label.setText("<b>Croyances:</b> aucune")
+
+            if has_spatial:
+                spatial_lines = []
+                for cat, marks in spatial.items():
+                    if not marks:
+                        continue
+                    forces = [float(m.get("force", 0.0)) for m in marks
+                              if isinstance(m, dict)]
+                    strongest = max(forces) if forces else 0.0
+                    spatial_lines.append(
+                        f"{cat}: {len(marks)} lieu(x), force max {strongest:.0%}"
+                    )
+                if spatial_lines:
+                    self._belief_label.setText(
+                        self._belief_label.text()
+                        + "\n<b>Mémoire spatiale:</b>\n" + "\n".join(spatial_lines)
+                    )
 
             if has_episodes:
                 last5 = episodes[-5:]

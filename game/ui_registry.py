@@ -105,6 +105,7 @@ TAB_HINTS = {
     "place":   "clic = poser l'asset / glisser = peindre",
     "erase":   "clic = effacer les objets de la case",
     "floor":   "clic = peindre le sol selectionne",
+    "block":   "clic = construire un bloc (bois ou pierre)",
     "agent":   "clic = inserer l'etre defini dans le gabarit",
     "sheep":   "clic = ajouter un mouton",
     "monster": "clic = ajouter un monstre aleatoire",

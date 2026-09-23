@@ -9,11 +9,25 @@ from __future__ import annotations
 from typing import Any
 import math
 
-from .config import GRID, TILE
+from .config import (GRID, TILE, BODY_DEFS, COG_DEFS, EMOTION_DEFS,
+                     PERSONALITY_DEFS)
 
 
 def clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
+
+
+def _labelled(values, defs) -> dict[str, float]:
+    """Associe chaque valeur d'un tableau NumPy à son libellé métier.
+
+    Sans cela les grilles de l'inspecteur affichaient ``{"0": 0.4, …}`` :
+    les noms existent dans ``game.config`` mais n'étaient jamais utilisés.
+    """
+    out = {}
+    for i, v in enumerate(values):
+        name = defs[i] if i < len(defs) else f"#{i}"
+        out[name] = float(v)
+    return out
 
 
 def action_name(sim, action: int | None) -> str:
@@ -122,10 +136,10 @@ def agent_snapshot(sim, agent) -> dict[str, Any] | None:
         "securite": float(agent.needs[4]),
         "appartenance": float(agent.needs[5]),
         "estime": float(agent.needs[6]),
-        "emotions": {str(i): float(v) for i, v in enumerate(agent.emotions)},
-        "personnalite": {str(i): float(v) for i, v in enumerate(agent.personality)},
-        "corps": {str(i): float(v) for i, v in enumerate(agent.body)},
-        "cognition": {str(i): float(v) for i, v in enumerate(agent.cog)},
+        "emotions": _labelled(agent.emotions, EMOTION_DEFS),
+        "personnalite": _labelled(agent.personality, PERSONALITY_DEFS),
+        "corps": _labelled(agent.body, BODY_DEFS),
+        "cognition": _labelled(agent.cog, COG_DEFS),
         "competences": {"recolte": float(agent.skills[0]),
                         "construction": float(agent.skills[1]),
                         "combat": float(agent.skills[2]),
@@ -156,6 +170,25 @@ def agent_snapshot(sim, agent) -> dict[str, Any] | None:
         "enfants": list(getattr(agent, "children", ()) or ()),
         "episodes": list(getattr(agent, "episodes", ()))[-12:],
         "vie": list(getattr(agent, "life", ()))[-12:],
+    }
+
+
+def deceased_row(sim, agent) -> dict[str, Any]:
+    """Fiche allégée d'un habitant mort, au format du tableau de population."""
+    return {
+        "eid": int(agent.eid),
+        "nom": agent.name,
+        "vivant": False,
+        "sexe": getattr(agent, "sex", "?"),
+        "classe": getattr(agent, "cls", ""),
+        "clan": getattr(agent, "color", ""),
+        "generation": int(getattr(agent, "gen", 0)),
+        "age_ans": float(getattr(agent, "age_years", 0.0)),
+        "stage": getattr(agent, "stage", ""),
+        "sante": 0.0,
+        "energie": 0.0,
+        "faim": clamp01(getattr(agent, "hunger", 0.0)),
+        "tick_deces": int(sim.w.tick),
     }
 
 

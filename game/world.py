@@ -24,6 +24,10 @@ class World:
         self.regrow = np.zeros((g, g), dtype=np.float32)   # stump regrow timer
         self.items = []      # Item
         self.dirty_chunks = set()
+        #: Compteur global de modifications terrain : toute cle de cache
+        #: de chunks l'inclut, ainsi aucun cache ne peut survivre a un
+        #: coup de pinceau ou a une construction.
+        self.mods_version = 0
         self.tick = 0
         self.land = np.ones((g, g), dtype=np.uint8)   # masque continents (map.png)
         self.water = np.zeros((g, g), dtype=np.uint8)
@@ -45,6 +49,7 @@ class World:
         self._rng_regrow = np.random.default_rng(42)
 
     def set_land(self, mask):
+        self.mods_version += 1
         self.land = mask.astype(np.uint8)
         self.water = (1 - self.land).astype(np.uint8)
 
@@ -174,6 +179,7 @@ class World:
         return int(self.content[a // self.g, a % self.g])
 
     def mark_dirty(self, tx, ty, r=2):
+        self.mods_version += 1
         cx, cy = tx // TILE, ty // TILE
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):

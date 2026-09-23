@@ -5,8 +5,9 @@ from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
+from game.config import JOURNAL_MAXLEN
 from game.ui_snapshots import journal_snapshot
-from game.ui_registry import LOG_TITLES, LOG_CATS
+from game.ui_registry import LOG_TITLES
 from ..models.journal_model import JournalModel
 
 
@@ -97,7 +98,10 @@ class JournalDock(QDockWidget):
 
         cat = self._filter_combo.currentData() or "tous"
         search = self._search.text()
-        snap = journal_snapshot(self.controller.sim, category=cat, search=search)
+        # L'affichage est plafonné à 200 lignes ; un export doit vider tout
+        # le tampon du moteur.
+        snap = journal_snapshot(self.controller.sim, category=cat, search=search,
+                                max_entries=JOURNAL_MAXLEN)
 
         if fmt == "json":
             import json
@@ -106,8 +110,16 @@ class JournalDock(QDockWidget):
 
         elif fmt == "csv":
             import csv
+            # Les colonnes sont dérivées des lignes réelles : une liste figée
+            # faisait lever ValueError dès qu'une clé supplémentaire
+            # (``color``) apparaissait dans le snapshot.
+            fieldnames = []
+            for entry in snap:
+                for key in entry:
+                    if key not in fieldnames:
+                        fieldnames.append(key)
             with open(path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["tick", "category", "text", "count"])
+                writer = csv.DictWriter(f, fieldnames=fieldnames or ["tick"])
                 writer.writeheader()
                 writer.writerows(snap)
 

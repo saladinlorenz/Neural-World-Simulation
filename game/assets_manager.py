@@ -734,6 +734,11 @@ class AssetManager:
         return int(a.px * ar * scale) or 2, int(a.px * scale)
 
     def thumbnail(self, aid, size=54):
+        # Un appel avec un tuple (largeur, hauteur) cassait a la fois le
+        # redimensionnement et le repli : normaliser pour rester robuste.
+        if isinstance(size, (tuple, list)):
+            size = int(size[0])
+        size = max(1, int(size))
         k = (aid, size)
         hit = self._thumb_cache.get(k)
         if hit is not None:
