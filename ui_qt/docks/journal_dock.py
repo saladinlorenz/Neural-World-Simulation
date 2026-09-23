@@ -109,19 +109,9 @@ class JournalDock(QDockWidget):
                 json.dump(snap, f, ensure_ascii=False, indent=2)
 
         elif fmt == "csv":
-            import csv
-            # Les colonnes sont dérivées des lignes réelles : une liste figée
-            # faisait lever ValueError dès qu'une clé supplémentaire
-            # (``color``) apparaissait dans le snapshot.
-            fieldnames = []
-            for entry in snap:
-                for key in entry:
-                    if key not in fieldnames:
-                        fieldnames.append(key)
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames or ["tick"])
-                writer.writeheader()
-                writer.writerows(snap)
+            # Colonnes fixes via la source unique du registre (Lot E.5).
+            from game.ui_registry import export_journal_csv
+            export_journal_csv(snap, path)
 
         elif fmt == "txt":
             with open(path, "w", encoding="utf-8") as f:

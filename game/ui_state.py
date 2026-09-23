@@ -119,4 +119,32 @@ class UIState:
             "creator_open": self.creator_open,
             "monster_kind": self.monster_kind,
             "needs_save": self.needs_save,
+            # ── Lot Save v3 : état restauré au chargement ──
+            "favs": list(self.favs),
+            "recents": list(self.recents),
+            "template_color": self.template_color,
+            "template_class": self.template_class,
+            "template_sex": self.template_sex,
+            "tpl_body": list(self.tpl_body),
+            "tpl_cog": list(self.tpl_cog),
+            "tpl_personality": list(self.tpl_personality),
+            "tpl_emotions": list(self.tpl_emotions),
+            "tpl_needs": list(self.tpl_needs),
+            "brain_size": int(self.brain_size),
+            "pending_spawn_agent": self.pending_spawn_agent,
+            "open_sections": dict(self.open_sections),
+            "open_cards": dict(self.open_cards),
         }
+
+    def apply_dict(self, data: dict) -> None:
+        """Restaure l'état depuis un dict de types simples (Save v3)."""
+        if not isinstance(data, dict):
+            return
+        for key, value in data.items():
+            if not hasattr(self, key):
+                continue
+            if key in ("selected_tile", "ghost_tile") and value is not None:
+                value = tuple(value)
+            if key in ("action",) and value is not None:
+                value = tuple(value)
+            setattr(self, key, value)

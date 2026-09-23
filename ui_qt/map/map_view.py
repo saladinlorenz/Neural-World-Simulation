@@ -48,6 +48,8 @@ class MapView(QWidget):
     #: Résultat brut de chaque commande déclenchée depuis la carte. La
     #: fenêtre principale l'affiche dans la barre d'état.
     command_result = pyqtSignal(dict)
+    #: Tuile survolée par le curseur (tx, ty) — barre d'état (Lot E.6).
+    hover_changed = pyqtSignal(int, int)
 
     def __init__(self, controller, parent=None):
         super().__init__(parent)
@@ -340,10 +342,17 @@ class MapView(QWidget):
             if monster.alive:
                 drawables.append((float(monster.y), 3, "monster", monster))
 
-        # 4 — habitants
-        for agent in sim.agents:
-            if agent.alive:
-                drawables.append((float(agent.y), 4, "agent", agent))
+        # 4 — habitants (budget de rendu : performance.max_agents)
+        selected_eid = getattr(self.controller.ui_state,
+                               "selected_agent_eid", None)
+        budget = int((sim.runtime or {}).get("max_agents_rendered", 200))
+        agents_alive = [a for a in sim.agents if a.alive]
+        if len(agents_alive) > budget:
+            head = [a for a in agents_alive if a.eid == selected_eid]
+            rest = [a for a in agents_alive if a.eid != selected_eid]
+            agents_alive = head + rest[: max(0, budget - len(head))]
+        for agent in agents_alive:
+            drawables.append((float(agent.y), 4, "agent", agent))
 
         # 5 — effets d'action (liste déjà purgée par TTL côté moteur)
         for fx in getattr(sim, "effects", ()):
@@ -1104,6 +1113,17 @@ class MapView(QWidget):
         result = self.controller.execute(command)
         if invalidate:
             self.invalidate_all_caches()
+        # Pose reussie → asset ajoute en tete des recents (Lot E.4)
+        if (command.get("kind") == "place_asset"
+                and result.get("ok")
+                and command.get("aid") is not None):
+            ui_state = self.controller.ui_state
+            aid = int(command["aid"])
+            recent = [int(a) for a in getattr(ui_state, "recents", [])]
+            if aid in recent:
+                recent.remove(aid)
+            recent.insert(0, aid)
+            ui_state.recents = recent[:12]
         self.command_result.emit(result)
         return result
 
@@ -1139,6 +1159,11 @@ class MapView(QWidget):
                 self.apply_tool(tx, ty, group=self._stroke_group)
                 self.update()
             return
+
+        # Tuile survolée → barre d'état (Lot E.6)
+        wx, wy = self.transform.to_world(
+            event.position().x(), event.position().y())
+        self.hover_changed.emit(int(wx // TILE), int(wy // TILE))
 
         self._update_ghost(event.position())
 

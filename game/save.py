@@ -9,17 +9,20 @@ import numpy as np
 
 from .config import SAVE_DIR, GRID, TILE, AGE_MAX_NATURAL_DEATH_TICKS
 
+#: Version courante des sauvegardes (Lot Save v3).
+SAVE_VERSION = 3
+
 
 def _slot_path(slot=0):
     os.makedirs(SAVE_DIR, exist_ok=True)
     return os.path.join(SAVE_DIR, f"slot_{slot}.pkl")
 
 
-def save_game(sim, cam=None, slot=0):
+def save_game(sim, cam=None, slot=0, ui_state=None):
     """Sauvegarde complète : monde, simulation, agents, cerveaux, camera."""
     w = sim.w
     data = {
-        "version": 2,
+        "version": SAVE_VERSION,
         # --- world arrays ---
         "land": w.land,
         "water": w.water,
@@ -112,7 +115,13 @@ def save_game(sim, cam=None, slot=0):
         "village_pts": list(sim._village_pts),
         "recent_attacks": list(sim._recent_attacks),
         "last_war_log": sim._last_war_log,
-        # --- universal knowledge ---
+        # --- Lot Save v3 ---
+        "ui_state": ui_state,
+        "asset_catalog_fingerprint": sim.am.catalog_fingerprint(),
+        "districts": {k: d.to_dict()
+                      for k, d in getattr(sim, "districts", {}).items()},
+        "predator_zones": {k: z.to_dict()
+                           for k, z in getattr(sim, "predator_zones", {}).items()},        # --- universal knowledge ---
         "universal_knowledge": sim.universal_knowledge.to_dict(),
         # --- academy ---
         "academy": {
@@ -189,9 +198,10 @@ def load_game(am, slot=0):
         data = pickle.load(f)
 
     ver = data.get("version", 1)
-    if ver > 2:
+    if ver > SAVE_VERSION:
         raise ValueError(
-            f"Sauvegarde version {ver} incompatible (version supportée : 2). "
+            f"Sauvegarde version {ver} incompatible "
+            f"(version supportée : {SAVE_VERSION}). "
             "Mettez à jour le logiciel."
         )
 
@@ -350,6 +360,19 @@ def load_game(am, slot=0):
         observer, target = map(int, key.split(","))
         sim.social_memory.records[(observer, target)] = SocialRecord(**raw)
 
+    # --- Lot Save v3 : zones + empreinte catalogue + état UI ---
+    from .zones import District, PredatorZone
+    sim.districts = {
+        k: District.from_dict(v)
+        for k, v in data.get("districts", {}).items()
+    }
+    sim.predator_zones = {
+        k: PredatorZone.from_dict(v)
+        for k, v in data.get("predator_zones", {}).items()
+    }
+    sim.loaded_catalog_fingerprint = data.get("asset_catalog_fingerprint")
+    sim.loaded_ui_state = data.get("ui_state")
+
     # --- agents ---
     sim.agents = []
     for ad in data.get("agents", []):
@@ -462,6 +485,8 @@ def _serialize_agent(a):
             "attachments": {str(k): v
                             for k, v in a.anima.get("attachments", {}).items()},
             "intention": a.anima.get("intention"),
+            "plan": a.anima.get("plan"),
+            "reputation": dict(a.anima.get("reputation", {})),
             "causal_traces": list(a.anima.get("causal_traces", [])),
             "observations": list(a.anima.get("observations", [])),
         },
@@ -573,6 +598,8 @@ def _deserialize_agent(d):
         # Lot D/F/H : champs nouveaux
         if ad.get("intention") is not None:
             a.anima["intention"] = ad["intention"]
+        a.anima["plan"] = ad.get("plan")
+        a.anima["reputation"] = dict(ad.get("reputation", {}))
         a.anima["causal_traces"] = list(ad.get("causal_traces", []))
         from collections import deque as _dq2
         a.anima["observations"] = _dq2(ad.get("observations", []), maxlen=24)
@@ -609,6 +636,7 @@ def _serialize_monster(m):
         "vx": m.vx, "vy": m.vy,
         "energy": m.energy, "health": m.health,
         "kind": m.kind, "alive": m.alive,
+        "zone_id": getattr(m, "zone_id", None),
     }
 
 
@@ -617,6 +645,7 @@ def _deserialize_monster(d):
     m.vx = d["vx"]; m.vy = d["vy"]
     m.energy = d["energy"]; m.health = d["health"]
     m.alive = d["alive"]
+    m.zone_id = d.get("zone_id")
     return m
 
 

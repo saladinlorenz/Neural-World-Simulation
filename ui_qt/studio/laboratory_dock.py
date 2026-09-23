@@ -2,11 +2,12 @@
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                                QTextEdit, QTableWidget, QTableWidgetItem,
                                QPushButton, QGroupBox, QFileDialog,
-                               QScrollArea, QHeaderView)
-from PyQt6.QtCore import Qt
+                               QScrollArea, QHeaderView, QLabel)
+from PyQt6.QtCore import Qt, QThread
 
 from game.studio_reports import build_report, build_short_summary, interpret_metric
 from game.studio_compare import KEYS
+from ui_qt.studio.experiment_worker import ExperimentWorker
 
 
 class LaboratoryDock(QDockWidget):
@@ -99,10 +100,78 @@ class LaboratoryDock(QDockWidget):
         self._btn_json.clicked.connect(self._export_json)
         self._layout.addLayout(btn_layout)
 
+        # ── Lot F.3 : expérience A/B hors du thread UI ──
+        ab_layout = QHBoxLayout()
+        self._ab_btn = QPushButton("Lancer A/B (culture)")
+        self._ab_btn.setStyleSheet(
+            "QPushButton { background-color: #2980b9; color: white; "
+            "padding: 6px 14px; border: none; border-radius: 3px; }"
+            "QPushButton:hover { background-color: #3498db; }"
+            "QPushButton:disabled { background-color: #555; }"
+        )
+        self._ab_btn.clicked.connect(self._start_ab)
+        ab_layout.addWidget(self._ab_btn)
+        self._ab_status = QLabel("")
+        ab_layout.addWidget(self._ab_status)
+        ab_layout.addStretch()
+        self._layout.addLayout(ab_layout)
+        self._thread = None
+        self._worker = None
+
         self._layout.addStretch()
 
         scroll.setWidget(widget)
         self.setWidget(scroll)
+
+    # ── Lot F.3 : A/B dans un QThread ──
+
+    def _start_ab(self):
+        if self._thread is not None and self._thread.isRunning():
+            return
+        self._ab_btn.setEnabled(False)
+        self._ab_status.setText("Expérience A/B en cours…")
+
+        from game.lab import ExperimentRunner
+        from game.engine import build_world
+        am = self.controller.sim.am
+
+        def build_fn(seed, n_agents):
+            return build_world(am, seed=seed, procedural=False,
+                               populate_dense=False, n_agents=n_agents)
+
+        def toggle_fn(sim):
+            if getattr(sim, "runtime", None) is None:
+                sim.runtime = {}
+            sim.runtime["culture_enabled"] = False
+
+        self._thread = QThread(self)
+        self._worker = ExperimentWorker(
+            ExperimentRunner(), build_fn, seeds=[1, 2],
+            feature_name="culture", toggle_fn=toggle_fn,
+            ticks=800, agents=10)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.finished.connect(self._on_experiment_finished)
+        self._worker.failed.connect(self._on_experiment_failed)
+        self._worker.finished.connect(self._thread.quit)
+        self._worker.failed.connect(self._thread.quit)
+        self._thread.finished.connect(self._cleanup_thread)
+        self._thread.start()
+
+    def _on_experiment_finished(self, report):
+        self._result = report
+        self._ab_status.setText("A/B terminé.")
+        self.refresh()
+
+    def _on_experiment_failed(self, message):
+        self._ab_status.setText(f"Échec : {message}")
+
+    def _cleanup_thread(self):
+        self._thread = None
+        self._worker = None
+        self._ab_btn.setEnabled(True)
+
+    # ── Affichage ──
 
     def set_result(self, result):
         self._result = result
@@ -117,6 +186,10 @@ class LaboratoryDock(QDockWidget):
             self._scenario_text.setPlainText("")
             return
 
+        if "variants" in result:
+            self._refresh_ab(result)
+            return
+
         report = build_report(result)
         self._summary_text.setPlainText(report)
 
@@ -129,6 +202,67 @@ class LaboratoryDock(QDockWidget):
         duration = result.get("duration", 0)
         self._scenario_text.setPlainText(
             f"Scénario : {scenario}\nSeed : {seed}\nDurée : {duration} ticks"
+        )
+
+    def _refresh_ab(self, result):
+        """Affichage d'un rapport A/B ({feature, seeds, variants})."""
+        on = result.get("variants", {}).get("A_on", {})
+        off = result.get("variants", {}).get("B_off", {})
+        feature = result.get("feature", "?")
+        seeds = result.get("seeds", 0)
+        self._summary_text.setPlainText(
+            f"Expérience A/B — fonction « {feature} » sur {seeds} graine(s).\n"
+            f"A = fonction active, B = fonction désactivée "
+            f"(même seed, même durée)."
+        )
+
+        labels = {
+            "population": "Population finale",
+            "deaths": "Morts",
+            "births": "Naissances",
+            "builds": "Constructions",
+            "mean_age": "Âge moyen",
+            "mean_health": "Santé moyenne",
+            "storages": "Dépôts",
+            "sites": "Chantiers",
+        }
+        keys = [k for k in on if isinstance(on.get(k), (int, float))
+                and isinstance(off.get(k), (int, float))]
+        self._metrics_table.setRowCount(len(keys))
+        for i, key in enumerate(keys):
+            a, b = float(on[key]), float(off[key])
+            label_item = QTableWidgetItem(labels.get(key, key))
+            value_item = QTableWidgetItem(
+                f"{a:.2f} / {b:.2f}  (Δ {a - b:+.2f})")
+            value_item.setTextAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._metrics_table.setItem(i, 0, label_item)
+            self._metrics_table.setItem(i, 1, value_item)
+
+        lines = []
+        for key, phrase in (
+            ("population", "population"),
+            ("deaths", "mortalité"),
+            ("births", "naissances"),
+            ("builds", "constructions"),
+        ):
+            a, b = on.get(key), off.get(key)
+            if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+                continue
+            delta = a - b
+            if abs(delta) < 0.5:
+                lines.append(f"{phrase} : sans effet visible.")
+            elif delta > 0:
+                lines.append(f"{phrase} : la fonction active augmente "
+                             f"la valeur de {delta:+.1f}.")
+            else:
+                lines.append(f"{phrase} : la fonction active diminue "
+                             f"la valeur de {delta:+.1f}.")
+        self._interp_text.setPlainText("\n".join(lines) or "Aucun écart notable.")
+        self._scenario_text.setPlainText(
+            f"Scénario : A/B automatique\n"
+            f"Fonction : {feature}\n"
+            f"Graines : {seeds}"
         )
 
     def _fill_metrics(self, result):

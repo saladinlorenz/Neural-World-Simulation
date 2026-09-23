@@ -84,6 +84,10 @@ class SimulationController:
             return ui_result
 
         kind = command.get("kind")
+        # Save v3 : le contrôleur injecte l'état UI dans la sauvegarde.
+        if kind == "save" and "ui_state" not in command:
+            command = dict(command,
+                           ui_state=self.ui_state.snapshot_dict())
         result = execute_command(self.sim, command)
         if result.get("ok") and kind in ("load", "reset_world") and "sim" in result:
             # Le chargement remplace la simulation active : sans cela,
@@ -91,6 +95,9 @@ class SimulationController:
             self.sim = result["sim"]
             if result.get("cam") is not None:
                 self.camera = result["cam"]
+            loaded_ui = getattr(self.sim, "loaded_ui_state", None)
+            if loaded_ui:
+                self.ui_state.apply_dict(loaded_ui)
         if result.get("ok") and kind == "select_tile":
             # UIState est un concept d'interface : la commande valide les
             # coordonnées, le contrôleur est seul à les mémoriser.

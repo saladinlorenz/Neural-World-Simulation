@@ -239,6 +239,10 @@ class Being:
             "trauma": {"attack": 0.0, "hunger": 0.0, "loss": 0.0, "betrayal": 0.0, "fire": 0.0},
             "attachments": {},
             "intention": None,
+            "plan": None,
+            "reputation": {},
+            "causal_traces": [],
+            "observations": deque(maxlen=24),
         }
         # ---- Volonte
         self.goal = None                             # intention structuree (dict)
@@ -686,7 +690,8 @@ class Sheep:
 
 class Monster:
     __slots__ = ("eid", "x", "y", "vx", "vy", "energy", "health", "kind",
-                 "alive", "anim_t", "frame", "hostile", "damage", "sight", "state")
+                 "alive", "anim_t", "frame", "hostile", "damage", "sight",
+                 "state", "zone_id")
 
     def __init__(self, eid, x, y, kind="wolf"):
         self.eid = eid
@@ -699,6 +704,8 @@ class Monster:
         self.anim_t = 0
         self.frame = 0
         self.state = "idle"
+        #: Lot G.2 : confinement dans une PredatorZone (None = libre).
+        self.zone_id = None
         stats = {"bear": {"hostile": True, "damage": 0.18, "sight": 6},
                  "wolf": {"hostile": True, "damage": 0.12, "sight": 8},
                  "snake": {"hostile": True, "damage": 0.10, "sight": 5},

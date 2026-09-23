@@ -93,12 +93,14 @@ class World:
             self.fire[ty, tx] = max(self.fire[ty, tx], ticks)
             self.mark_dirty(tx, ty)
 
-    def step_fire(self, am, wind=(0.0, 0.0), rain=0.0, flammable=None):
+    def step_fire(self, am, wind=(0.0, 0.0), rain=0.0, flammable=None,
+                  spread=1.0):
         """Feu = systeme physique : temperature, combustible, vent, eau.
         Il ne sait pas ce qu'est une maison — il sait seulement bruler."""
         burning = np.nonzero(self.fire > 0)
         if not burning[0].size:
             return 0
+        spread_chance = min(0.9, 0.16 * max(0.0, float(spread)))
         for y, x in zip(*burning):
             self.fire[y, x] -= 1 + int(rain * 6)
             if self.fire[y, x] <= 0:
@@ -116,7 +118,7 @@ class World:
                         naid = self.content_at(nx, ny)
                         if flammable and naid >= 0 \
                            and naid in flammable \
-                           and self.rng_fire.random() < 0.16:
+                           and self.rng_fire.random() < spread_chance:
                             self.fire[ny, nx] = 200
         return int(burning[0].size)
 

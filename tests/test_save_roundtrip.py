@@ -35,7 +35,7 @@ def test_save_version_field():
         path = _slot_path(slot)
         with open(path, "rb") as f:
             data = pickle.load(f)
-        assert data.get("version") == 2, f"version attendue=2, obtenue={data.get('version')}"
+        assert data.get("version") == 3, f"version attendue=3, obtenue={data.get('version')}"
     finally:
         try:
             os.remove(_slot_path(slot))

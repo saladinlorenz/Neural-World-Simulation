@@ -858,6 +858,16 @@ class AssetManager:
         return dict(discovered=self.discovered, deduped=self.deduped,
                     per_cat={lbl: len(self.by_cat.get(c, [])) for c, lbl in CATEGORY_LABELS})
 
+    def catalog_fingerprint(self) -> str:
+        """Empreinte stable du catalogue (Save v3 : détection de drift)."""
+        import hashlib
+        digest = hashlib.sha256()
+        for asset in self.assets:
+            digest.update(str(getattr(asset, "path", "")).encode("utf-8",
+                                                                "replace"))
+            digest.update(b"\0")
+        return digest.hexdigest()
+
     def plans_for(self, inv):
         """Retourne la liste des assets constructibles avec l'inventaire donné."""
         from .affordance_definitions import plans_for as _plans_for
@@ -940,6 +950,7 @@ class AssetManager:
         self.by_role.setdefault("tool", []).append(aid)
         self.by_role.setdefault(f"tool_{tool_kind}", []).append(aid)
         self.by_cat.setdefault("outils", []).append(aid)
+        return aid
 
     def ensure_kaykit_resources(self):
         """KayKit Resource Bits : sprites extraits de la texture atlas."""

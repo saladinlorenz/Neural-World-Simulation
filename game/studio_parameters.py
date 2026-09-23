@@ -163,3 +163,76 @@ class ParameterStore:
         for p in PARAMETERS:
             result.setdefault(p.group, []).append(p)
         return result
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  Lot F.1 — paramètres Studio actifs (runtime Sim)
+# ══════════════════════════════════════════════════════════════════════
+
+#: Valeurs par défaut du dict ``Sim.runtime``.
+DEFAULT_RUNTIME = {
+    "max_population": 800,
+    "regrowth_scale": 1.0,
+    "fire_spread_scale": 1.0,
+    "trauma_scale": 1.0,
+    "trauma_enabled": True,
+    "culture_enabled": True,
+    "institutions_enabled": True,
+    "births_enabled": True,
+    "predators_enabled": True,
+    "birth_rate": 0.01,
+    "episodes_max": 50,
+    "food_level": "normal",
+    "predators_level": "normal",
+    "max_agents_rendered": 200,
+    "snapshot_frequency": 5,
+}
+
+#: Table explicite paramètre → cible ("sim" = attribut, "runtime" = dict).
+#: Les clés de choix (anima.trauma / anima.culture) sont dérivées via
+#: RuntimeConfig dans apply_parameters.
+PARAMETER_TARGETS = {
+    "simulation.speed": ("sim", "speed"),
+    "population.max": ("runtime", "max_population"),
+    "population.birth_rate": ("runtime", "birth_rate"),
+    "ecology.regrowth": ("runtime", "regrowth_scale"),
+    "ecology.fire_spread": ("runtime", "fire_spread_scale"),
+    "anima.episodes_max": ("runtime", "episodes_max"),
+    "performance.max_agents": ("runtime", "max_agents_rendered"),
+    "performance.snapshot_freq": ("runtime", "snapshot_frequency"),
+    "world.food": ("runtime", "food_level"),
+    "world.predators": ("runtime", "predators_level"),
+}
+
+
+def apply_parameters(sim, store):
+    """Applique le store validé au Sim : attributs + dict runtime.
+
+    C'est le seul point de passage entre le dock Paramètres (ou un
+    scénario) et la simulation en cours d'exécution.
+    """
+    values = store.to_dict()
+    if getattr(sim, "runtime", None) is None:
+        sim.runtime = dict(DEFAULT_RUNTIME)
+
+    for key, value in values.items():
+        target = PARAMETER_TARGETS.get(key)
+        if target is None:
+            continue
+        scope, attr = target
+        if scope == "sim":
+            setattr(sim, attr, value)
+        else:
+            sim.runtime[attr] = value
+
+    # Choix traduits en bool/float par RuntimeConfig.
+    runtime_cfg = store.get_runtime()
+    sim.runtime["trauma_enabled"] = runtime_cfg.trauma_enabled
+    sim.runtime["trauma_scale"] = runtime_cfg.trauma_scale
+    sim.runtime["culture_enabled"] = runtime_cfg.culture_enabled
+    sim.runtime["snapshot_frequency"] = runtime_cfg.snapshot_freq
+    sim.runtime["max_agents_rendered"] = runtime_cfg.max_agents_rendered
+
+    sim.parameters = values
+    sim.parameter_store = store
+    return values

@@ -29,3 +29,23 @@ data/backups/
 *.pickle
 # User-created custom tools (machine-local creations)
 assets/tools_custom/
+# Scratch / debug outputs
+data/tmp_*
+data/t2.txt
+data/t3.txt
+data/test_out.txt
+# Scratch / debug outputs
+data/tmp_*
+data/t2.txt
+data/t3.txt
+data/test_out.txt
+# Scratch / debug outputs
+data/tmp_*
+data/t2.txt
+data/t3.txt
+data/test_out.txt
+# Scratch / debug outputs
+data/tmp_*
+data/t2.txt
+data/t3.txt
+data/test_out.txt

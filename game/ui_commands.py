@@ -618,7 +618,8 @@ def _cmd_save(sim, cmd):
     from .save import save_game
     slot = int(cmd.get("slot", 0))
     cam = cmd.get("cam")
-    path, sz = save_game(sim, cam, slot=slot)
+    path, sz = save_game(sim, cam, slot=slot,
+                         ui_state=cmd.get("ui_state"))
     return {"ok": True, "path": str(path), "size_mb": round(sz, 1)}
 
 

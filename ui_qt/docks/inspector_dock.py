@@ -49,6 +49,19 @@ class InspectorDock(QDockWidget):
         self._state_label = QLabel("")
         self._state_label.setWordWrap(True)
         head_texts.addWidget(self._state_label)
+
+        # === Position (monde + tuile) ===
+        self._position_label = QLabel("")
+        self._position_label.setWordWrap(True)
+        self._position_label.setStyleSheet("font-size: 11px; color: #697281;")
+        head_texts.addWidget(self._position_label)
+
+        # === Metadonnees (temperature, mort naturelle) ===
+        self._meta_label = QLabel("")
+        self._meta_label.setWordWrap(True)
+        self._meta_label.setStyleSheet("font-size: 11px; color: #697281;")
+        head_texts.addWidget(self._meta_label)
+
         head.addLayout(head_texts, 1)
         self._layout.addLayout(head)
 
@@ -232,6 +245,8 @@ class InspectorDock(QDockWidget):
         if snap is None:
             self._identity_label.setText("Aucun agent selectionne")
             self._state_label.setText("")
+            self._position_label.setText("")
+            self._meta_label.setText("")
             self._anima_model.set_snapshot(None)
             for group, _ in self._groups.values():
                 group.setVisible(False)
@@ -266,6 +281,20 @@ class InspectorDock(QDockWidget):
             f"Faim: {faim:.0%} | Douleur: {douleur:.1f}"
         )
 
+        # Position (change pendant le deplacement)
+        position = snap.get("position", {})
+        self._position_label.setText(
+            f"Monde {float(position.get('x', 0.0)):.0f},"
+            f"{float(position.get('y', 0.0)):.0f} | "
+            f"Tuile {position.get('tx', '—')},{position.get('ty', '—')}"
+        )
+
+        # Metadonnees : temperature (meteo) + age de mort naturelle attendu
+        self._meta_label.setText(
+            f"Temperature: {snap.get('temperature', 0.0):.2f} | "
+            f"Mort naturelle a {snap.get('mort_naturelle_ans', 0.0):.1f} ans"
+        )
+
         # Groupes d'info
         for key, data in [
             ("body", snap.get("corps", {})),
@@ -277,6 +306,13 @@ class InspectorDock(QDockWidget):
                 group, grid = self._groups[key]
                 self._fill_grid(grid, data)
                 group.setVisible(bool(data))
+
+        # Competences (changent apres chaque action qui reussit)
+        if "skills" in self._groups:
+            group, grid = self._groups["skills"]
+            skills = snap.get("competences", {})
+            self._fill_grid(grid, skills)
+            group.setVisible(bool(skills))
 
         # Needs — sliders editables
         needs = self._extract_needs(snap)
@@ -403,6 +439,22 @@ class InspectorDock(QDockWidget):
         # Anima
         self._anima_model.set_snapshot(anima_snap or snap)
 
+        # Famille (noms lisibles, pas seulement des eids)
+        family = snap.get("family", {}) or {}
+        children = list(family.get("children", []) or [])
+        self._family_label.setText(
+            "\n".join([
+                f"Partenaire : {self._agent_label(family.get('partner_eid'))}",
+                f"Pere : {self._agent_label(family.get('father_eid'))}",
+                f"Mere : {self._agent_label(family.get('mother_eid'))}",
+                "Enfants : " + (
+                    ", ".join(self._agent_label(eid) for eid in children)
+                    if children else "—"
+                ),
+            ])
+        )
+        self._groups["family"][0].setVisible(True)
+
         # Relations
         rels = snap.get("relations", [])
         if rels:
@@ -418,16 +470,40 @@ class InspectorDock(QDockWidget):
         else:
             self._relations_label.setText("<b>Relations:</b> aucune")
 
-        # Goal
+        # Goal (action + destination + expiration)
         goal = snap.get("but", {})
         if goal and goal.get("action_nom"):
             dist = goal.get("distance_px")
             dist_str = f", {dist:.0f}px" if dist else ""
+            target_x = goal.get("cible_x")
+            target_y = goal.get("cible_y")
+            target_str = ""
+            if target_x is not None and target_y is not None:
+                target_str = f" → ({target_x}, {target_y})"
+            until = goal.get("expiration_tick")
+            until_str = f", jusqu'au tick {until}" if until is not None else ""
             self._goal_label.setText(
-                f"<b>But:</b> {goal['action_nom']}{dist_str}"
+                f"<b>But:</b> {goal['action_nom']}{target_str}{dist_str}{until_str}"
             )
         else:
             self._goal_label.setText("<b>But:</b> aucun")
+
+    def _agent_label(self, eid):
+        """Libelle lisible d'un habitant par son eid (vivant ou defunt)."""
+        if eid is None:
+            return "—"
+        try:
+            eid = int(eid)
+        except (TypeError, ValueError):
+            return "—"
+        for agent in self.controller.sim.agents:
+            if agent.eid == eid:
+                suffix = "" if agent.alive else ", mort"
+                return f"{agent.name} (#{eid}{suffix})"
+        for rec in getattr(self.controller.sim, "deceased", ()):
+            if isinstance(rec, dict) and rec.get("eid") == eid:
+                return f"{rec.get('nom', '?')} (#{eid}, mort)"
+        return f"#{eid}"
 
     def _extract_needs(self, snap):
         """Extrait les besoins en dictionnaire."""

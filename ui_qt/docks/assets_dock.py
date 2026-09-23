@@ -8,6 +8,7 @@ from PyQt6.QtGui import QPixmap, QColor, QPainter, QPen, QIcon, QImage
 
 from game.assets_api import CATEGORY_LABELS as _CAT_LIST
 from ui_qt.qtimage import pil_to_pixmap
+from ui_qt.theme.theme import get_settings
 
 CATEGORY_LABELS = dict(_CAT_LIST)
 
@@ -23,7 +24,25 @@ class AssetsDock(QDockWidget):
         self._am = None
         self._filtered = []
         self._favs = []
+        self.load_favorites()
         self._setup_ui()
+
+    def load_favorites(self):
+        """Favoris persistants entre deux lancements (QSettings)."""
+        raw = get_settings().value("assets/favorites", [])
+        if raw is None:
+            raw = []
+        if isinstance(raw, (int, str)):
+            raw = [raw]
+        self._favs = []
+        for value in raw:
+            try:
+                self._favs.append(int(value))
+            except (TypeError, ValueError):
+                continue
+
+    def save_favorites(self):
+        get_settings().setValue("assets/favorites", list(self._favs))
 
     def set_asset_manager(self, am):
         self._am = am
@@ -54,6 +73,10 @@ class AssetsDock(QDockWidget):
         self._favs_only = QCheckBox("Favoris")
         self._favs_only.toggled.connect(self._on_filter)
         cat_layout.addWidget(self._favs_only)
+
+        self._recents_only = QCheckBox("Recents")
+        self._recents_only.toggled.connect(self._on_filter)
+        cat_layout.addWidget(self._recents_only)
         layout.addLayout(cat_layout)
 
         # Splitter: list on left, detail panel on right
@@ -100,6 +123,21 @@ class AssetsDock(QDockWidget):
         detail_layout.addWidget(self._detail_solide)
         self._detail_size = QLabel("")
         detail_layout.addWidget(self._detail_size)
+        self._detail_shelter = QLabel("")
+        detail_layout.addWidget(self._detail_shelter)
+        self._detail_edible = QLabel("")
+        detail_layout.addWidget(self._detail_edible)
+        self._detail_flammable = QLabel("")
+        detail_layout.addWidget(self._detail_flammable)
+        self._detail_harvest = QLabel("")
+        self._detail_harvest.setWordWrap(True)
+        detail_layout.addWidget(self._detail_harvest)
+        self._detail_afford = QLabel("")
+        self._detail_afford.setWordWrap(True)
+        detail_layout.addWidget(self._detail_afford)
+        self._detail_recipe = QLabel("")
+        self._detail_recipe.setWordWrap(True)
+        detail_layout.addWidget(self._detail_recipe)
 
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.HLine)
@@ -128,6 +166,8 @@ class AssetsDock(QDockWidget):
             return
         search = self._search.text().lower()
         cat = self._cat_combo.currentData() or "__all__"
+        recents = [int(a) for a in
+                   getattr(self.controller.ui_state, "recents", [])]
         self._filtered = []
 
         for i, a in enumerate(self._am.assets):
@@ -135,6 +175,8 @@ class AssetsDock(QDockWidget):
             if cat != "__all__" and a_cat != cat:
                 continue
             if self._favs_only.isChecked() and i not in self._favs:
+                continue
+            if self._recents_only.isChecked() and i not in recents:
                 continue
             if search:
                 label = getattr(a, "label", getattr(a, "name", "")).lower()
@@ -214,7 +256,24 @@ class AssetsDock(QDockWidget):
         if w is not None and h is not None:
             self._detail_size.setText(f"Taille: {w}x{h} pixels")
         else:
-            self._detail_size.setText("Taille: N/A")
+            self._detail_size.setText(
+                f"Taille: {getattr(a, 'size_tiles', 1)} tuile(s)")
+        self._detail_shelter.setText(
+            f"Abri: {'Oui' if getattr(a, 'shelter', False) else 'Non'}")
+        edible = float(getattr(a, "edible", 0.0) or 0.0)
+        self._detail_edible.setText(
+            f"Comestible: {edible:.1f}" if edible > 0 else "Comestible: Non")
+        self._detail_flammable.setText(
+            f"Inflammable: {'Oui' if getattr(a, 'flammable', False) else 'Non'}")
+        harvest = getattr(a, "harvest", None) or {}
+        self._detail_harvest.setText(
+            f"Recolte: {harvest}" if harvest else "Recolte: —")
+        afford = getattr(a, "afford", []) or []
+        self._detail_afford.setText(
+            f"Affordances: {', '.join(afford)}" if afford else "Affordances: —")
+        recipe = getattr(a, "build_recipe", None)
+        self._detail_recipe.setText(
+            f"Recette: {recipe}" if recipe else "Recette: —")
         self._detail_desc.setText(getattr(a, "description", ""))
 
         pixmap = self._load_thumbnail(aid, a)
@@ -233,6 +292,7 @@ class AssetsDock(QDockWidget):
             self._favs.insert(0, aid)
             self._favs = self._favs[:12]
         self.controller.ui_state.favs = list(self._favs)
+        self.save_favorites()
         self._refresh_catalog()
 
     def refresh(self):

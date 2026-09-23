@@ -127,12 +127,15 @@ class ScenarioDialog(QDialog):
             return
         try:
             store = self.controller.sim.parameter_store
+            if store is None:
+                raise AttributeError
         except AttributeError:
             from game.studio_parameters import ParameterStore
             store = ParameterStore()
             self.controller.sim.parameter_store = store
         apply_scenario(store, self._selected_key)
-        self.controller.sim.parameters = store.to_dict()
+        from game.studio_parameters import apply_parameters
+        apply_parameters(self.controller.sim, store)
         self.accept()
 
     def get_selected_scenario(self):

@@ -134,7 +134,8 @@ class ParameterDock(QDockWidget):
                 "\n".join(errors),
             )
         else:
-            self.controller.sim.parameters = self._store.to_dict()
+            from game.studio_parameters import apply_parameters
+            apply_parameters(self.controller.sim, self._store)
             self.parameters_applied.emit()
 
     def _on_reset(self):

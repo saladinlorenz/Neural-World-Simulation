@@ -241,8 +241,33 @@ def society_snapshot(sim) -> dict[str, Any]:
                 "affinite": float(affection),
             })
 
+    institutions = []
+    for key, value in getattr(sim.clan_knowledge, "institutions", {}).items():
+        if not isinstance(value, dict):
+            continue
+        institutions.append({
+            "key": str(key),
+            "kind": value.get("kind", "unknown"),
+            "members": list(value.get("members", [])),
+            "stability": float(value.get("stability", 0.0)),
+            "trust": float(value.get("trust", 0.0)),
+            "age": int(value.get("age", 0)),
+            "practices": {str(pk): int(pv)
+                          for pk, pv in value.get("practices", {}).items()},
+        })
+
+    trade = []
+    for key, value in getattr(sim, "_trade", {}).items():
+        if isinstance(key, tuple) and len(key) >= 2:
+            trade.append({
+                "eid1": int(key[0]),
+                "eid2": int(key[1]),
+                "count": int(value),
+            })
+
     return {
         "population": len(alive),
+        "population_history": [int(v) for v in getattr(sim, "pop_hist", [])],
         "max_generation": int(max_gen),
         "bonded": bonded_count,
         "sheep": len(sim.sheep),
@@ -251,6 +276,11 @@ def society_snapshot(sim) -> dict[str, Any]:
             key: int(value)
             for key, value in sim.stats.items()
         },
+        "institutions": institutions,
+        "villages": [list(v) for v in getattr(sim, "_village_pts", [])],
+        "dominance": {str(k): int(v)
+                      for k, v in getattr(sim, "_dominance", {}).items()},
+        "trade": trade,
         "relations": relations,
     }
 
@@ -288,12 +318,15 @@ def anima_snapshot(sim, ui_state=None) -> dict[str, Any] | None:
         "intention": dict(intention) if isinstance(intention, dict) else None,
         "plan": dict(plan) if isinstance(plan, dict) else None,
         "attachments": dict(anima.get("attachments", {})),
+        "reputation": dict(anima.get("reputation", {})),
         "social_beliefs": {
             str(key): dict(value) if isinstance(value, dict) else value
             for key, value in social_beliefs.items()
         },
-        "episodes": list(anima.get("episodic_memory", []))[-10:],
-        "reputation": dict(anima.get("reputation", {})),
+        "episodes": list(anima.get("episodic_memory", []))[-50:],
+        "causal_traces": list(anima.get("causal_traces", []))[-50:],
+        "observations": list(anima.get("observations", []))[-50:],
+        "habits": [float(value) for value in getattr(agent, "habits", [])],
     }
 
     return base

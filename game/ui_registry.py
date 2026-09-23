@@ -142,6 +142,31 @@ LOG_TITLES = {
     "monde":    "Monde",
 }
 
+#: Source unique des categories de journal (libelle + couleur hex).
+JOURNAL_CATEGORIES = {
+    key: {
+        "label": LOG_TITLES.get(key, key.title()),
+        "color": "#%02X%02X%02X" % rgb,
+    }
+    for key, rgb in LOG_CATS.items()
+}
+
+
+def export_journal_csv(entries, path):
+    """Exporte le journal en CSV avec des colonnes fixes (Lot E.5).
+
+    Colonnes : tick, category, text, count, color. Les cles
+    supplementaires des entrees sont ignorees (extrasaction="ignore").
+    """
+    import csv
+
+    fields = ["tick", "category", "text", "count", "color"]
+    with open(path, "w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields,
+                                extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(entries)
+
 # ══════════════════════════════════════════════════════════════════════
 #  Categories d'assets
 # ══════════════════════════════════════════════════════════════════════

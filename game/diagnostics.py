@@ -169,6 +169,12 @@ def agent_snapshot(sim, agent) -> dict[str, Any] | None:
         "partenaire_eid": getattr(agent, "bonded", None),
         "parents": list(getattr(agent, "parents", ()) or ()),
         "enfants": list(getattr(agent, "children", ()) or ()),
+        "family": {
+            "partner_eid": getattr(agent, "bonded", None),
+            "father_eid": getattr(agent, "parent_pere_id", None),
+            "mother_eid": getattr(agent, "parent_mere_id", None),
+            "children": list(getattr(agent, "children", ()) or ()),
+        },
         "episodes": list(getattr(agent, "episodes", ()))[-12:],
         "vie": list(getattr(agent, "life", ()))[-12:],
     }

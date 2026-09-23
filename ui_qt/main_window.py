@@ -10,6 +10,7 @@ from game.ui_commands import execute_command
 from ui_qt.map.map_view import MapView
 from ui_qt.docks.population_dock import PopulationDock
 from ui_qt.docks.inspector_dock import InspectorDock
+from ui_qt.docks.anima_dock import AnimaDock
 from ui_qt.docks.journal_dock import JournalDock
 from ui_qt.docks.society_dock import SocietyDock
 from ui_qt.docks.assets_dock import AssetsDock
@@ -166,7 +167,13 @@ class MainWindow(QMainWindow):
         # culture / institutions / territoires inatteignables.
         for m in OVERLAY_MODES:
             self._overlay_combo.addItem(overlay.mode_label(m), m)
+            self._overlay_combo.setItemData(
+                OVERLAY_MODES.index(m) if m in OVERLAY_MODES else 0,
+                overlay.mode_help(m),
+                Qt.ItemDataRole.ToolTipRole,
+            )
         self._overlay_combo.currentIndexChanged.connect(self._on_overlay_change)
+        self._overlay_combo.setToolTip(overlay.mode_help("normal"))
         tb.addWidget(QLabel("Vue: "))
         tb.addWidget(self._overlay_combo)
 
@@ -193,7 +200,13 @@ class MainWindow(QMainWindow):
     def _setup_central(self):
         self._map = MapView(self.controller, self)
         self._map.command_result.connect(self.report_command_result)
+        #: Tuile survolée par le curseur (Lot E.6).
+        self._hover_tile = None
+        self._map.hover_changed.connect(self._on_map_hover)
         self.setCentralWidget(self._map)
+
+    def _on_map_hover(self, tx, ty):
+        self._hover_tile = (int(tx), int(ty))
 
     def _setup_docks(self):
         # Dock Habitants (gauche)
@@ -206,6 +219,11 @@ class MainWindow(QMainWindow):
         self._inspector_dock = InspectorDock(self.controller, self)
         self._inspector_dock.setObjectName("dock_inspecteur")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._inspector_dock)
+
+        # Dock Anima (droite, tabule avec inspecteur) : esprit interne
+        self._anima_dock = AnimaDock(self.controller, self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._anima_dock)
+        self.tabifyDockWidget(self._inspector_dock, self._anima_dock)
 
         # Dock Société (droite, tabulé avec inspecteur)
         self._society_dock = SocietyDock(self.controller, self)
@@ -271,6 +289,7 @@ class MainWindow(QMainWindow):
             (self._assets_dock, "Assets"),
             (self._tools_dock, "Outils"),
             (self._inspector_dock, "Inspecteur"),
+            (self._anima_dock, "Anima"),
             (self._tile_dock, "Tuile"),
             (self._society_dock, "Societe"),
             (self._journal_dock, "Journal"),
@@ -280,6 +299,10 @@ class MainWindow(QMainWindow):
         ):
             vue.addAction(self._dock_action(dock, title))
         vue.addSeparator()
+        export_image = QAction("Exporter l'image (Ctrl+E)", self)
+        export_image.setShortcut("Ctrl+E")
+        export_image.triggered.connect(self._export_viewport)
+        vue.addAction(export_image)
         self._grid_action = QAction("Grille de tuiles", self)
         self._grid_action.setCheckable(True)
         self._grid_action.setChecked(self._map.debug_show_grid)
@@ -410,7 +433,8 @@ class MainWindow(QMainWindow):
         self._status.showMessage("Nouveau monde (%s, graine %d)" % (mode, seed), 4000)
 
     def _refresh_all_docks(self):
-        for dock in (self._pop_dock, self._inspector_dock, self._society_dock,
+        for dock in (self._pop_dock, self._inspector_dock, self._anima_dock,
+                     self._society_dock,
                      self._journal_dock, self._tools_dock, self._assets_dock,
                      self._tile_dock, self._param_dock, self._timeline_dock,
                      self._lab_dock):
@@ -466,12 +490,16 @@ class MainWindow(QMainWindow):
         if self._tick_count % 4 == 0:
             self._pop_dock.refresh()
             self._inspector_dock.refresh()
+            self._anima_dock.refresh()
             self._journal_dock.refresh()
             self._society_dock.refresh()
             self._tools_dock.refresh()
             self._tile_dock.refresh()
         if self._tick_count % 60 == 0:
             self._assets_dock.refresh()
+        # Lot F.2 : la chronologie suit le monde tous les 8 ticks.
+        if self._tick_count % 8 == 0 and self._timeline_dock.isVisible():
+            self._timeline_dock.refresh()
 
         # Mettre à jour la carte
         if self._tick_count % 2 == 0:
@@ -490,10 +518,15 @@ class MainWindow(QMainWindow):
         if self._tick_count % 4 == 0:
             snap = simulation_snapshot(sim, self.controller.ui_state)
             clock = snap.get("clock", {})
+            hover = getattr(self, "_hover_tile", None)
+            hover_text = f"Tuile {hover[0]},{hover[1]}" if hover else "Tuile —"
             self._status_label.setText(
                 f"Tick {snap['tick']} | {clock.get('label', '')} | "
+                f"FPS {getattr(self, '_fps_ema', 0.0):.0f} | "
+                f"TPS {getattr(self, '_tps_ema', 0.0):.1f} | "
                 f"Pop: {snap['population']} | Speed: {snap['speed']} | "
-                f"{'Pause' if snap['paused'] else 'Running'}"
+                f"{'Pause' if snap['paused'] else 'Running'} | "
+                f"{hover_text}"
             )
             self._seed_label.setText("graine %s" % getattr(sim, "seed", "?"))
 
@@ -585,6 +618,22 @@ class MainWindow(QMainWindow):
         dlg = ScenarioDialog(self.controller, self)
         dlg.exec()
 
+    def _export_viewport(self):
+        """Exporte l'image visible de la carte (Lot F.5)."""
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exporter l'image",
+            "neural-world-view.png",
+            "PNG (*.png)",
+        )
+        if path:
+            ok = self._map.grab().save(path, "PNG")
+            if ok:
+                self._status.showMessage(f"Image exportée : {path}", 4000)
+            else:
+                self._status.showMessage("Échec de l'export de l'image", 4000)
+
     def _open_comparison(self):
         if not hasattr(self, '_comparison_panel'):
             self._comparison_panel = ComparisonPanel()
@@ -600,6 +649,9 @@ class MainWindow(QMainWindow):
         mode = self._overlay_combo.currentData()
         result = self.controller.execute({"kind": "set_overlay", "overlay": mode})
         self.report_command_result(result)
+        # Aide contextuelle du mode (Lot F.4)
+        from ui_qt.studio.world_overlay import WorldOverlay
+        self._overlay_combo.setToolTip(WorldOverlay().mode_help(mode))
         if result.get("ok") and hasattr(self, '_map') and self._map:
             self._map.set_overlay_mode(self.controller.ui_state.active_overlay)
 

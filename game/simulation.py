@@ -90,6 +90,14 @@ class Sim:
         self.history = WorldHistory()
         from .social_memory import SocialMemory
         self.social_memory = SocialMemory()
+        # ── Lot F.1 : paramètres Studio actifs ──
+        from .studio_parameters import DEFAULT_RUNTIME
+        self.runtime = dict(DEFAULT_RUNTIME)
+        self.parameters = {}
+        self.parameter_store = None
+        # ── Lot G.2 : quartiers et zones prédateurs ──
+        self.districts = {}
+        self.predator_zones = {}
 
     # ------------------------------------------------------------------ journal
     def log(self, text, color=None, cat="monde"):
@@ -107,7 +115,7 @@ class Sim:
     def spawn_agent(self, x=None, y=None, color=None, gen=0, brain=None, parents=(),
                     energy=None, personality=None, n_hid=None, cls=None,
                     body=None, cog=None, emotions=None, needs=None, sex=None):
-        if len(self.agents) >= MAX_POP:
+        if len(self.agents) >= int(self.runtime.get("max_population", MAX_POP)):
             return None
         colors = self.am.unit_colors() or ["blue"]
         color = color or colors[int(self.rng.integers(len(colors)))]
@@ -171,7 +179,12 @@ class Sim:
         self._entity_cells[s.eid] = (cx, cy)
 
     def spawn_monster(self, x=None, y=None, kind=None):
-        if len(self.monsters) >= MAX_MONSTERS:
+        if not self.runtime.get("predators_enabled", True):
+            return None
+        level = self.runtime.get("predators_level", "normal")
+        cap = {"faible": 5, "normal": MAX_MONSTERS, "élevé": 40}.get(
+            level, MAX_MONSTERS)
+        if len(self.monsters) >= cap:
             return None
         for _ in range(30):
             if x is None:
@@ -185,6 +198,11 @@ class Sim:
         k = kind or self.rng.choice(MONSTER_KINDS)
         m = Monster(self.next_eid, tx * TILE + 8, ty * TILE + 8, kind=k)
         self.next_eid += 1
+        # Lot G.2 : confinement si le spawn tombe dans une zone prédateur.
+        for z in self.predator_zones.values():
+            if z.contains(tx, ty):
+                m.zone_id = z.id
+                break
         self.monsters.append(m)
         cx, cy = int(m.x // 32), int(m.y // 32)
         self.grid_bucket.setdefault((cx, cy), []).append(m)
@@ -332,10 +350,14 @@ class Sim:
         for v_key, delta in value_fx.items():
             agent.anima_add_value(v_key, delta)
         # --- trauma ---
-        trauma_fx = self.TRAUMA_EFFECTS.get(kind, {})
-        for t_key, delta in trauma_fx.items():
-            agent.anima["trauma"][t_key] = min(
-                1.0, agent.anima["trauma"].get(t_key, 0.0) + delta)
+        if self.runtime.get("trauma_enabled", True):
+            trauma_fx = self.TRAUMA_EFFECTS.get(kind, {})
+            trauma_scale = float(self.runtime.get("trauma_scale", 1.0))
+            for t_key, delta in trauma_fx.items():
+                agent.anima["trauma"][t_key] = min(
+                    1.0,
+                    agent.anima["trauma"].get(t_key, 0.0)
+                    + delta * trauma_scale)
         # --- attachement ---
         if kind == "food_received" and actors:
             for oid in [e for e in actors if e != agent.eid]:
@@ -403,7 +425,9 @@ class Sim:
         self.clock.step()
         w.step(self.am, self.clock)
         # feu : systeme physique pur (combustible + vent - pluie)
-        burned = w.step_fire(self.am, self.clock.wind, self.clock.rain, self.am.flammable)
+        burned = w.step_fire(
+            self.am, self.clock.wind, self.clock.rain, self.am.flammable,
+            spread=float(self.runtime.get("fire_spread_scale", 1.0)))
         if burned and w.tick % 30 == 0:
             self.stats["fires"] += 1
         if self.clock.lightning():
@@ -504,7 +528,7 @@ class Sim:
                 plot.watered = True
             else:
                 plot.watered = False
-            growth_rate = 0.001
+            growth_rate = 0.001 * float(self.runtime.get("regrowth_scale", 1.0))
             if plot.watered:
                 growth_rate *= 2.0
             if self.clock.is_night:
@@ -1397,6 +1421,7 @@ class Sim:
         # ── Lot E : generation de plans (tous les 100 ticks) ──
         if w.tick % 100 == 0:
             a._cached_plans = self._generate_plans(a)
+            a.anima["plan"] = dict(a._cached_plans[0]) if a._cached_plans else None
         # ── Lot F+H : décroissance traces causales + observation learning ──
         if w.tick % 150 == 0:
             a.anima_decay_causal_traces()
@@ -2174,6 +2199,8 @@ class Sim:
 
     def _teach_near(self, a, skill_idx):
         """Transmission culturelle : un enfant qui regarde apprend."""
+        if not self.runtime.get("culture_enabled", True):
+            return
         for e in self._near(a.x, a.y, lambda e: isinstance(e, Being) and e.child, r=2):
             if e.trust(a.eid) > -0.2:
                 e.skills[skill_idx] = min(1.0, e.skills[skill_idx]
@@ -2637,7 +2664,10 @@ class Sim:
 
     # ------------------------------------------------------------------ reproduction
     def _reproduce(self, a: Being):
-        if len(self.agents) >= MAX_POP or a.energy < 0.55 or a.repro_cd > 0 \
+        if not self.runtime.get("births_enabled", True):
+            return
+        if len(self.agents) >= int(self.runtime.get("max_population", MAX_POP)) \
+           or a.energy < 0.55 or a.repro_cd > 0 \
            or a.child or a.age > AGE_ELDER_TICKS:
             return
         # Doit être marié pour avoir un enfant
@@ -2662,7 +2692,10 @@ class Sim:
         # coût énergétique
         a.energy -= 0.28
         mate.energy -= 0.28
-        a.repro_cd = mate.repro_cd = 2600
+        # Taux de naissance : 0.01 (défaut) ↔ cooldown de base 2600 ticks.
+        birth_rate = max(1e-6, float(self.runtime.get("birth_rate", 0.01)))
+        cooldown = int(max(200.0, 2600.0 * (0.01 / birth_rate)))
+        a.repro_cd = mate.repro_cd = cooldown
         # hérédité : héritage du champion de l'Academy + mutation
         champ = self.academy.champion_params
         n = a.brain.n
@@ -2902,10 +2935,12 @@ class Sim:
             elif dist > 0:
                 mvx = dx / dist
                 mvy = dy / dist
+                mvx, mvy = self._zone_deflect(m, mvx, mvy, 0.6 * 8)
                 self._move(m, mvx * 0.6, mvy * 0.6, sheep=True)
         else:
             mvx = self.rng.uniform(-1, 1)
             mvy = self.rng.uniform(-1, 1)
+            mvx, mvy = self._zone_deflect(m, mvx, mvy, 0.3 * 8)
             self._move(m, mvx * 0.3, mvy * 0.3, sheep=True)
 
         m.anim_t += 1
@@ -2917,6 +2952,15 @@ class Sim:
             m.alive = False
             self.monsters = [x for x in self.monsters if x.alive]
             self._entity_cells.pop(m.eid, None)
+
+    def _zone_deflect(self, m, mvx, mvy, probe_px):
+        """Inverse la direction si la zone prédateur interdit la cible."""
+        from .zones import can_monster_enter
+        ntx = int((m.x + mvx * probe_px) // TILE)
+        nty = int((m.y + mvy * probe_px) // TILE)
+        if can_monster_enter(self, m, ntx, nty):
+            return mvx, mvy
+        return -mvx, -mvy
 
     # ------------------------------------------------------------------ pathfinding local
     def _local_bfs(self, start_tx, start_ty, goal_fn, max_r=15):

@@ -7,6 +7,7 @@ from PyQt6.QtGui import QColor
 
 from game.ui_snapshots import society_snapshot
 from ui_qt.models.society_model import SocietyModel
+from ui_qt.widgets.population_history_widget import PopulationHistoryWidget
 
 
 class SocietyDock(QDockWidget):
@@ -28,6 +29,33 @@ class SocietyDock(QDockWidget):
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self._table)
+
+        # Historique de population (Lot E.3)
+        layout.addWidget(QLabel("Historique de population"))
+        self._population_history = PopulationHistoryWidget()
+        layout.addWidget(self._population_history)
+
+        # Institutions emergentes (Lot E.3)
+        layout.addWidget(QLabel("Institutions"))
+        self._institutions_table = QTableWidget()
+        self._institutions_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers)
+        self._institutions_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows)
+        self._institutions_table.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection)
+        self._institutions_table.verticalHeader().setVisible(False)
+        self._institutions_table.setAlternatingRowColors(True)
+        self._institutions_table.setColumnCount(5)
+        self._institutions_table.setHorizontalHeaderLabels(
+            ["Type", "Membres", "Stabilite", "Confiance", "Age"]
+        )
+        inst_header = self._institutions_table.horizontalHeader()
+        inst_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col in (1, 2, 3, 4):
+            inst_header.setSectionResizeMode(
+                col, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self._institutions_table)
 
         # Section Relations
         layout.addWidget(QLabel("Relations"))
@@ -56,7 +84,24 @@ class SocietyDock(QDockWidget):
     def refresh(self):
         snap = society_snapshot(self.controller.sim)
         self._model.set_snapshot(snap)
+        self._population_history.set_values(
+            snap.get("population_history", []))
+        self._populate_institutions(snap.get("institutions", []))
         self._populate_relations(snap.get("relations", []))
+
+    def _populate_institutions(self, institutions):
+        self._institutions_table.setRowCount(len(institutions))
+        for row, inst in enumerate(institutions):
+            self._institutions_table.setItem(
+                row, 0, QTableWidgetItem(str(inst.get("kind", ""))))
+            self._institutions_table.setItem(
+                row, 1, QTableWidgetItem(str(len(inst.get("members", [])))))
+            self._institutions_table.setItem(
+                row, 2, QTableWidgetItem(f'{inst.get("stability", 0.0):.2f}'))
+            self._institutions_table.setItem(
+                row, 3, QTableWidgetItem(f'{inst.get("trust", 0.0):.2f}'))
+            self._institutions_table.setItem(
+                row, 4, QTableWidgetItem(str(inst.get("age", 0))))
 
     def _populate_relations(self, relations):
         self._relations_table.setRowCount(len(relations))

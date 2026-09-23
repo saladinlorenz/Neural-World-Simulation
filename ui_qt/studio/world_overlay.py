@@ -25,6 +25,22 @@ _MODE_LABELS = {
     "territoires": "Territoires",
 }
 
+#: Modes exigeant un habitant sélectionné (Lot G.1).
+CONTEXT_MODES = {"memoire", "danger", "relations", "besoins", "anima"}
+
+_MODE_HELP = {
+    "normal": "Rendu standard du monde.",
+    "ressources": "Monde — densité de nourriture, bois et pierre.",
+    "danger": "Habitant requis — feux, senteurs et dangers perçus.",
+    "memoire": "Habitant requis — cellules de croyance et souvenirs.",
+    "relations": "Habitant requis — liens de confiance et d'affinité.",
+    "besoins": "Habitant requis — faim, soif, fatigue et douleur.",
+    "anima": "Habitant requis — identité, valeurs et trauma.",
+    "culture": "Monde — savoirs culturels partagés.",
+    "institutions": "Monde — institutions émergentes.",
+    "territoires": "Monde — villages et zones de domination.",
+}
+
 _IDENTITY_COLORS = {
     "builder": QColor(70, 130, 200),
     "provider": QColor(80, 170, 80),
@@ -70,9 +86,31 @@ class WorldOverlay:
     def mode_label(self, mode):
         return _MODE_LABELS.get(mode, mode)
 
+    def mode_help(self, mode):
+        """Aide contextuelle (tooltip) du mode d'overlay (Lot F.4)."""
+        return _MODE_HELP.get(mode, "")
+
+    def paint_message(self, painter, message):
+        """Message centré (overlay sans sélection — Lot G.1)."""
+        from PyQt6.QtCore import Qt
+        painter.save()
+        painter.setPen(QColor(220, 228, 240))
+        painter.drawText(painter.window(),
+                         Qt.AlignmentFlag.AlignCenter, message)
+        painter.restore()
+
     def paint(self, painter, map_transform, sim, active_mode):
         if active_mode == "normal":
             return
+        # Lot G.1 : mémoire/danger/relations/besoins/anima exigent un
+        # habitant sélectionné ; les autres modes restent globaux.
+        if active_mode in CONTEXT_MODES:
+            agent = getattr(sim, "selected", None)
+            if agent is None or not getattr(agent, "alive", False):
+                self.paint_message(
+                    painter,
+                    "Sélectionnez un habitant pour cet overlay")
+                return
 
         w = sim.w
         screen_w = painter.device().width()
