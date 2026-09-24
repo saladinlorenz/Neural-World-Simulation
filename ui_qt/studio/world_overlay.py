@@ -8,37 +8,38 @@ from game.config import GRID, TILE, CLAN_COLORS
 from game.studio_text import level_color
 
 MODES = [
-    "normal", "ressources", "danger", "memoire", "relations",
-    "besoins", "anima", "culture", "institutions", "territoires",
+    "normal", "resources", "danger", "memory", "relations",
+    "needs", "anima", "culture", "institutions", "territories",
 ]
 
 _MODE_LABELS = {
     "normal": "Normal",
-    "ressources": "Ressources",
+    "resources": "Resources",
     "danger": "Danger",
-    "memoire": "Mémoire",
+    "memory": "Memory",
     "relations": "Relations",
-    "besoins": "Besoins",
+    "needs": "Needs",
     "anima": "Anima",
     "culture": "Culture",
     "institutions": "Institutions",
-    "territoires": "Territoires",
+    "territories": "Territories",
 }
 
 #: Modes exigeant un habitant sélectionné (Lot G.1).
-CONTEXT_MODES = {"memoire", "danger", "relations", "besoins", "anima"}
+CONTEXT_MODES = {"memory", "danger", "relations", "needs", "anima"}
 
-_MODE_HELP = {
-    "normal": "Rendu standard du monde.",
-    "ressources": "Monde — densité de nourriture, bois et pierre.",
-    "danger": "Habitant requis — feux, senteurs et dangers perçus.",
-    "memoire": "Habitant requis — cellules de croyance et souvenirs.",
-    "relations": "Habitant requis — liens de confiance et d'affinité.",
-    "besoins": "Habitant requis — faim, soif, fatigue et douleur.",
-    "anima": "Habitant requis — identité, valeurs et trauma.",
-    "culture": "Monde — savoirs culturels partagés.",
-    "institutions": "Monde — institutions émergentes.",
-    "territoires": "Monde — villages et zones de domination.",
+#: Aide contextuelle (tooltip) des modes — plan original §11.1.
+OVERLAY_HELP = {
+    "normal": "Standard world rendering.",
+    "resources": "Resources and regrowth visible in the current area.",
+    "danger": "Perceived danger for the selected inhabitant.",
+    "memory": "Personal memory of the selected inhabitant.",
+    "relations": "Important relations of the selected inhabitant.",
+    "needs": "Needs of the selected inhabitant.",
+    "anima": "Identity, trauma and values of the selected inhabitant.",
+    "culture": "Shared cultural knowledge.",
+    "institutions": "Emergent social institutions.",
+    "territories": "Territories, districts and predator debug zones.",
 }
 
 _IDENTITY_COLORS = {
@@ -88,7 +89,7 @@ class WorldOverlay:
 
     def mode_help(self, mode):
         """Aide contextuelle (tooltip) du mode d'overlay (Lot F.4)."""
-        return _MODE_HELP.get(mode, "")
+        return OVERLAY_HELP.get(mode, "")
 
     def paint_message(self, painter, message):
         """Message centré (overlay sans sélection — Lot G.1)."""
@@ -102,7 +103,7 @@ class WorldOverlay:
     def paint(self, painter, map_transform, sim, active_mode):
         if active_mode == "normal":
             return
-        # Lot G.1 : mémoire/danger/relations/besoins/anima exigent un
+        # Lot G.1 : memory/danger/relations/needs/anima exigent un
         # habitant sélectionné ; les autres modes restent globaux.
         if active_mode in CONTEXT_MODES:
             agent = getattr(sim, "selected", None)
@@ -118,22 +119,22 @@ class WorldOverlay:
 
         if active_mode == "danger":
             self._paint_danger(painter, map_transform, sim, screen_w, screen_h)
-        elif active_mode == "ressources":
-            self._paint_ressources(painter, map_transform, sim, screen_w, screen_h)
-        elif active_mode == "memoire":
-            self._paint_memoire(painter, map_transform, sim, screen_w, screen_h)
+        elif active_mode == "resources":
+            self._paint_resources(painter, map_transform, sim, screen_w, screen_h)
+        elif active_mode == "memory":
+            self._paint_memory(painter, map_transform, sim, screen_w, screen_h)
         elif active_mode == "relations":
             self._paint_relations(painter, map_transform, sim, screen_w, screen_h)
-        elif active_mode == "besoins":
-            self._paint_besoins(painter, map_transform, sim, screen_w, screen_h)
+        elif active_mode == "needs":
+            self._paint_needs(painter, map_transform, sim, screen_w, screen_h)
         elif active_mode == "anima":
             self._paint_anima(painter, map_transform, sim, screen_w, screen_h)
         elif active_mode == "culture":
             self._paint_culture(painter, map_transform, sim, screen_w, screen_h)
         elif active_mode == "institutions":
             self._paint_institutions(painter, map_transform, sim, screen_w, screen_h)
-        elif active_mode == "territoires":
-            self._paint_territoires(painter, map_transform, sim, screen_w, screen_h)
+        elif active_mode == "territories":
+            self._paint_territories(painter, map_transform, sim, screen_w, screen_h)
 
     def _paint_danger(self, painter, transform, sim, sw, sh):
         w = sim.w
@@ -158,7 +159,7 @@ class WorldOverlay:
                 c.setAlpha(int(120 + 80 * h_val))
                 painter.fillRect(int(sx), int(sy), ts, ts, c)
 
-    def _paint_ressources(self, painter, transform, sim, sw, sh):
+    def _paint_resources(self, painter, transform, sim, sw, sh):
         w = sim.w
         x0, y0, x1, y1 = transform.visible_tiles(TILE, GRID, sw, sh)
         step = self._tile_step(x0, y0, x1, y1)
@@ -182,7 +183,7 @@ class WorldOverlay:
                 c.setAlpha(int(80 + 100 * h_val))
                 painter.fillRect(int(sx), int(sy), ts, ts, c)
 
-    def _paint_memoire(self, painter, transform, sim, sw, sh):
+    def _paint_memory(self, painter, transform, sim, sw, sh):
         """Cellules de croyance (danger mémorisé) + marqueurs d'habitants.
 
         ``Being.belief_places`` est indexé par cellule de 8 tuiles :
@@ -257,7 +258,7 @@ class WorldOverlay:
                 painter.setPen(QPen(c, 1.5))
                 painter.drawLine(QPointF(sx1, sy1), QPointF(sx2, sy2))
 
-    def _paint_besoins(self, painter, transform, sim, sw, sh):
+    def _paint_needs(self, painter, transform, sim, sw, sh):
         painter.setPen(QPen(QColor(0, 0, 0), 1))
         for a in sim.agents:
             if not a.alive:
@@ -363,7 +364,7 @@ class WorldOverlay:
             for p in points:
                 painter.drawLine(QPointF(sx, sy), p)
 
-    def _paint_territoires(self, painter, transform, sim, sw, sh):
+    def _paint_territories(self, painter, transform, sim, sw, sh):
         clans = {}
         for a in sim.agents:
             if not a.alive:

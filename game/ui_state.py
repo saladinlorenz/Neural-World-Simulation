@@ -150,4 +150,7 @@ class UIState:
             if key == "journal_filter" and isinstance(value, str):
                 from .ui_registry import JOURNAL_FILTER_MIGRATION
                 value = JOURNAL_FILTER_MIGRATION.get(value, value)
+            if key == "active_overlay" and isinstance(value, str):
+                from .ui_registry import OVERLAY_MIGRATION
+                value = OVERLAY_MIGRATION.get(value, value)
             setattr(self, key, value)

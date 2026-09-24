@@ -72,7 +72,7 @@ def test_ui_state_save_roundtrip():
     sim, am = _make_sim()
     slot = 94
     ui = {"favs": [3, 7], "recents": [9], "brain_size": 64,
-          "active_overlay": "memoire"}
+          "active_overlay": "memory"}
     try:
         save_game(sim, cam=None, slot=slot, ui_state=ui)
         loaded, _ = load_game(am, slot=slot)
@@ -107,10 +107,10 @@ def test_overlay_context_modes_gate():
     sim, _ = _make_sim()
     sim.selected = None
     from ui_qt.studio.world_overlay import CONTEXT_MODES, WorldOverlay
-    assert "memoire" in CONTEXT_MODES
-    assert "ressources" not in CONTEXT_MODES
+    assert "memory" in CONTEXT_MODES
+    assert "resources" not in CONTEXT_MODES
     ov = WorldOverlay()
-    help_text = ov.mode_help("memoire")
+    help_text = ov.mode_help("memory")
     assert help_text, "mode_help vide"
     print("OK test_overlay_context_modes_gate")
 

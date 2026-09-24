@@ -149,6 +149,14 @@ JOURNAL_FILTER_MIGRATION = {
     "laboratoire": "world",
 }
 
+#: Anciens modes overlay FR persistes (save v3) -> ids EN.
+OVERLAY_MIGRATION = {
+    "ressources": "resources",
+    "memoire": "memory",
+    "besoins": "needs",
+    "territoires": "territories",
+}
+
 
 def export_journal_csv(entries, path):
     """Exporte le journal en CSV avec des colonnes fixes (Lot E.5).
