@@ -29,14 +29,14 @@ class TestStudioText(unittest.TestCase):
 
     def test_describe_agent(self):
         from game.studio_text import describe_agent
-        snap = {"nom": "Aro", "identity": {"builder": 0.8, "explorer": 0.2}}
+        snap = {"name": "Aro", "identity": {"builder": 0.8, "explorer": 0.2}}
         result = describe_agent(snap)
         self.assertIn("Aro", result)
         self.assertIn("constructeur", result)
 
     def test_describe_agent_no_identity(self):
         from game.studio_text import describe_agent
-        snap = {"nom": "X", "identity": {}}
+        snap = {"name": "X", "identity": {}}
         result = describe_agent(snap)
         self.assertIn("pas encore", result)
 

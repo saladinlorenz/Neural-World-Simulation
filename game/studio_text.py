@@ -31,7 +31,7 @@ def level_color(value):
 
 def describe_agent(agent_snapshot):
     """Decrire un habitant en phrases simples. agent_snapshot est un dict."""
-    name = agent_snapshot.get("nom", "Cet habitant")
+    name = agent_snapshot.get("name", "Cet habitant")
     identity = agent_snapshot.get("identity", {})
     dominant = max(identity, key=identity.get) if identity else None
     labels = {
@@ -48,20 +48,22 @@ def describe_agent(agent_snapshot):
 
 
 def describe_health(agent_snapshot):
-    sante = agent_snapshot.get("sante", 0)
-    return f"Sante : {int(sante*100)}% -- {level_label(sante).lower()}"
+    health = agent_snapshot.get("health", 0)
+    return f"Sante : {int(health*100)}% -- {level_label(health).lower()}"
 
 
 def describe_hunger(agent_snapshot):
-    faim = agent_snapshot.get("faim", 0)
-    return f"Faim : {int(faim*100)}% -- {level_label(faim).lower()}"
+    hunger = (agent_snapshot.get("needs_named", {}) or {}).get("faim", 0)
+    return f"Faim : {int(hunger*100)}% -- {level_label(hunger).lower()}"
 
 
 def describe_needs(agent_snapshot):
     """Return a list of need descriptions."""
+    needs = agent_snapshot.get("needs_named", {}) or {}
     result = []
-    for key, label in [("sante", "Sante"), ("faim", "Faim"), ("energie", "Energie")]:
-        val = agent_snapshot.get(key, 0)
+    for key, label in [("health", "Sante"), ("faim", "Faim"),
+                       ("énergie", "Energie")]:
+        val = needs.get(key, agent_snapshot.get(key, 0))
         result.append(f"{label} : {int(val*100)}% -- {level_label(val).lower()}")
     return result
 

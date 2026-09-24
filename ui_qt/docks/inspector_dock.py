@@ -247,6 +247,11 @@ class InspectorDock(QDockWidget):
             self._state_label.setText("")
             self._position_label.setText("")
             self._meta_label.setText("")
+            self._portrait.clear()
+            self._belief_label.setText("")
+            self._spatial_label.setText("")
+            self._autobio_label.setText("")
+            self._life_label.setText("")
             self._anima_model.set_snapshot(None)
             for group, _ in self._groups.values():
                 group.setVisible(False)
@@ -259,26 +264,35 @@ class InspectorDock(QDockWidget):
             return
 
         # Identite
-        nom = snap.get("nom", "?")
-        sex = snap.get("sexe", snap.get("sex", "?"))
+        name = snap.get("name", "?")
+        sex = snap.get("sex", "?")
         stage = snap.get("stage", "")
-        age = snap.get("age_ans", 0)
-        cls = snap.get("classe", "")
+        age = snap.get("age_years", 0)
+        cls = snap.get("class", "")
         clan = snap.get("clan", "")
         gen = snap.get("generation", 0)
         self._identity_label.setText(
-            f"<b>{nom}</b> ({sex}) — {stage}, {age:.1f} ans, {cls}, "
+            f"<b>{name}</b> ({sex}) — {stage}, {age:.1f} ans, {cls}, "
             f"clan {clan}, gen {gen}"
         )
 
+        # Portrait (avatar PIL -> QPixmap, meme source que le dock Habitants)
+        try:
+            from ui_qt.qtimage import pil_to_pixmap
+            self._portrait.setPixmap(pil_to_pixmap(
+                self.controller.sim.am.avatar(int(snap.get("eid", 0)), size=48)))
+        except Exception:
+            self._portrait.clear()
+
         # Etat
-        sante = snap.get("sante", 0)
-        energie = snap.get("energie", 0)
-        faim = snap.get("faim", 0)
-        douleur = snap.get("douleur", 0)
+        needs = snap.get("needs_named", {}) or {}
+        health = snap.get("health", 0)
+        energy = needs.get("énergie", 0)
+        hunger = needs.get("faim", 0)
+        pain = snap.get("pain", 0)
         self._state_label.setText(
-            f"Sante: {sante:.0%} | Energie: {energie:.0%} | "
-            f"Faim: {faim:.0%} | Douleur: {douleur:.1f}"
+            f"Sante: {health:.0%} | Energie: {energy:.0%} | "
+            f"Faim: {hunger:.0%} | Douleur: {pain:.1f}"
         )
 
         # Position (change pendant le deplacement)
@@ -292,15 +306,16 @@ class InspectorDock(QDockWidget):
         # Metadonnees : temperature (meteo) + age de mort naturelle attendu
         self._meta_label.setText(
             f"Temperature: {snap.get('temperature', 0.0):.2f} | "
-            f"Mort naturelle a {snap.get('mort_naturelle_ans', 0.0):.1f} ans"
+            f"Mort naturelle a "
+            f"{snap.get('natural_death_age_years', 0.0):.1f} ans"
         )
 
         # Groupes d'info
         for key, data in [
-            ("body", snap.get("corps", {})),
-            ("cog", snap.get("cognition", {})),
-            ("perso", snap.get("personnalite", {})),
-            ("emo", snap.get("emotions", {})),
+            ("body", snap.get("body_named", {})),
+            ("cog", snap.get("cognition_named", {})),
+            ("perso", snap.get("personality_named", {})),
+            ("emo", snap.get("emotions_named", {})),
         ]:
             if key in self._groups:
                 group, grid = self._groups[key]
@@ -310,7 +325,7 @@ class InspectorDock(QDockWidget):
         # Competences (changent apres chaque action qui reussit)
         if "skills" in self._groups:
             group, grid = self._groups["skills"]
-            skills = snap.get("competences", {})
+            skills = snap.get("skills_named", {})
             self._fill_grid(grid, skills)
             group.setVisible(bool(skills))
 
@@ -328,11 +343,11 @@ class InspectorDock(QDockWidget):
             self._groups["needs"][0].setVisible(False)
 
         # === Cerveau ===
-        brain = snap.get("cerveau", {})
+        brain = snap.get("brain", {})
         if brain:
-            neurons = brain.get("neurones", 0)
-            freq = brain.get("frequence_reflexion", 0)
-            rank = brain.get("classement_actions", [])
+            neurons = brain.get("neurons", 0)
+            freq = brain.get("think_frequency", 0)
+            rank = brain.get("action_ranking", [])
             self._brain_neurons_label.setText(f"Nombre de neurones: {neurons}")
             self._brain_freq_label.setText(f"Frequence de reflexion: {freq}")
             if rank:
@@ -345,7 +360,7 @@ class InspectorDock(QDockWidget):
             self._brain_group.setVisible(False)
 
         # === Inventaire ===
-        inventory = snap.get("inventaire", {})
+        inventory = snap.get("inventory", {})
         if inventory:
             lines = []
             for item, qty in inventory.items():
@@ -360,11 +375,11 @@ class InspectorDock(QDockWidget):
             self._inventory_group.setVisible(True)
 
         # === Outil ===
-        # ``outil`` est une fiche ``asset_info`` (dict), pas une chaîne : un
+        # ``tool`` est une fiche ``asset_info`` (dict), pas une chaîne : un
         # ``str(tool)`` affichait le dictionnaire brut.
-        tool = snap.get("outil", None)
+        tool = snap.get("tool", None)
         if isinstance(tool, dict):
-            dur = snap.get("durabilite_outil", 0)
+            dur = snap.get("tool_durability", 0)
             self._tool_label.setText(f"{tool.get('nom', '?')} (durabilité: {dur})")
             self._tool_group.setVisible(True)
         elif tool:
@@ -375,15 +390,15 @@ class InspectorDock(QDockWidget):
             self._tool_group.setVisible(True)
 
         # === Memoire / croyances ===
-        # ``croyances_danger`` existe toujours : l'ancien repli sur
-        # ``memoire`` rendait la mémoire spatiale définitivement inaccessible.
-        beliefs = snap.get("croyances_danger", {}) or {}
-        spatial = snap.get("memoire", {}) or {}
+        beliefs = snap.get("danger_beliefs", {}) or {}
+        spatial = snap.get("memory", {}) or {}
         episodes = snap.get("episodes", [])
+        life_events = snap.get("life", [])
         has_belief = bool(beliefs)
         has_spatial = any(bool(v) for v in spatial.values())
         has_episodes = bool(episodes)
-        if has_belief or has_spatial or has_episodes:
+        has_life = bool(life_events)
+        if has_belief or has_spatial or has_episodes or has_life:
             self._memory_group.setVisible(True)
             if has_belief:
                 belief_lines = []
@@ -411,17 +426,17 @@ class InspectorDock(QDockWidget):
                 for cat, marks in spatial.items():
                     if not marks:
                         continue
-                    forces = [float(m.get("force", 0.0)) for m in marks
-                              if isinstance(m, dict)]
-                    strongest = max(forces) if forces else 0.0
+                    strengths = [float(m.get("strength", 0.0)) for m in marks
+                                 if isinstance(m, dict)]
+                    strongest = max(strengths) if strengths else 0.0
                     spatial_lines.append(
                         f"{cat}: {len(marks)} lieu(x), force max {strongest:.0%}"
                     )
-                if spatial_lines:
-                    self._belief_label.setText(
-                        self._belief_label.text()
-                        + "\n<b>Mémoire spatiale:</b>\n" + "\n".join(spatial_lines)
-                    )
+                self._spatial_label.setText(
+                    "<b>Mémoire spatiale:</b>\n" + "\n".join(spatial_lines)
+                )
+            else:
+                self._spatial_label.setText("<b>Mémoire spatiale:</b> aucune")
 
             if has_episodes:
                 last5 = episodes[-5:]
@@ -433,8 +448,20 @@ class InspectorDock(QDockWidget):
                 )
             else:
                 self._autobio_label.setText("<b>Autobiographie:</b> aucune")
+
+            if has_life:
+                life_lines = [f"  • {ev}" for ev in life_events[-8:]]
+                self._life_label.setText(
+                    "<b>Événements de vie:</b>\n" + "\n".join(life_lines)
+                )
+            else:
+                self._life_label.setText("<b>Événements de vie:</b> aucun")
         else:
             self._memory_group.setVisible(False)
+            self._belief_label.setText("")
+            self._spatial_label.setText("")
+            self._autobio_label.setText("")
+            self._life_label.setText("")
 
         # Anima
         self._anima_model.set_snapshot(anima_snap or snap)
@@ -460,10 +487,13 @@ class InspectorDock(QDockWidget):
         if rels:
             lines = []
             for r in rels[:5]:
-                conf = r.get("confiance", 0)
+                conf = r.get("trust", 0)
                 aff = r.get("affection", 0)
-                vivant = "vivant" if r.get("vivant", False) else "mort"
-                lines.append(f"  {r['nom']}: conf={conf:.2f} aff={aff:.2f} ({vivant})")
+                alive = "vivant" if r.get("alive", False) else "mort"
+                lines.append(
+                    f"  {r.get('name', '?')}: conf={conf:.2f} "
+                    f"aff={aff:.2f} ({alive})"
+                )
             self._relations_label.setText(
                 "<b>Relations:</b>\n" + "\n".join(lines)
             )
@@ -471,19 +501,20 @@ class InspectorDock(QDockWidget):
             self._relations_label.setText("<b>Relations:</b> aucune")
 
         # Goal (action + destination + expiration)
-        goal = snap.get("but", {})
-        if goal and goal.get("action_nom"):
+        goal = snap.get("goal", {})
+        if goal and goal.get("action_name"):
             dist = goal.get("distance_px")
             dist_str = f", {dist:.0f}px" if dist else ""
-            target_x = goal.get("cible_x")
-            target_y = goal.get("cible_y")
+            target_x = goal.get("target_x")
+            target_y = goal.get("target_y")
             target_str = ""
             if target_x is not None and target_y is not None:
                 target_str = f" → ({target_x}, {target_y})"
-            until = goal.get("expiration_tick")
+            until = goal.get("until_tick")
             until_str = f", jusqu'au tick {until}" if until is not None else ""
             self._goal_label.setText(
-                f"<b>But:</b> {goal['action_nom']}{target_str}{dist_str}{until_str}"
+                f"<b>But:</b> {goal['action_name']}{target_str}"
+                f"{dist_str}{until_str}"
             )
         else:
             self._goal_label.setText("<b>But:</b> aucun")
@@ -502,19 +533,21 @@ class InspectorDock(QDockWidget):
                 return f"{agent.name} (#{eid}{suffix})"
         for rec in getattr(self.controller.sim, "deceased", ()):
             if isinstance(rec, dict) and rec.get("eid") == eid:
-                return f"{rec.get('nom', '?')} (#{eid}, mort)"
+                return f"{rec.get('name', '?')} (#{eid}, mort)"
         return f"#{eid}"
 
     def _extract_needs(self, snap):
-        """Extrait les besoins en dictionnaire."""
+        """Extrait les besoins en dictionnaire (cles = cles des sliders)."""
+        needs = snap.get("needs_named", {}) or {}
         return {
-            "faim": snap.get("faim", 0),
-            "energie": snap.get("energie", 0),
-            "soif": snap.get("soif", 0),
-            "sommeil": snap.get("sommeil", 0),
-            "securite": snap.get("securite", 0),
-            "appartenance": snap.get("appartenance", 0),
-            "estime": snap.get("estime", 0),
+            "faim": needs.get("faim", 0),
+            "energie": needs.get("énergie", 0),
+            "soif": needs.get("soif", 0),
+            "sommeil": needs.get("sommeil", 0),
+            "securite": needs.get("sécurité", 0),
+            "appartenance": needs.get("appartenance", 0),
+            "estime": needs.get("estime", 0),
+            "sante": snap.get("health", 0),
         }
 
     def _fill_grid(self, grid, data):

@@ -83,8 +83,8 @@ class TestUISnapshots(unittest.TestCase):
         self.assertIsInstance(rows, list)
         for row in rows:
             self.assertIn("eid", row)
-            self.assertIn("nom", row)
-            self.assertIn("vivant", row)
+            self.assertIn("name", row)
+            self.assertIn("alive", row)
             text = json.dumps(row)
             self.assertIsInstance(text, str)
 

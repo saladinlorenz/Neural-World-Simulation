@@ -150,7 +150,7 @@ class PopulationDock(QDockWidget):
         except Exception:
             pass
         self._model.set_snapshot(snap, portraits)
-        alive = sum(1 for row in snap if row.get("vivant", True))
+        alive = sum(1 for row in snap if row.get("alive", True))
         if include_dead:
             self._count_label.setText(f"{alive} vivants / {len(snap)} au total")
         else:

@@ -58,25 +58,26 @@ class PopulationModel(QAbstractTableModel):
             return _make_placeholder(clan)
 
         if role == Qt.ItemDataRole.DisplayRole:
+            needs = row.get("needs_named", {}) or {}
             if col == 0:
                 return ""
             elif col == 1:
-                nom = row.get("nom", "")
+                name = row.get("name", "")
                 # Les décédés viennent du tampon Sim.deceased : les marquer,
                 # sinon « Tous » ressemble exactement à « Vivants ».
-                return nom if row.get("vivant", True) else f"† {nom}"
+                return name if row.get("alive", True) else f"† {name}"
             elif col == 2:
-                return row.get("sexe", row.get("sex", ""))
+                return row.get("sex", "")
             elif col == 3:
-                return f"{row.get('age_ans', 0):.1f}"
+                return f"{row.get('age_years', 0):.1f}"
             elif col == 4:
-                return f"{row.get('sante', 0):.0%}"
+                return f"{row.get('health', 0):.0%}"
             elif col == 5:
-                return f"{row.get('energie', 0):.0%}"
+                return f"{needs.get('énergie', 0):.0%}"
             elif col == 6:
-                return f"{row.get('faim', 0):.0%}"
+                return f"{needs.get('faim', 0):.0%}"
             elif col == 7:
-                return row.get("classe", "")
+                return row.get("class", "")
             elif col == 8:
                 return row.get("stage", "")
             elif col == 9:

@@ -10,7 +10,7 @@ from typing import Any
 import math
 
 from .config import (GRID, TILE, BODY_DEFS, COG_DEFS, EMOTION_DEFS,
-                     PERSONALITY_DEFS)
+                     PERSONALITY_DEFS, NEED_DEFS, TICKS_PER_YEAR)
 
 
 def clamp01(value: float) -> float:
@@ -89,7 +89,7 @@ def agent_snapshot(sim, agent) -> dict[str, Any] | None:
     memories = {}
     for category, entries in getattr(agent, "seen", {}).items():
         memories[category] = [
-            {"x": int(x), "y": int(y), "force": float(force)}
+            {"x": int(x), "y": int(y), "strength": float(force)}
             for x, y, force in entries
         ]
 
@@ -104,71 +104,76 @@ def agent_snapshot(sim, agent) -> dict[str, Any] | None:
         affection = relation[1] if isinstance(relation, (tuple, list)) and len(relation) > 1 else 0.0
         relatives.append({
             "eid": other.eid,
-            "nom": other.name,
-            "confiance": float(trust),
+            "name": other.name,
+            "trust": float(trust),
             "affection": float(affection),
-            "vivant": bool(other.alive),
+            "alive": bool(other.alive),
         })
 
-    relatives.sort(key=lambda r: (r["confiance"] + r["affection"]), reverse=True)
+    relatives.sort(key=lambda r: (r["trust"] + r["affection"]), reverse=True)
+
+    # Besoins nommés : hunger/energy sont des miroirs lisibles de
+    # needs[0]/needs[1] ; les cinq autres viennent directement du tableau.
+    # Les libellés viennent de NEED_DEFS (source unique dans config).
+    needs_named = {
+        NEED_DEFS[0]: float(agent.hunger),
+        NEED_DEFS[1]: float(agent.energy),
+        NEED_DEFS[2]: float(agent.needs[2]),
+        NEED_DEFS[3]: float(agent.needs[3]),
+        NEED_DEFS[4]: float(agent.needs[4]),
+        NEED_DEFS[5]: float(agent.needs[5]),
+        NEED_DEFS[6]: float(agent.needs[6]),
+    }
 
     return {
         "eid": int(agent.eid),
-        "nom": agent.name,
-        "vivant": bool(agent.alive),
-        "sexe": agent.sex,
-        "classe": agent.cls,
+        "name": agent.name,
+        "alive": bool(agent.alive),
+        "sex": agent.sex,
+        "class": agent.cls,
         "clan": agent.color,
         "generation": int(agent.gen),
-        "age_ans": float(agent.age_years),
+        "age_years": float(agent.age_years),
         "stage": agent.stage,
-        "mort_naturelle_ans": float(agent.natural_death_age / 43200.0),
+        "natural_death_age_years": float(
+            agent.natural_death_age / TICKS_PER_YEAR),
         "avatar_idx": int(getattr(agent, "avatar", 0)),
         "position": {"x": float(agent.x), "y": float(agent.y),
                      "tx": int(agent.tx), "ty": int(agent.ty)},
-        "etat": getattr(agent, "state", "idle"),
-        "sante": float(agent.health),
-        "douleur": float(agent.pain),
+        "state": getattr(agent, "state", "idle"),
+        "health": float(agent.health),
+        "pain": float(agent.pain),
         "temperature": float(agent.temp),
-        "energie": float(agent.energy),
-        "faim": float(agent.hunger),
-        "soif": float(agent.needs[2]),
-        "sommeil": float(agent.needs[3]),
-        "securite": float(agent.needs[4]),
-        "appartenance": float(agent.needs[5]),
-        "estime": float(agent.needs[6]),
-        "emotions": _labelled(agent.emotions, EMOTION_DEFS),
-        "personnalite": _labelled(agent.personality, PERSONALITY_DEFS),
-        "corps": _labelled(agent.body, BODY_DEFS),
-        "cognition": _labelled(agent.cog, COG_DEFS),
-        "competences": {"recolte": float(agent.skills[0]),
-                        "construction": float(agent.skills[1]),
-                        "combat": float(agent.skills[2]),
-                        "social": float(agent.skills[3])},
-        "inventaire": dict(agent.inv),
-        "outil": tool,
-        "durabilite_outil": int(getattr(agent, "tool_durability", 0)),
-        "but": {
+        "needs_named": needs_named,
+        "emotions_named": _labelled(agent.emotions, EMOTION_DEFS),
+        "personality_named": _labelled(agent.personality, PERSONALITY_DEFS),
+        "body_named": _labelled(agent.body, BODY_DEFS),
+        "cognition_named": _labelled(agent.cog, COG_DEFS),
+        "skills_named": {"harvest": float(agent.skills[0]),
+                         "building": float(agent.skills[1]),
+                         "combat": float(agent.skills[2]),
+                         "social": float(agent.skills[3])},
+        "inventory": dict(agent.inv),
+        "tool": tool,
+        "tool_durability": int(getattr(agent, "tool_durability", 0)),
+        "goal": {
             "action": goal.get("act"),
-            "action_nom": action_name(sim, goal.get("act")),
-            "cible_x": goal_tx,
-            "cible_y": goal_ty,
+            "action_name": action_name(sim, goal.get("act")),
+            "target_x": goal_tx,
+            "target_y": goal_ty,
             "distance_px": distance,
-            "expiration_tick": goal.get("until"),
-            "intensite": goal.get("intensity", 0.0),
-            "bloque_ticks": int(getattr(agent, "stuck", 0)),
+            "until_tick": goal.get("until"),
+            "intensity": goal.get("intensity", 0.0),
+            "stuck_ticks": int(getattr(agent, "stuck", 0)),
         },
-        "cerveau": {
-            "neurones": int(agent.brain.n),
-            "frequence_reflexion": int(agent.brain.te),
-            "classement_actions": brain_rank,
+        "brain": {
+            "neurons": int(agent.brain.n),
+            "think_frequency": int(agent.brain.te),
+            "action_ranking": brain_rank,
         },
-        "memoire": memories,
-        "croyances_danger": dict(getattr(agent, "belief_places", {})),
+        "memory": memories,
+        "danger_beliefs": dict(getattr(agent, "belief_places", {})),
         "relations": relatives[:12],
-        "partenaire_eid": getattr(agent, "bonded", None),
-        "parents": list(getattr(agent, "parents", ()) or ()),
-        "enfants": list(getattr(agent, "children", ()) or ()),
         "family": {
             "partner_eid": getattr(agent, "bonded", None),
             "father_eid": getattr(agent, "parent_pere_id", None),
@@ -176,7 +181,7 @@ def agent_snapshot(sim, agent) -> dict[str, Any] | None:
             "children": list(getattr(agent, "children", ()) or ()),
         },
         "episodes": list(getattr(agent, "episodes", ()))[-12:],
-        "vie": list(getattr(agent, "life", ()))[-12:],
+        "life": list(getattr(agent, "life", ()))[-12:],
     }
 
 
@@ -184,18 +189,20 @@ def deceased_row(sim, agent) -> dict[str, Any]:
     """Fiche allégée d'un habitant mort, au format du tableau de population."""
     return {
         "eid": int(agent.eid),
-        "nom": agent.name,
-        "vivant": False,
-        "sexe": getattr(agent, "sex", "?"),
-        "classe": getattr(agent, "cls", ""),
+        "name": agent.name,
+        "alive": False,
+        "sex": getattr(agent, "sex", "?"),
+        "class": getattr(agent, "cls", ""),
         "clan": getattr(agent, "color", ""),
         "generation": int(getattr(agent, "gen", 0)),
-        "age_ans": float(getattr(agent, "age_years", 0.0)),
+        "age_years": float(getattr(agent, "age_years", 0.0)),
         "stage": getattr(agent, "stage", ""),
-        "sante": 0.0,
-        "energie": 0.0,
-        "faim": clamp01(getattr(agent, "hunger", 0.0)),
-        "tick_deces": int(sim.w.tick),
+        "health": 0.0,
+        "needs_named": {
+            NEED_DEFS[0]: clamp01(getattr(agent, "hunger", 0.0)),
+            NEED_DEFS[1]: 0.0,
+        },
+        "death_tick": int(sim.w.tick),
     }
 
 

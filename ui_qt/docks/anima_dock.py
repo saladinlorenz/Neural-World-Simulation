@@ -111,7 +111,7 @@ class AnimaDock(QDockWidget):
             self.plan_label.setText("Aucun plan")
             return
 
-        self.title.setText(f"Anima — {snap.get('nom', 'Inconnu')}")
+        self.title.setText(f"Anima — {snap.get('name', 'Inconnu')}")
 
         self._fill(self.identity, sorted(anima.get("identity", {}).items()))
         self._fill(self.values, sorted(anima.get("values", {}).items()))

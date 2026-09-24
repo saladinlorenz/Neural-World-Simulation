@@ -30,25 +30,26 @@ class AnimaModel(QAbstractTableModel):
         anima = agent_snap.get("anima", {})
 
         self._rows.append({"type": "section", "label": "BASE"})
-        self._data("Nom", agent_snap.get("nom", ""))
-        self._data("Sexe", agent_snap.get("sexe", ""))
-        self._data("Classe", agent_snap.get("classe", ""))
+        self._data("Nom", agent_snap.get("name", ""))
+        self._data("Sexe", agent_snap.get("sex", ""))
+        self._data("Classe", agent_snap.get("class", ""))
         self._data("Clan", agent_snap.get("clan", ""))
         self._data("Generation", agent_snap.get("generation", 0))
-        self._data("Age", agent_snap.get("age_ans", 0))
+        self._data("Age", agent_snap.get("age_years", 0))
         self._data("Stage", agent_snap.get("stage", ""))
-        self._data("Sante", agent_snap.get("sante", 0))
-        self._data("Energie", agent_snap.get("energie", 0))
-        self._data("Faim", agent_snap.get("faim", 0))
+        needs = agent_snap.get("needs_named", {}) or {}
+        self._data("Sante", agent_snap.get("health", 0))
+        self._data("Energie", needs.get("énergie", 0))
+        self._data("Faim", needs.get("faim", 0))
         pos = agent_snap.get("position", {})
         if pos:
             self._data("Position", f"({pos.get('tx', 0)}, {pos.get('ty', 0)})")
-        goal = agent_snap.get("but", {})
-        self._data("But", goal.get("action_nom", "") or "")
-        brain = agent_snap.get("cerveau", {})
+        goal = agent_snap.get("goal", {})
+        self._data("But", goal.get("action_name", "") or "")
+        brain = agent_snap.get("brain", {})
         if brain:
-            self._data("Neurones", brain.get("neurones", 0))
-            self._data("Frequence reflexion", brain.get("frequence_reflexion", 0))
+            self._data("Neurones", brain.get("neurons", 0))
+            self._data("Frequence reflexion", brain.get("think_frequency", 0))
 
         self._rows.append({"type": "section", "label": "ANIMA"})
 
@@ -111,7 +112,7 @@ class AnimaModel(QAbstractTableModel):
             for ep in episodes[-3:]:
                 self._data("  episode", str(ep))
 
-        life_events = agent_snap.get("vie", [])
+        life_events = agent_snap.get("life", [])
         if life_events:
             self._rows.append({"type": "sub", "label": "Evenements de vie"})
             for ev in life_events[-5:]:
