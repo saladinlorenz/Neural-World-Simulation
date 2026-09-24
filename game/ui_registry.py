@@ -118,54 +118,59 @@ TAB_HINTS = {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-#  Categories de journal
+#  Registre unique des categories journal / timeline (11 ids)
 # ══════════════════════════════════════════════════════════════════════
-LOG_CATS = {
-    "combat":   (214, 84, 84),
-    "social":   (198, 100, 162),
-    "meteo":    (62, 124, 214),
-    "economie": (206, 160, 50),
-    "vie":      (67, 160, 92),
-    "mort":     (140, 80, 86),
-    "batiment": (96, 154, 96),
-    "monde":    (112, 126, 150),
-}
-
-LOG_TITLES = {
-    "combat":   "Combat",
-    "social":   "Social",
-    "meteo":    "Meteo",
-    "economie": "Economie",
-    "vie":      "Vie",
-    "mort":     "Mort",
-    "batiment": "Batiment",
-    "monde":    "Monde",
-}
-
-#: Source unique des categories de journal (libelle + couleur hex).
 JOURNAL_CATEGORIES = {
-    key: {
-        "label": LOG_TITLES.get(key, key.title()),
-        "color": "#%02X%02X%02X" % rgb,
-    }
-    for key, rgb in LOG_CATS.items()
+    "world":     {"label": "World",     "color": "#7080A0"},
+    "life":      {"label": "Life",      "color": "#43A05C"},
+    "family":    {"label": "Family",    "color": "#5FA86E"},
+    "social":    {"label": "Social",    "color": "#C664A2"},
+    "combat":    {"label": "Combat",    "color": "#D65454"},
+    "danger":    {"label": "Danger",    "color": "#D67A54"},
+    "weather":   {"label": "Weather",   "color": "#3E7CD6"},
+    "economy":   {"label": "Economy",   "color": "#CEA032"},
+    "building":  {"label": "Building",  "color": "#609A60"},
+    "culture":   {"label": "Culture",   "color": "#9A70C6"},
+    "death":     {"label": "Death",     "color": "#8C5056"},
+}
+
+#: Sentinelle « toutes categories » (ancien « tous »).
+ALL_CATEGORIES = "all"
+
+#: Anciens ids FR persistes (save v3) -> ids EN du registre.
+JOURNAL_FILTER_MIGRATION = {
+    "tous": "all",
+    "monde": "world",
+    "vie": "life",
+    "meteo": "weather",
+    "economie": "economy",
+    "batiment": "building",
+    "mort": "death",
+    "laboratoire": "world",
 }
 
 
 def export_journal_csv(entries, path):
     """Exporte le journal en CSV avec des colonnes fixes (Lot E.5).
 
-    Colonnes : tick, category, text, count, color. Les cles
-    supplementaires des entrees sont ignorees (extrasaction="ignore").
+    Colonnes : tick, category, text, count, color. La colonne color est
+    résolue depuis le registre (hex), pas depuis le tuple brut.
     """
     import csv
 
     fields = ["tick", "category", "text", "count", "color"]
+    rows = []
+    for entry in entries:
+        cat = str(entry.get("category", ""))
+        rows.append({
+            **entry,
+            "color": JOURNAL_CATEGORIES.get(cat, {}).get("color", ""),
+        })
     with open(path, "w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields,
                                 extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(entries)
+        writer.writerows(rows)
 
 # ══════════════════════════════════════════════════════════════════════
 #  Categories d'assets

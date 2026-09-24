@@ -1,6 +1,8 @@
 """JournalModel — modèle Qt pour le journal."""
 from PyQt6.QtCore import QAbstractTableModel, Qt
 
+from game.ui_registry import JOURNAL_CATEGORIES
+
 
 class JournalModel(QAbstractTableModel):
     HEADERS = ["Tick", "Categorie", "Texte", "Compte"]
@@ -37,7 +39,8 @@ class JournalModel(QAbstractTableModel):
                 mm, ss = divmod(int(tick / 60), 60)
                 return f"{mm:02}:{ss:02}"
             elif col == 1:
-                return row.get("category", "")
+                cat = row.get("category", "")
+                return JOURNAL_CATEGORIES.get(cat, {}).get("label", cat)
             elif col == 2:
                 return row.get("text", "")
             elif col == 3:
@@ -47,14 +50,13 @@ class JournalModel(QAbstractTableModel):
 
         if role == Qt.ItemDataRole.ForegroundRole and col == 1:
             from PyQt6.QtGui import QColor
-            cat = row.get("category", "monde")
-            colors = {
-                "combat": (214, 84, 84), "social": (198, 100, 162),
-                "meteo": (62, 124, 214), "economie": (206, 160, 50),
-                "vie": (67, 160, 92), "mort": (140, 80, 86),
-                "batiment": (96, 154, 96), "monde": (112, 126, 150),
-            }
-            r, g, b = colors.get(cat, (105, 114, 129))
-            return QColor(r, g, b)
+            cat = row.get("category", "world")
+            meta = JOURNAL_CATEGORIES.get(cat)
+            if meta is None:
+                return QColor(105, 114, 129)
+            hex_color = meta["color"].lstrip("#")
+            return QColor(int(hex_color[0:2], 16),
+                          int(hex_color[2:4], 16),
+                          int(hex_color[4:6], 16))
 
         return None

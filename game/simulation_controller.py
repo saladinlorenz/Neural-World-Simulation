@@ -55,7 +55,7 @@ class SimulationController:
     def snapshot_selected(self) -> dict | None:
         return selected_agent_snapshot(self.sim, self.ui_state)
 
-    def snapshot_journal(self, category: str = "tous", search: str = "") -> list[dict]:
+    def snapshot_journal(self, category: str = "all", search: str = "") -> list[dict]:
         return journal_snapshot(self.sim, category=category, search=search)
 
     def snapshot_society(self) -> dict:

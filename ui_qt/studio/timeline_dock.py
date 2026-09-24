@@ -5,9 +5,8 @@ from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                               QHeaderView, QAbstractItemView)
 from PyQt6.QtCore import Qt
 
-from game.studio_timeline import (
-    build_timeline, filter_events, format_event, CATEGORIES,
-)
+from game.studio_timeline import build_timeline, filter_events, format_event
+from game.ui_registry import JOURNAL_CATEGORIES, ALL_CATEGORIES
 from game.ui_snapshots import journal_snapshot
 
 
@@ -29,8 +28,11 @@ class TimelineDock(QDockWidget):
         filter_layout = QHBoxLayout()
 
         self._cat_combo = QComboBox()
-        self._cat_combo.addItems(CATEGORIES)
-        self._cat_combo.currentTextChanged.connect(self._apply_filter)
+        # Même registre que le dock Journal (ids EN, libellés du registre).
+        self._cat_combo.addItem("All", ALL_CATEGORIES)
+        for cat, meta in JOURNAL_CATEGORIES.items():
+            self._cat_combo.addItem(meta["label"], cat)
+        self._cat_combo.currentIndexChanged.connect(self._apply_filter)
         filter_layout.addWidget(QLabel("Catégorie:"))
         filter_layout.addWidget(self._cat_combo)
 
@@ -77,7 +79,7 @@ class TimelineDock(QDockWidget):
         self._apply_filter()
 
     def _apply_filter(self):
-        cat = self._cat_combo.currentText()
+        cat = self._cat_combo.currentData() or ALL_CATEGORIES
         text = self._search.text().strip().lower()
         filtered = filter_events(self._events, category=cat)
         if text:

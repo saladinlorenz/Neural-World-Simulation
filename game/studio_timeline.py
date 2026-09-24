@@ -1,32 +1,30 @@
 """Chronologie normalisée avec catégories et filtres. Pas de Qt/Pygame."""
+from .ui_registry import JOURNAL_CATEGORIES, ALL_CATEGORIES
 
-
-CATEGORIES = [
-    "Tous", "Vie", "Famille", "Social", "Danger",
-    "Construction", "Économie", "Culture", "Météo", "Mort",
-]
+#: Ids du registre partagé (journal + timeline), sentinelle « all » en tête.
+CATEGORIES = [ALL_CATEGORIES] + list(JOURNAL_CATEGORIES)
 
 CATEGORY_MAP = {
-    "birth": "Famille",
-    "death": "Mort",
-    "marriage": "Famille",
-    "child": "Famille",
-    "attack": "Danger",
-    "monster_attack": "Danger",
-    "danger": "Danger",
-    "construction": "Construction",
-    "build": "Construction",
-    "construction_complete": "Construction",
-    "harvest": "Économie",
-    "food_given": "Économie",
-    "trade": "Économie",
-    "message": "Social",
-    "conflict": "Social",
-    "exploration": "Vie",
-    "weather": "Météo",
-    "fire": "Danger",
-    "culture": "Culture",
-    "institution": "Culture",
+    "birth": "family",
+    "death": "death",
+    "marriage": "family",
+    "child": "family",
+    "attack": "danger",
+    "monster_attack": "danger",
+    "danger": "danger",
+    "construction": "building",
+    "build": "building",
+    "construction_complete": "building",
+    "harvest": "economy",
+    "food_given": "economy",
+    "trade": "economy",
+    "message": "social",
+    "conflict": "social",
+    "exploration": "life",
+    "weather": "weather",
+    "fire": "danger",
+    "culture": "culture",
+    "institution": "culture",
 }
 
 
@@ -34,7 +32,7 @@ def normalize_event(raw):
     """Normalize a raw event dict into a standard format."""
     return {
         "tick": int(raw.get("tick", 0)),
-        "category": CATEGORY_MAP.get(raw.get("kind", ""), "Vie"),
+        "category": CATEGORY_MAP.get(raw.get("kind", ""), "life"),
         "title": str(raw.get("title", raw.get("kind", "Événement"))),
         "text": str(raw.get("text", "")),
         "actors": [int(x) for x in raw.get("actors", []) if str(x).isdigit()],
@@ -78,7 +76,7 @@ def event_sentence(event):
 def format_event(event):
     """Format an event for display: tick, category, sentence."""
     tick = event.get("tick", 0)
-    category = event.get("category", "Vie")
+    category = event.get("category", "life")
     sentence = event_sentence(event)
     day = tick // 100 + 1
     hour = tick % 100
@@ -88,7 +86,7 @@ def format_event(event):
 def filter_events(events, category=None, actor=None, place=None, min_tick=None, max_tick=None):
     """Filter events by criteria."""
     result = events
-    if category and category != "Tous":
+    if category and category != ALL_CATEGORIES:
         result = [e for e in result if e.get("category") == category]
     if actor:
         result = [e for e in result if actor in str(e.get("actors", []))]

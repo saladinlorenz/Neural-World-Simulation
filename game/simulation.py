@@ -100,7 +100,7 @@ class Sim:
         self.predator_zones = {}
 
     # ------------------------------------------------------------------ journal
-    def log(self, text, color=None, cat="monde"):
+    def log(self, text, color=None, cat="world"):
         """cat: combat|social|meteo|economie|vie|batiment|monde — groupés à l'affichage."""
         if self.journal and self.journal[-1][1] == text and self.w.tick - self.journal[-1][0] < 900:
             t0, tx, c, k, n = self.journal[-1]
@@ -226,7 +226,7 @@ class Sim:
                 other.life.append("a perdu son partenaire")
             other.children[:] = [c for c in other.children if c != a.eid]
         self.stats["deaths"] += 1
-        self.log(f"{a.name} a quitté le monde (retiré par {name}).", (148, 148, 208), "vie")
+        self.log(f"{a.name} a quitté le monde (retiré par {name}).", (148, 148, 208), "life")
         self.agents[:] = [x for x in self.agents if x.alive]
 
     def _colidx(self, color):
@@ -436,7 +436,7 @@ class Sim:
                 tx, ty = int(self.rng.integers(GRID)), int(self.rng.integers(GRID))
                 if w.land[ty, tx] and w.content_at(tx, ty) >= 0:
                     w.ignite(tx, ty)
-                    self.log("La foudre a allumé un feu.", (218, 138, 58), "meteo")
+                    self.log("La foudre a allumé un feu.", (218, 138, 58), "weather")
                     break
         self._bucket()
         for a in self.agents:
@@ -502,13 +502,13 @@ class Sim:
                     accepted = self.academy.consider(a, self.w.tick)
                     if accepted:
                         self.log(f"Nouveau champion : {a.name} ({a.age_years:.1f} ans)",
-                                 (88, 148, 228), "laboratoire")
+                                 (88, 148, 228), "world")
         if w.tick % DAY_TICKS == 0:
             self.lab.snapshot(self)
         if __debug__ and w.tick % 600 == 0:
             from .invariants import validate_simulation
             for error in validate_simulation(self):
-                self.log(f"INVARIANT: {error}", (214, 84, 84), "monde")
+                self.log(f"INVARIANT: {error}", (214, 84, 84), "world")
         if w.tick % 1800 == 0:
             for a in self.agents:
                 expired = [k for k, (_, until) in a.failed_targets.items() if w.tick > until]
@@ -1807,7 +1807,7 @@ class Sim:
                 a.tool_durability = recipe["durability"]
                 self.stats["tool_found"] += 1
                 a.skills[1] = min(1.0, a.skills[1] + 0.03)
-                self.log(f"{a.name} a fabriqué {kind}.", (248, 208, 98), "economie")
+                self.log(f"{a.name} a fabriqué {kind}.", (248, 208, 98), "economy")
                 self._reward(a, 0.25)
                 self.lab.event(self.w.tick, "tool_crafted",
                                eid=a.eid, tool_kind=kind, durability=recipe["durability"])
@@ -1826,7 +1826,7 @@ class Sim:
             a.tool = asd.id
             w.remove(gx, gy)
             self.stats["tool_found"] += 1
-            self.log("Un habitant a trouvé et équipé un outil.", (248, 208, 98), "economie")
+            self.log("Un habitant a trouvé et équipé un outil.", (248, 208, 98), "economy")
             self._reward(a, 0.3)
             return True
         if not asd.harvest:
@@ -1876,7 +1876,7 @@ class Sim:
             if a.tool >= 0:
                 a.tool_durability -= 1
                 if a.tool_durability <= 0:
-                    self.log(f"L'outil de {a.name} s'est cassé à l'usage.", (218, 138, 58), "economie")
+                    self.log(f"L'outil de {a.name} s'est cassé à l'usage.", (218, 138, 58), "economy")
                     self.lab.event(self.w.tick, "tool_broken",
                                    eid=a.eid, tool_id=a.tool)
                     a.tool = -1
@@ -2224,7 +2224,7 @@ class Sim:
             w.crop_plots[(tx, ty)] = plot
             a.inv["graine"] = max(0, a.inv["graine"] - 1)
             self._reward(a, 0.12)
-            self.log(f"{a.name} a plante une graine.", (108, 188, 98), "economie")
+            self.log(f"{a.name} a plante une graine.", (108, 188, 98), "economy")
             self.lab.event(self.w.tick, "crop_planted",
                            eid=a.eid, tx=tx, ty=ty)
             return True
@@ -2282,7 +2282,7 @@ class Sim:
         )
         self.w.add_site(site)
         a.home = (tx + 2, ty + 2)
-        self.log(f"{a.name} a commence le plan d'une maison.", (178, 228, 168), "batiment")
+        self.log(f"{a.name} a commence le plan d'une maison.", (178, 228, 168), "building")
         self._record_anima(
             a, "construction_started", (tx, ty),
             actors=[a.eid], action="build", outcome="started",
@@ -2331,7 +2331,7 @@ class Sim:
                        tx=tx, ty=ty, tasks_total=len(tasks))
         if blueprint == "small_house":
             a.home = (tx + 2, ty + 2)
-        self.log(f"{a.name} a commence un chantier ({blueprint}).", (178, 228, 168), "batiment")
+        self.log(f"{a.name} a commence un chantier ({blueprint}).", (178, 228, 168), "building")
         self._record_anima(
             a, "construction_started", (tx, ty),
             actors=[a.eid], action="build", outcome="started",
@@ -2434,17 +2434,17 @@ class Sim:
             if (storage_tx, storage_ty) not in w.storages:
                 cap = 120 if bp == "grenier" else 80
                 self.create_storage(finisher, storage_tx, storage_ty, capacity=cap)
-                self.log(f"{bp} termine : depot cree.", (178, 228, 168), "batiment")
+                self.log(f"{bp} termine : depot cree.", (178, 228, 168), "building")
         elif bp == "coffre":
             storage_tx, storage_ty = site.origin_tx, site.origin_ty
             if (storage_tx, storage_ty) not in w.storages:
                 self.create_storage(finisher, storage_tx, storage_ty, capacity=40)
-                self.log("Coffre termine.", (178, 228, 168), "batiment")
+                self.log("Coffre termine.", (178, 228, 168), "building")
         elif bp == "puits":
             w.shelter[site.origin_ty, site.origin_tx] = 1
-            self.log("Puits termine.", (90, 180, 230), "batiment")
+            self.log("Puits termine.", (90, 180, 230), "building")
         elif bp == "atelier":
-            self.log("Atelier termine.", (200, 160, 90), "batiment")
+            self.log("Atelier termine.", (200, 160, 90), "building")
         w.remove_site(site)
         self._check_village(site.origin_tx + 2, site.origin_ty + 2)
         for eid in site.contributors:
@@ -2464,7 +2464,7 @@ class Sim:
             )
             finisher.anima_add_identity("builder", 0.10)
         self.log(f"{bp} termine : {len(site.contributors)} contributeur(s).",
-                 (108, 208, 128), "batiment")
+                 (108, 208, 128), "building")
         self.lab.event(self.w.tick, "site_completed",
                        blueprint=bp, tx=site.origin_tx, ty=site.origin_ty,
                        contributors=len(site.contributors),
@@ -2544,7 +2544,7 @@ class Sim:
                     return
             self._village_pts.append((tx, ty))
             self.stats["villages"] += 1
-            self.log(f"Un village est né en ({tx},{ty}) — {shelters} abris !", (108, 208, 128), "batiment")
+            self.log(f"Un village est né en ({tx},{ty}) — {shelters} abris !", (108, 208, 128), "building")
 
     # ------------------------------------------------------------------ deplete / feu
     def _deplete(self, tx, ty, asd):
@@ -2627,7 +2627,7 @@ class Sim:
                 "blessures"
             )
         self.log(f"{a.name} ({a.stage}, {a.age_years:.1f} ans) est mort de {cause}, "
-                 f"gén {a.gen}, {a.brain.n} neurones.", (228, 98, 98), "mort")
+                 f"gén {a.gen}, {a.brain.n} neurones.", (228, 98, 98), "death")
         # enterre dans le cimetière commun
         grave_tx, grave_ty = self.w.find_cemetery_spot(self.rng)
         self.w.bury(grave_tx, grave_ty, a.name, self.w.tick,
@@ -2736,7 +2736,7 @@ class Sim:
         self.stats["births"] += 1
         if self.stats["births"] % 3 == 1:
             self.log(f"{a.name} et {mate.name} ont un enfant : {child.name} "
-                     f"(cerveau {n} neurones).", (78, 168, 232), "vie")
+                     f"(cerveau {n} neurones).", (78, 168, 232), "life")
         self.lab.event(self.w.tick, "birth", eid=child.eid, parent1=a.eid, parent2=mate.eid,
                        name=child.name, brain_size=n)
         # Anima: episode birth

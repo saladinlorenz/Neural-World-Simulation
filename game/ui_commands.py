@@ -606,7 +606,7 @@ def _cmd_log(sim, cmd):
     """Ajoute une entree au journal."""
     text = str(cmd.get("text", ""))
     color = cmd.get("color", (180, 180, 180))
-    cat = cmd.get("cat", "monde")
+    cat = cmd.get("cat", "world")
     sim.log(text, color, cat)
     return {"ok": True}
 

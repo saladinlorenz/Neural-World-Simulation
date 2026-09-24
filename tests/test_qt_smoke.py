@@ -49,7 +49,7 @@ class TestQtModels(unittest.TestCase):
         from ui_qt.models.journal_model import JournalModel
         from game.ui_snapshots import journal_snapshot
         model = JournalModel()
-        self.controller.sim.log("Test entry", (255, 0, 0), "monde")
+        self.controller.sim.log("Test entry", (255, 0, 0), "world")
         snap = journal_snapshot(self.controller.sim)
         model.set_snapshot(snap)
         self.assertGreater(model.rowCount(), 0)

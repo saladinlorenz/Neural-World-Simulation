@@ -96,11 +96,13 @@ def selected_agent_snapshot(sim, ui_state=None) -> dict[str, Any] | None:
 # ══════════════════════════════════════════════════════════════════════
 #  Snapshot journal
 # ══════════════════════════════════════════════════════════════════════
-def journal_snapshot(sim, category: str = "tous", search: str = "",
+def journal_snapshot(sim, category: str = "all", search: str = "",
                      max_entries: int = 200) -> list[dict[str, Any]]:
     """Journal filtré, pour le panneau journal."""
+    from .ui_registry import ALL_CATEGORIES
+
     entries = list(sim.journal)
-    if category and category != "tous":
+    if category and category != ALL_CATEGORIES:
         entries = [e for e in entries if e[3] == category]
     if search:
         search_lower = search.lower()

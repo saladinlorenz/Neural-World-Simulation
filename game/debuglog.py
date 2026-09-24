@@ -34,6 +34,6 @@ def report_error(context: str, exc: Exception, sim=None):
     if sim is not None:
         try:
             sim.log(f"Erreur technique [{context}] : {type(exc).__name__}",
-                    (214, 84, 84), "monde")
+                    (214, 84, 84), "world")
         except Exception:
             pass

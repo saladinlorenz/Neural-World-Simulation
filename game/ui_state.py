@@ -25,7 +25,7 @@ class UIState:
     # ── Filtres et recherche ──
     selected_category: str = "all"
     search_text: str = ""
-    journal_filter: str = "tous"
+    journal_filter: str = "all"
     only_favs: bool = False
 
     # ── Simulation ──
@@ -147,4 +147,7 @@ class UIState:
                 value = tuple(value)
             if key in ("action",) and value is not None:
                 value = tuple(value)
+            if key == "journal_filter" and isinstance(value, str):
+                from .ui_registry import JOURNAL_FILTER_MIGRATION
+                value = JOURNAL_FILTER_MIGRATION.get(value, value)
             setattr(self, key, value)

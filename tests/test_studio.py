@@ -158,15 +158,15 @@ class TestStudioTimeline(unittest.TestCase):
         raw = {"tick": 150, "kind": "birth", "actor_name": "Aro", "title": "Naissance"}
         event = normalize_event(raw)
         self.assertEqual(event["tick"], 150)
-        self.assertEqual(event["category"], "Famille")
+        self.assertEqual(event["category"], "family")
         self.assertIn("Aro", event["actor_name"])
 
     def test_format_event(self):
         from game.studio_timeline import format_event
-        event = {"tick": 150, "category": "Danger", "kind": "attack", "actor_name": "X"}
+        event = {"tick": 150, "category": "danger", "kind": "attack", "actor_name": "X"}
         result = format_event(event)
         self.assertIn("Jour", result)
-        self.assertIn("Danger", result)
+        self.assertIn("danger", result)
 
     def test_filter_events(self):
         from game.studio_timeline import filter_events, normalize_event
@@ -175,7 +175,7 @@ class TestStudioTimeline(unittest.TestCase):
             normalize_event({"tick": 200, "kind": "attack"}),
             normalize_event({"tick": 300, "kind": "birth"}),
         ]
-        births = filter_events(events, category="Famille")
+        births = filter_events(events, category="family")
         self.assertEqual(len(births), 2)
 
     def test_build_timeline(self):
@@ -187,9 +187,9 @@ class TestStudioTimeline(unittest.TestCase):
 
     def test_categories_exist(self):
         from game.studio_timeline import CATEGORIES
-        self.assertIn("Tous", CATEGORIES)
-        self.assertIn("Danger", CATEGORIES)
-        self.assertIn("Famille", CATEGORIES)
+        self.assertIn("all", CATEGORIES)
+        self.assertIn("danger", CATEGORIES)
+        self.assertIn("family", CATEGORIES)
 
 
 class TestStudioReports(unittest.TestCase):

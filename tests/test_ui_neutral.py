@@ -97,7 +97,7 @@ class TestUISnapshots(unittest.TestCase):
 
     def test_journal_snapshot(self):
         from game.ui_snapshots import journal_snapshot
-        self.sim.log("Test entry", (255, 0, 0), "monde")
+        self.sim.log("Test entry", (255, 0, 0), "world")
         rows = journal_snapshot(self.sim)
         self.assertIsInstance(rows, list)
         if rows:
@@ -392,7 +392,7 @@ class TestUIRegistry(unittest.TestCase):
     def test_registry_imports(self):
         from game.ui_registry import (
             SECTION_REGISTRY, CARD_REGISTRY, TABS, MODES,
-            TAB_MODES, TAB_HINTS, LOG_CATS, CHIP_LABELS, PANELS,
+            TAB_MODES, TAB_HINTS, JOURNAL_CATEGORIES, CHIP_LABELS, PANELS,
         )
         self.assertIsInstance(SECTION_REGISTRY, list)
         self.assertIsInstance(CARD_REGISTRY, list)
@@ -400,7 +400,8 @@ class TestUIRegistry(unittest.TestCase):
         self.assertIsInstance(MODES, list)
         self.assertIsInstance(TAB_MODES, dict)
         self.assertIsInstance(TAB_HINTS, dict)
-        self.assertIsInstance(LOG_CATS, dict)
+        self.assertIsInstance(JOURNAL_CATEGORIES, dict)
+        self.assertEqual(len(JOURNAL_CATEGORIES), 11)
         self.assertIsInstance(CHIP_LABELS, dict)
         self.assertIsInstance(PANELS, dict)
 

@@ -7,7 +7,7 @@ from PyQt6.QtGui import QColor
 
 from game.config import JOURNAL_MAXLEN
 from game.ui_snapshots import journal_snapshot
-from game.ui_registry import LOG_TITLES
+from game.ui_registry import JOURNAL_CATEGORIES, ALL_CATEGORIES
 from ..models.journal_model import JournalModel
 
 
@@ -34,9 +34,9 @@ class JournalDock(QDockWidget):
 
         # Categorie
         self._filter_combo = QComboBox()
-        self._filter_combo.addItem("Tous", "tous")
-        for cat, title in LOG_TITLES.items():
-            self._filter_combo.addItem(title, cat)
+        self._filter_combo.addItem("All", ALL_CATEGORIES)
+        for cat, meta in JOURNAL_CATEGORIES.items():
+            self._filter_combo.addItem(meta["label"], cat)
         self._filter_combo.currentIndexChanged.connect(self._on_filter)
         filter_layout.addWidget(QLabel("Categorie:"))
         filter_layout.addWidget(self._filter_combo)
@@ -78,7 +78,7 @@ class JournalDock(QDockWidget):
         self.setWidget(widget)
 
     def refresh(self):
-        cat = self._filter_combo.currentData() or "tous"
+        cat = self._filter_combo.currentData() or ALL_CATEGORIES
         search = self._search.text()
         snap = journal_snapshot(self.controller.sim, category=cat, search=search)
         self._model.set_snapshot(snap)
@@ -96,7 +96,7 @@ class JournalDock(QDockWidget):
         if not path:
             return
 
-        cat = self._filter_combo.currentData() or "tous"
+        cat = self._filter_combo.currentData() or ALL_CATEGORIES
         search = self._search.text()
         # L'affichage est plafonné à 200 lignes ; un export doit vider tout
         # le tampon du moteur.

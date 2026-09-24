@@ -284,10 +284,10 @@ def build_world(am, seed, procedural=False, *, populate_dense=True,
                 f"terre {(1 - water_frac) * 100:.0f}% / eau {water_frac * 100:.0f}% · "
                 f"crêtes tous les {gen.tile_period * TILE} px · {repartition}. "
                 f"Outil « Sculpter » pour creuser, « Restaurer » pour rétablir.",
-                (108, 208, 128), "monde")
+                (108, 208, 128), "world")
     else:
         sim.log("Monde prêt — terrain plat, pas de relief.",
-                (108, 208, 128), "monde")
+                (108, 208, 128), "world")
     return w, sim
 
 
@@ -301,7 +301,7 @@ def build_world_blank(am, seed):
     sim = Sim(w, am, seed=seed)
     sim.paused = True
     sim.log("Monde vide — tout est océan. Peignez des îles avec les outils "
-            "de terrain.", (78, 168, 232), "monde")
+            "de terrain.", (78, 168, 232), "world")
     return w, sim
 
 
