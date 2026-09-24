@@ -7,9 +7,11 @@ consultables depuis Qt.
 """
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QDockWidget, QTreeWidget, QTreeWidgetItem
+from PyQt6.QtWidgets import (QDockWidget, QStackedWidget, QTreeWidget,
+                              QTreeWidgetItem)
 
 from game.ui_snapshots import tile_snapshot
+from ui_qt.widgets.empty_state import EmptyState
 
 _LABELS = {
     "tx": "Tuile X",
@@ -74,10 +76,20 @@ class TileDock(QDockWidget):
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels(["Champ", "Valeur"])
         self._tree.setColumnCount(2)
-        self.setWidget(self._tree)
         self._last_tile = None
         self._tree.addTopLevelItem(QTreeWidgetItem(
             ["Mode « Examiner » : cliquez une tuile.", ""]))
+
+        # Lot E : vue vide persistante, basculée par refresh().
+        self.empty_state = EmptyState(
+            icon="⌖",
+            title="Aucune tuile sélectionnée",
+            message="Activez le mode « Examiner » puis cliquez une tuile du monde.",
+        )
+        self._stack = QStackedWidget()
+        self._stack.addWidget(self.empty_state)
+        self._stack.addWidget(self._tree)
+        self.setWidget(self._stack)
 
     def refresh(self):
         tile = getattr(self.controller.ui_state, "selected_tile", None)
@@ -87,6 +99,12 @@ class TileDock(QDockWidget):
                 self._tree.addTopLevelItem(QTreeWidgetItem(
                     ["Mode « Examiner » : cliquez une tuile.", ""]))
                 self._last_tile = None
+            self.empty_state.set_state(
+                "⌖",
+                "Aucune tuile sélectionnée",
+                "Activez le mode « Examiner » puis cliquez une tuile du monde.",
+            )
+            self._stack.setCurrentWidget(self.empty_state)
             return
         snap = tile_snapshot(self.controller.sim, tile[0], tile[1])
         self._last_tile = tuple(tile)
@@ -94,6 +112,17 @@ class TileDock(QDockWidget):
         for key, value in snap.items():
             self._tree.addTopLevelItem(self._item(key, value))
         self._tree.expandToDepth(1)
+
+        # Lot E : hors monde -> vue vide (l'arbre reste rempli dessous).
+        if not snap.get("dans_monde", True):
+            self.empty_state.set_state(
+                "⌖",
+                "Tuile hors du monde",
+                f"La tuile {tile[0]},{tile[1]} se trouve hors des limites du monde.",
+            )
+            self._stack.setCurrentWidget(self.empty_state)
+        else:
+            self._stack.setCurrentWidget(self._tree)
 
     def _item(self, key, value):
         item = QTreeWidgetItem([_label(key), _fmt(value)])

@@ -1962,6 +1962,11 @@ class Sim:
             e.inv[mat] = min(INV_CAP, e.inv[mat] + 2)
             self.stats["gives"] += 1
             a.state = "give"
+            # Halo de don (Lot J) : effet visuel seul, purge par TTL.
+            self.effects.append({"kind": "gift", "x": a.x, "y": a.y,
+                                 "target_x": e.x, "target_y": e.y,
+                                 "t0": self.w.tick, "ttl": 22,
+                                 "color": (98, 211, 148)})
             r1 = a.rel.setdefault(e.eid, [0, 0])
             r1[0] = min(1.0, r1[0] + 0.2)
             r2 = e.rel.setdefault(a.eid, [0, 0])
@@ -2156,6 +2161,9 @@ class Sim:
         self.stats["talks"] += 1
         a.talk_cd[e.eid] = self.w.tick
         self.emit_sound(a.x, a.y, "voice", 0.6)
+        # Bulle de parole (Lot J) : effet visuel seul, purge par TTL.
+        self.effects.append({"kind": "talk", "x": a.x, "y": a.y,
+                             "t0": self.w.tick, "ttl": 20})
         a.state = "talk"
         msg = "chat"
         if a.needs[2] > 0.65:

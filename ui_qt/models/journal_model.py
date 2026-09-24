@@ -1,7 +1,26 @@
 """JournalModel — modèle Qt pour le journal."""
 from PyQt6.QtCore import QAbstractTableModel, Qt
+from PyQt6.QtGui import QColor
 
 from game.ui_registry import JOURNAL_CATEGORIES
+
+#: Categories « entrée importante » (Lot G), mappees sur les vrais ids du
+#: registre JOURNAL_CATEGORIES (game/ui_registry.py) et sur ce que le moteur
+#: logge reellement dans ``sim.log`` :
+#: naissance → life (simulation.py, categorie reelle du bulletin de naissance)
+#:   + family (correspondance kind→categorie de studio_timeline.py) ;
+#: mort → death ; attaque → combat ; chantier achevé → building ;
+#: incendie → danger (pas « weather » : cette categorie mélange aussi pluie
+#:   et neige, on ne veut pas marquer chaque bulletin météo) ;
+#: institution / culture → culture (meme correspondance timeline).
+#: ids « family », « danger » et « culture » gardes au cas ou : ils sont
+#: produits par le normaliseur de timeline et par les futures entrees.
+IMPORTANT_CATEGORIES = frozenset({
+    "life", "family", "death", "danger", "combat", "building", "culture",
+})
+
+#: Pastille des entrees importantes (ambree, palette Neural Lab).
+IMPORTANT_COLOR = QColor(246, 189, 96)
 
 
 class JournalModel(QAbstractTableModel):
@@ -32,6 +51,10 @@ class JournalModel(QAbstractTableModel):
             return None
         row = self._rows[index.row()]
         col = index.column()
+        # Entree importante (Lot G) : pastille coloree devant le texte.
+        # Le prefixe n'existe qu'en affichage : le tri (UserRole) et les
+        # exports (journal_snapshot) voient le texte brut.
+        important = row.get("category", "") in IMPORTANT_CATEGORIES
 
         if role == Qt.ItemDataRole.DisplayRole:
             if col == 0:
@@ -42,7 +65,8 @@ class JournalModel(QAbstractTableModel):
                 cat = row.get("category", "")
                 return JOURNAL_CATEGORIES.get(cat, {}).get("label", cat)
             elif col == 2:
-                return row.get("text", "")
+                text = row.get("text", "")
+                return f"● {text}" if important else text
             elif col == 3:
                 cnt = row.get("count", 1)
                 return str(cnt) if cnt > 1 else ""
@@ -58,6 +82,11 @@ class JournalModel(QAbstractTableModel):
             return QColor(int(hex_color[0:2], 16),
                           int(hex_color[2:4], 16),
                           int(hex_color[4:6], 16))
+
+        if (role == Qt.ItemDataRole.ForegroundRole and col == 2
+                and important):
+            # Meme teinte que la pastille : l'entree ressort du fond sombre.
+            return QColor(IMPORTANT_COLOR)
 
         if role == Qt.ItemDataRole.UserRole:
             # Valeurs brutes : le tri d'un proxy Qt compare ce rôle, sinon

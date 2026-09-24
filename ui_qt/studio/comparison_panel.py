@@ -2,10 +2,12 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QFileDialog, QTextEdit,
-    QSplitter, QGroupBox
+    QSplitter, QGroupBox, QStackedWidget
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
+
+from ui_qt.widgets.empty_state import EmptyState
 
 
 class ComparisonPanel(QWidget):
@@ -47,20 +49,39 @@ class ComparisonPanel(QWidget):
         self._label_b.setStyleSheet("padding: 4px; background: #1a2332; border-radius: 4px;")
         exp_layout.addWidget(self._label_b)
         layout.addLayout(exp_layout)
-        
+
+        # ── Lot E : vue vide tant que les deux expériences ne sont pas chargées ──
+        self.empty_state = EmptyState(
+            icon="⇄",
+            title="Aucune comparaison",
+            message="Chargez deux expériences (A et B) pour afficher le tableau comparatif.",
+        )
+
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(6)
+
         # Summary text
         self._summary = QTextEdit()
         self._summary.setReadOnly(True)
         self._summary.setMaximumHeight(100)
         self._summary.setPlaceholderText("Chargez deux expériences pour les comparer...")
-        layout.addWidget(self._summary)
-        
+        content_layout.addWidget(self._summary)
+
         # Comparison table
         self._table = QTableWidget()
         self._table.setColumnCount(4)
         self._table.setHorizontalHeaderLabels(["Métrique", "A", "B", "Différence"])
         self._table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self._table)
+        content_layout.addWidget(self._table)
+
+        # Pile vue vide / contenu (les boutons du header restent visibles)
+        self._stack = QStackedWidget()
+        self._stack.addWidget(self.empty_state)
+        self._stack.addWidget(content)
+        self._content = content
+        layout.addWidget(self._stack)
         
         # Export button
         btn_layout = QHBoxLayout()
@@ -98,8 +119,14 @@ class ComparisonPanel(QWidget):
     
     def _update_comparison(self):
         if not self._result_a or not self._result_b:
+            # Lot E : tant que les deux expériences ne sont pas chargées,
+            # la vue vide reste affichée (les libellés A/B restent visibles).
+            self._stack.setCurrentWidget(self.empty_state)
             return
-        
+
+        # Lot E : comparaison possible -> page contenu.
+        self._stack.setCurrentWidget(self._content)
+
         from game.studio_compare import compare_results, compare_summary
         
         rows = compare_results(self._result_a, self._result_b)

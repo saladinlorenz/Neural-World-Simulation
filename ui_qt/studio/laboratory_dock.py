@@ -2,12 +2,14 @@
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                                QTextEdit, QTableWidget, QTableWidgetItem,
                                QPushButton, QGroupBox, QFileDialog,
-                               QScrollArea, QHeaderView, QLabel)
+                               QScrollArea, QHeaderView, QLabel,
+                               QStackedWidget)
 from PyQt6.QtCore import Qt, QThread
 
 from game.studio_reports import build_report, build_short_summary, interpret_metric
 from game.studio_compare import KEYS
 from ui_qt.studio.experiment_worker import ExperimentWorker
+from ui_qt.widgets.empty_state import EmptyState
 
 
 class LaboratoryDock(QDockWidget):
@@ -20,11 +22,17 @@ class LaboratoryDock(QDockWidget):
         self._setup_ui()
 
     def _setup_ui(self):
+        # Racine du dock : pile (vue vide | résultats) + commande A/B.
+        root = QWidget()
+        root_layout = QVBoxLayout(root)
+        root_layout.setContentsMargins(8, 8, 8, 8)
+        root_layout.setSpacing(6)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         widget = QWidget()
         self._layout = QVBoxLayout(widget)
-        self._layout.setContentsMargins(8, 8, 8, 8)
+        self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(6)
 
         # Résumé
@@ -85,7 +93,7 @@ class LaboratoryDock(QDockWidget):
         scenario_layout.addWidget(self._scenario_text)
         self._layout.addWidget(scenario_group)
 
-        # Exporter
+        # Exporter (toujours visible, même sans résultat)
         btn_layout = QHBoxLayout()
         self._btn_txt = QPushButton("Exporter TXT")
         self._btn_md = QPushButton("Exporter Markdown")
@@ -98,9 +106,26 @@ class LaboratoryDock(QDockWidget):
         self._btn_txt.clicked.connect(self._export_txt)
         self._btn_md.clicked.connect(self._export_md)
         self._btn_json.clicked.connect(self._export_json)
-        self._layout.addLayout(btn_layout)
+        btn_layout.addStretch()
+
+        self._layout.addStretch()
+        scroll.setWidget(widget)
+
+        # ── Lot E : vue vide quand aucun résultat ──
+        self.empty_state = EmptyState(
+            icon="⚗",
+            title="Aucun résultat",
+            message="Lancez une expérience A/B pour générer un rapport ici.",
+        )
+        self._stack = QStackedWidget()
+        self._stack.addWidget(self.empty_state)
+        self._stack.addWidget(scroll)
+        self._content = scroll
+        root_layout.addWidget(self._stack)
+        root_layout.addLayout(btn_layout)
 
         # ── Lot F.3 : expérience A/B hors du thread UI ──
+        # Reste accessible même quand la vue vide est affichée.
         ab_layout = QHBoxLayout()
         self._ab_btn = QPushButton("Lancer A/B (culture)")
         self._ab_btn.setStyleSheet(
@@ -114,14 +139,11 @@ class LaboratoryDock(QDockWidget):
         self._ab_status = QLabel("")
         ab_layout.addWidget(self._ab_status)
         ab_layout.addStretch()
-        self._layout.addLayout(ab_layout)
+        root_layout.addLayout(ab_layout)
         self._thread = None
         self._worker = None
 
-        self._layout.addStretch()
-
-        scroll.setWidget(widget)
-        self.setWidget(scroll)
+        self.setWidget(root)
 
     # ── Lot F.3 : A/B dans un QThread ──
 
@@ -180,11 +202,16 @@ class LaboratoryDock(QDockWidget):
     def refresh(self):
         result = self._result
         if result is None:
+            # Lot E : vue vide (les champs restent réinitialisés).
+            self._stack.setCurrentWidget(self.empty_state)
             self._summary_text.setPlainText("Aucun résultat disponible.")
             self._metrics_table.setRowCount(0)
             self._interp_text.setPlainText("")
             self._scenario_text.setPlainText("")
             return
+
+        # Lot E : un rapport est disponible -> page contenu.
+        self._stack.setCurrentWidget(self._content)
 
         if "variants" in result:
             self._refresh_ab(result)

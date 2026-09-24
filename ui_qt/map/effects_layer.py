@@ -1,4 +1,4 @@
-"""EffectsLayer — nuit, pluie, foudre et halo de feu sur la carte.
+"""EffectsLayer — nuit, pluie, foudre, halo de feu et effets sociaux.
 
 Contraintes de performance (document de parite, §11) :
 - nuit : un seul ``fillRect`` sur le viewport, couleur prise dans une table
@@ -8,7 +8,9 @@ Contraintes de performance (document de parite, §11) :
 - feu : un halo ``QRadialGradient`` rendu UNE fois dans un QPixmap 64x64,
   redessine mis a l'echelle par cellule en feu ;
 - foudre : flash de 3 images declenche par ``clock.lightning_tick`` pose par
-  le moteur (``game/simulation.py``) — jamais de tirage rng cote peinture.
+  le moteur (``game/simulation.py``) — jamais de tirage rng cote peinture ;
+- sociaux (don/parole, Lot J) : formes vectorielles simples, liste bornee
+  par TTL coté moteur (``Sim.tick``), aucun pixmap ni gradient cree ici.
 """
 from __future__ import annotations
 
@@ -40,6 +42,47 @@ def _night_table():
             b = int(40 + 14 * t)
         colors.append(QColor(r, g, b, alpha))
     return colors
+
+
+# ---------------------------------------------------------------------------
+# Effets sociaux (Lot J) — dons et paroles émis par game/simulation.py
+# ---------------------------------------------------------------------------
+
+def draw_gift_effect(painter: QPainter, effect, transform, tick: int):
+    """Don en vol : pastille verte qui rejoint le destinataire (Lot J).
+
+    Liste bornée par ``ttl`` côté moteur ; aucune allocation lourde ici.
+    """
+    ttl = max(1, int(effect.get("ttl", 22)))
+    age = tick - int(effect.get("t0", tick))
+    t = max(0.0, min(1.0, age / ttl))
+
+    x0 = float(effect.get("x", 0.0))
+    y0 = float(effect.get("y", 0.0))
+    x1 = float(effect.get("target_x", x0))
+    y1 = float(effect.get("target_y", y0))
+    sx, sy = transform.to_screen(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)
+
+    r, g, b = effect.get("color", (98, 211, 148))
+    alpha = int(255 * (1.0 - t))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor(int(r), int(g), int(b), alpha)))
+    painter.drawEllipse(QPointF(sx, sy - 10), 4, 4)
+
+
+def draw_talk_effect(painter: QPainter, effect, transform, tick: int):
+    """Bulle de parole discrète au-dessus de l'orateur (Lot J)."""
+    ttl = max(1, int(effect.get("ttl", 20)))
+    age = tick - int(effect.get("t0", tick))
+    if age > ttl or age < 0:
+        return
+
+    sx, sy = transform.to_screen(float(effect.get("x", 0.0)),
+                                 float(effect.get("y", 0.0)))
+    alpha = int(180 * (1.0 - age / ttl))
+    painter.setPen(QPen(QColor(220, 235, 255, alpha), 1))
+    painter.setBrush(QBrush(QColor(20, 30, 45, alpha)))
+    painter.drawRoundedRect(QRectF(sx + 6, sy - 28, 18, 12), 4, 4)
 
 
 class EffectsLayer:
@@ -145,9 +188,28 @@ class EffectsLayer:
 
     # ------------------------------------------------------------------ tout
 
+    def paint_social_effects(self, painter: QPainter, transform, sim,
+                             tick: int):
+        """Dons et paroles de ``Sim.effects`` (Lot J).
+
+        Dessinés AVANT la nuit pour rester cohérents avec l'éclairage. Les
+        effets sans ``aid`` (gift/talk) sont ignorés par ``MapView.draw_effect``
+        : ils ne sont donc peints qu'ici, une seule fois. La liste est purgée
+        par TTL dans ``Sim.tick`` — rien à nettoyer de ce côté.
+        """
+        for fx in getattr(sim, "effects", ()) or ():
+            if not isinstance(fx, dict):
+                continue
+            kind = fx.get("kind")
+            if kind == "gift":
+                draw_gift_effect(painter, fx, transform, tick)
+            elif kind == "talk":
+                draw_talk_effect(painter, fx, transform, tick)
+
     def paint(self, painter: QPainter, transform, sim, sw: int, sh: int):
         clock = getattr(sim, "clock", None)
         tick = int(getattr(sim.w, "tick", 0))
+        self.paint_social_effects(painter, transform, sim, tick)
         self.paint_night(painter, clock, sw, sh)
         self.paint_fire_glow(painter, transform, sim, sw, sh)
         self.paint_rain(painter, clock, tick, sw, sh, transform.zoom)

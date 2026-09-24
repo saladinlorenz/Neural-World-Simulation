@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import time
+from html import escape
 from typing import Optional
 
 import numpy as np
@@ -10,14 +12,16 @@ from PyQt6.QtGui import (
     QColor,
     QBrush,
     QFont,
+    QFontMetrics,
     QImage,
     QPainter,
     QPen,
     QPixmap,
 )
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QMenu, QWidget
 
 from game.config import CLAN_COLORS, GRID, TILE
+from game.diagnostics import action_name
 from game.mapapi import MapTransform
 from game.mapcache import CHUNK, TerrainCache, TerrainChunkCache
 from game.ui_commands import can_place
@@ -36,6 +40,121 @@ WATER = QColor(46, 92, 158)
 BLOCKED = QColor(128, 118, 106)
 DARK = QColor(12, 14, 20)
 MINIMAP_BG = QColor(20, 24, 32, 220)
+
+#: Zoom minimal d'affichage des noms d'habitants (Lot C).
+NAME_ZOOM = 0.9
+
+#: Zoom minimal d'affichage des icones d'etat (Lot D).
+STATUS_ZOOM = 0.65
+
+#: Etat prioritaire -> glyphe texte provisoire (Lot D). Le plan UX/UI prévoit
+#: des glyphes le temps de disposer de vrais sprites d'interface.
+STATUS_GLYPHS = {
+    "injured": "✚",
+    "hungry": "●",
+    "thirsty": "◈",
+    "tired": "☾",
+    "afraid": "!",
+    "sleep": "Zz",
+    "work": "⚒",
+}
+
+STATUS_COLORS = {
+    "injured": QColor("#FF6B6B"),
+    "hungry": QColor("#F6BD60"),
+    "thirsty": QColor("#4CC9F0"),
+    "tired": QColor("#A78BFA"),
+    "afraid": QColor("#FF8C6B"),
+    "sleep": QColor("#B8C4FF"),
+    "work": QColor("#F8E16C"),
+}
+
+
+def agent_status_icon(agent) -> Optional[str]:
+    """Etat urgent prioritaire d'un habitant — UNE seule icone (Lot D).
+
+    Priorite exacte du plan, mais sur les vrais attributs de ``Being`` :
+    ``health``, ``hunger`` (miroir de ``needs[0]``), ``needs[2]`` (soif),
+    ``energy``, ``emotions[0]`` (peur) et ``state``. ``getattr`` + garde de
+    longueur partout : un attribut absent rend ``None`` au lieu d'une erreur.
+    """
+    try:
+        health = float(getattr(agent, "health", 1.0))
+    except (TypeError, ValueError):
+        health = 1.0
+    if health < 0.35:
+        return "injured"
+
+    try:
+        hunger = float(getattr(agent, "hunger", 0.0))
+    except (TypeError, ValueError):
+        hunger = 0.0
+    if hunger > 0.80:
+        return "hungry"
+
+    needs = getattr(agent, "needs", None)
+    if needs is not None:
+        try:
+            if len(needs) > 2 and float(needs[2]) > 0.80:
+                return "thirsty"
+        except (TypeError, ValueError):
+            pass
+
+    try:
+        energy = float(getattr(agent, "energy", 1.0))
+    except (TypeError, ValueError):
+        energy = 1.0
+    if energy < 0.20:
+        return "tired"
+
+    emotions = getattr(agent, "emotions", None)
+    if emotions is not None:
+        try:
+            if len(emotions) > 0 and float(emotions[0]) > 0.65:
+                return "afraid"
+        except (TypeError, ValueError):
+            pass
+
+    state = str(getattr(agent, "state", ""))
+    if state == "sleep":
+        return "sleep"
+    if state in {"work", "build"}:
+        return "work"
+    return None
+
+
+def _percent(value, default=0.0) -> float:
+    """Jauge 0..1 tolérante (infobulle, jamais de TypeError au survol)."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return default
+    if v != v:  # NaN
+        return default
+    return max(0.0, min(1.0, v))
+
+
+def construction_stage(progress: float) -> str:
+    """Etape d'un chantier d'apres sa progression (Lot J)."""
+    if progress <= 0.0:
+        return "site"
+    if progress < 0.25:
+        return "foundation"
+    if progress < 0.60:
+        return "walls"
+    if progress < 0.90:
+        return "roof"
+    return "complete"
+
+
+#: Teinte du chantier par etape (Lot J) — meme familles que le plan.
+SITE_STAGE_COLORS = {
+    "site": QColor(120, 140, 120, 150),
+    "foundation": QColor(110, 90, 65, 180),
+    "walls": QColor(170, 130, 85, 190),
+    "roof": QColor(150, 70, 55, 210),
+    "complete": QColor(90, 150, 100, 180),
+}
 
 
 class MapView(QWidget):
@@ -63,6 +182,12 @@ class MapView(QWidget):
 
         self.panstart: Optional[QPointF] = None
         self.painting: Optional[tuple[int, int]] = None
+        #: Contextuel (Lot I) : un vrai glisser du bouton droit (pan) ne
+        #: doit pas ouvrir le menu à la levée.
+        self._pan_dragged = False
+        self._pan_travel = 0.0
+        #: Eid de l'habitant dont l'infobulle est déjà affichée (Lot I).
+        self._tooltip_eid: Optional[int] = None
         #: Identifiant du glisser en cours : une seule entrée d'historique
         #: par coup de pinceau, pas une par tuile traversée.
         self._stroke_group = 0
@@ -593,6 +718,10 @@ class MapView(QWidget):
             (tx + 0.5) * TILE, (ty + 1.0) * TILE, zoom, alpha=0.9)
 
     def draw_effect(self, painter, am, fx, zoom):
+        if fx.get("kind") in ("gift", "talk"):
+            # Effets sociaux sans sprite (Lot J) : peints par
+            # EffectsLayer.paint(), avant la nuit, une seule fois.
+            return
         aid = fx.get("aid")
         if aid is None:
             return
@@ -648,6 +777,12 @@ class MapView(QWidget):
             painter.drawRect(QRectF(sx - wpx * 0.32, sy - hh, wpx * 0.64, hh))
 
     def draw_site(self, painter, payload):
+        """Chantier progressif : emprise teintée, blocs posés, barre (Lot J).
+
+        L'étape (``construction_stage``) colore l'emprise, puis chaque tâche
+        déjà placée remplit sa tuile : la construction se lit avancer sans
+        rien changer au moteur. Le contour et la barre historiques restent.
+        """
         tx, ty, site = payload
         tasks = getattr(site, "tasks", ()) or ()
         if not tasks:
@@ -661,10 +796,33 @@ class MapView(QWidget):
         if not self._visible(sx0, sy0, 200) and not self._visible(sx1, sy1, 200):
             return
         rect = QRectF(sx0, sy0, sx1 - sx0, sy1 - sy0)
+
+        progress = max(0.0, min(1.0, float(site.progress())))
+        color = SITE_STAGE_COLORS[construction_stage(progress)]
+
+        # Emprise : chantier fantôme teinté par étape.
+        ghost = QColor(color)
+        ghost.setAlpha(70)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(ghost))
+        painter.drawRect(rect)
+
+        # Blocs déjà posés : une tuile posée = une tuile colorée.
+        placed = getattr(site, "placed", None) or ()
+        painter.setBrush(QBrush(QColor(color)))
+        for task in tasks:
+            if task.key not in placed:
+                continue
+            tsx0, tsy0 = self.transform.to_screen(task.tx * TILE,
+                                                  task.ty * TILE)
+            tsx1, tsy1 = self.transform.to_screen((task.tx + 1) * TILE,
+                                                  (task.ty + 1) * TILE)
+            painter.drawRect(QRectF(tsx0, tsy0, tsx1 - tsx0, tsy1 - tsy0))
+
+        # Contour et barre de progression existants, conservés à l'identique.
         painter.setPen(QPen(QColor(255, 196, 88, 190), 2))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(rect)
-        progress = max(0.0, min(1.0, float(site.progress())))
         bar = QRectF(rect.left(), rect.top() - 8, rect.width() * progress, 4)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(QColor(255, 196, 88, 220)))
@@ -673,6 +831,20 @@ class MapView(QWidget):
     def draw_agent(self, painter: QPainter, agent):
         am = self.controller.sim.am
         zoom = self.transform.zoom
+        sx, sy = self.transform.to_screen(agent.x, agent.y)
+        selected = getattr(self.controller.ui_state,
+                           "selected_agent_eid", None) == agent.eid
+
+        # Marqueur de sélection au sol AVANT le sprite : l'halo jaune ne
+        # doit jamais recouvrir l'habitant (Lot C).
+        if selected and self._visible(sx, sy, 60):
+            self.draw_selected_agent_marker(painter, agent, sx, sy)
+
+        # Ligne but/cible discrète, seulement pour l'habitant sélectionné,
+        # tracée avant le sprite : le segment près des pieds passe dessous.
+        if selected:
+            self._draw_goal_line(painter, agent, sx, sy, zoom)
+
         pixmap = self._agent_pixmap(am, agent)
         shadow = self.asset_cache.shadow(am)
         drawn = self._draw_grounded_sprite(painter, pixmap, agent.x, agent.y,
@@ -680,7 +852,6 @@ class MapView(QWidget):
         if not drawn:
             # Aucun skin disponible : garder un repère plutôt qu'un habitant
             # invisible. N'arrive que si le pack d'assets est absent.
-            sx, sy = self.transform.to_screen(agent.x, agent.y)
             if self._visible(sx, sy):
                 rgb = CLAN_COLORS.get(str(getattr(agent, "color", "gray")),
                                       (150, 150, 150))
@@ -688,20 +859,116 @@ class MapView(QWidget):
                 painter.setBrush(QBrush(QColor(*rgb)))
                 painter.drawEllipse(QPointF(sx, sy - 4), 6, 6)
 
-        selected = getattr(self.controller.ui_state,
-                           "selected_agent_eid", None) == agent.eid
-        if selected:
-            sx, sy = self.transform.to_screen(agent.x, agent.y)
-            r = max(6.0, 8.0 * zoom)
-            painter.setPen(QPen(QColor(255, 220, 80), 2))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawEllipse(QPointF(sx, sy - r * 0.4), r, r * 0.45)
+        # Ligne de base des repères flottants : sommet de la tête du sprite
+        # (ou le sol si le skin est absent).
+        ph = 0.0
+        if pixmap is not None and not pixmap.isNull():
+            ph = pixmap.height() * zoom
+        head_y = sy - ph - 4.0 if ph > 0.0 else sy - 28.0
+
+        if self._visible(sx, sy, 60):
+            self.draw_agent_status(painter, agent, sx, head_y, zoom)
+            if zoom >= NAME_ZOOM:
+                self._draw_agent_name(painter, agent, sx, head_y, zoom,
+                                      selected)
 
         if self.debug_show_labels:
-            sx, sy = self.transform.to_screen(agent.x, agent.y)
             painter.setPen(QPen(QColor(255, 255, 255), 1))
             painter.setFont(QFont("Segoe UI", 8))
             painter.drawText(QPointF(sx + 8, sy - 5), str(agent.eid))
+
+    def draw_selected_agent_marker(self, painter, agent, sx, sy):
+        """Halo pulsé jaune + anneau au sol de l'habitant sélectionné (Lot C).
+
+        Le plan lit ``self.animation_time`` qui n'existe pas : la pulsation
+        est tirée de l'horloge réelle, et comme MainWindow redessine la carte
+        tous les 2 ticks, l'animation avance sans état supplémentaire.
+        """
+        pulse = 0.5 + 0.5 * math.sin(time.monotonic() * 4.0)
+        scale = max(0.8, min(2.5, float(self.transform.zoom)))
+        radius = (18.0 + pulse * 3.0) * scale
+
+        glow = QColor(248, 225, 108, int(70 + 60 * pulse))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(glow))
+        painter.drawEllipse(QPointF(sx, sy), radius, radius * 0.36)
+
+        painter.setPen(QPen(QColor(248, 225, 108), 2.0))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(QPointF(sx, sy), radius * 0.62, radius * 0.22)
+
+    def draw_agent_status(self, painter, agent, sx, sy, zoom):
+        """Une seule icône d'état au-dessus de l'habitant (Lot D).
+
+        ``sy`` est la ligne de base : le sommet de la tête du sprite (le sol
+        si le skin est absent). Invisible sous ``STATUS_ZOOM``, contour sombre
+        pour rester lisible sur n'importe quel terrain.
+        """
+        if zoom < STATUS_ZOOM:
+            return
+        key = agent_status_icon(agent)
+        if key is None:
+            return
+        glyph = STATUS_GLYPHS.get(key)
+        color = STATUS_COLORS.get(key)
+        if not glyph or color is None:
+            return
+        font = QFont("Segoe UI Symbol", max(8, int(11 * zoom)))
+        painter.setFont(font)
+        x = sx - QFontMetrics(font).horizontalAdvance(glyph) / 2.0
+        painter.setPen(QPen(QColor(0, 0, 0, 180), 3))
+        painter.drawText(QPointF(x + 1.0, sy + 1.0), glyph)
+        painter.setPen(QPen(color, 1))
+        painter.drawText(QPointF(x, sy), glyph)
+
+    def _draw_agent_name(self, painter, agent, sx, head_y, zoom, selected):
+        """Nom de l'habitant au-dessus de sa tête, zoom >= 0.9 (Lot C)."""
+        name = str(getattr(agent, "name", "") or "")
+        if not name:
+            return
+        size = max(8, min(16, int(10 * zoom)))
+        font = QFont("Segoe UI", size)
+        font.setBold(bool(selected))
+        metrics = QFontMetrics(font)
+        x = sx - metrics.horizontalAdvance(name) / 2.0
+        y = head_y - max(14.0, 12.0 * zoom)
+        painter.setFont(font)
+        painter.setPen(QPen(QColor(0, 0, 0, 200), 3))
+        painter.drawText(QPointF(x + 1.0, y + 1.0), name)
+        painter.setPen(QPen(QColor(248, 225, 108) if selected
+                            else QColor(236, 241, 248), 1))
+        painter.drawText(QPointF(x, y), name)
+
+    def _draw_goal_line(self, painter, agent, sx, sy, zoom):
+        """Ligne discrète vers la cible du but courant (Lot C).
+
+        ``Being.goal`` est un dict ``{"act", "x", "y", …}`` où ``x``/``y``
+        sont des coordonnées en TUILES : la ligne n'a de sens que si la
+        cible diffère de la tuile occupée par l'habitant.
+        """
+        if zoom < 0.45:
+            return
+        goal = getattr(agent, "goal", None)
+        if not isinstance(goal, dict):
+            return
+        gx, gy = goal.get("x"), goal.get("y")
+        if gx is None or gy is None:
+            return
+        try:
+            gx, gy = int(gx), int(gy)
+        except (TypeError, ValueError):
+            return
+        if gx == int(getattr(agent, "tx", gx)) \
+                and gy == int(getattr(agent, "ty", gy)):
+            return
+        gxs, gys = self.transform.to_screen((gx + 0.5) * TILE,
+                                            (gy + 0.5) * TILE)
+        if not self._visible(gxs, gys, 40):
+            return
+        painter.setPen(QPen(QColor(248, 225, 108, 120), 1,
+                            Qt.PenStyle.DashLine))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawLine(QPointF(sx, sy), QPointF(gxs, gys))
 
     def _agent_pixmap(self, am, agent):
         states = am.skin_states(str(getattr(agent, "color", "blue")),
@@ -976,6 +1243,8 @@ class MapView(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.RightButton:
             self.panstart = event.position()
+            self._pan_dragged = False
+            self._pan_travel = 0.0
             return
 
         if event.button() != Qt.MouseButton.LeftButton:
@@ -1150,6 +1419,11 @@ class MapView(QWidget):
             current = event.position()
             dx = current.x() - self.panstart.x()
             dy = current.y() - self.panstart.y()
+            self._pan_travel += math.hypot(dx, dy)
+            if self._pan_travel > 3.0:
+                # Vrai glisser : le bouton droit navigue, il n'ouvre pas de
+                # menu contextuel à la levée (Lot I).
+                self._pan_dragged = True
 
             self.transform.x -= dx / max(self.transform.zoom, 0.01)
             self.transform.y -= dy / max(
@@ -1180,6 +1454,81 @@ class MapView(QWidget):
         self.hover_changed.emit(int(wx // TILE), int(wy // TILE))
 
         self._update_ghost(event.position())
+        self._update_agent_tooltip(event.position())
+
+    def agent_at(self, pos, pad=6.0):
+        """Habitant sous le curseur, ou ``None`` (Lot I).
+
+        Filtre grossier en coordonnées monde (coûte deux multiplications par
+        habitant), puis test de la boîte billboard approximative du sprite :
+        ancré au sol, ~32 px de large et ~48 px de haut au zoom 1.
+        """
+        wx, wy = self.transform.to_world(pos.x(), pos.y())
+        zoom = max(float(self.transform.zoom), 1e-6)
+        ys = max(float(self.transform.ys), 1e-6)
+        rx = (16.0 + pad) / zoom
+        ry = 48.0 / ys + pad / (zoom * ys)
+
+        best, best_distance = None, None
+        for agent in self.controller.sim.agents:
+            if not getattr(agent, "alive", False):
+                continue
+            dx = agent.x - wx
+            if dx < -rx or dx > rx:
+                continue
+            dy = agent.y - wy
+            if dy < -ry or dy > ry:
+                continue
+            sx, sy = self.transform.to_screen(agent.x, agent.y)
+            if not (sx - 16.0 - pad <= pos.x() <= sx + 16.0 + pad
+                    and sy - 48.0 * zoom - pad <= pos.y() <= sy + pad):
+                continue
+            distance = (pos.x() - sx) ** 2 + (pos.y() - sy) ** 2
+            if best_distance is None or distance < best_distance:
+                best, best_distance = agent, distance
+        return best
+
+    def agent_tooltip(self, agent) -> str:
+        """Infobulle HTML d'un habitant : nom, classe/stade, santé, énergie, but."""
+        name = escape(str(getattr(agent, "name", "?")))
+        cls = escape(str(getattr(agent, "cls", "?")))
+        stage = str(getattr(agent, "stage", ""))
+        health = _percent(getattr(agent, "health", None))
+        energy = _percent(getattr(agent, "energy", None))
+
+        goal = getattr(agent, "goal", None)
+        if isinstance(goal, dict) and goal.get("act") is not None:
+            but = action_name(self.controller.sim, goal.get("act"))
+            gx, gy = goal.get("x"), goal.get("y")
+            if gx is not None and gy is not None:
+                try:
+                    but = f"{but} → {int(gx)},{int(gy)}"
+                except (TypeError, ValueError):
+                    pass
+        else:
+            but = "Repos"
+
+        lines = [f"<b>{name}</b>"]
+        lines.append(f"{cls} · {escape(stage)}" if stage else cls)
+        lines.append(f"Santé : {health:.0%}")
+        lines.append(f"Énergie : {energy:.0%}")
+        lines.append(f"But : {escape(but)}")
+        return "<br>".join(lines)
+
+    def _update_agent_tooltip(self, pos):
+        """Infobulle seulement quand le curseur est proche d'un habitant."""
+        agent = self.agent_at(pos)
+        raw_eid = getattr(agent, "eid", None) if agent is not None else None
+        eid = None
+        if raw_eid is not None:
+            try:
+                eid = int(raw_eid)
+            except (TypeError, ValueError):
+                eid = None
+        if eid == self._tooltip_eid:
+            return
+        self._tooltip_eid = eid
+        self.setToolTip(self.agent_tooltip(agent) if agent is not None else "")
 
     def _update_ghost(self, pos):
         ui_state = self.controller.ui_state
@@ -1197,6 +1546,9 @@ class MapView(QWidget):
             self.update()
 
     def leaveEvent(self, event):
+        if self._tooltip_eid is not None:
+            self._tooltip_eid = None
+            self.setToolTip("")
         if getattr(self.controller.ui_state, "ghost_visible", False):
             self.controller.ui_state.ghost_visible = False
             self.update()
@@ -1225,4 +1577,113 @@ class MapView(QWidget):
         )
         self.transform.clamp(GRID * TILE, self.width(), self.height())
         self._sync_controller_from_transform()
+        self.update()
+
+    # ------------------------------------------------------------------
+    # Menus contextuels (Lot I)
+    # ------------------------------------------------------------------
+
+    def contextMenuEvent(self, event):
+        """Clic droit : menu sur l'habitant, sinon menu terrain (en français).
+
+        Le bouton droit sert déjà au pan ; le menu s'affiche à la levée, mais
+        un glisser réel (``_pan_dragged``) le supprime pour ne pas gêner la
+        navigation. ``mousePressEvent``/``mouseReleaseEvent`` restent intacts.
+        """
+        if self._pan_dragged:
+            self._pan_dragged = False
+            return
+        pos = event.pos()
+        agent = self.agent_at(pos)
+        if agent is not None:
+            self._context_menu_agent(event, agent)
+        else:
+            self._context_menu_terrain(event, pos)
+
+    def _select_agent(self, agent):
+        self._run({"kind": "select_agent", "eid": int(agent.eid)},
+                  invalidate=False)
+        self.update()
+
+    def _context_menu_agent(self, event, agent):
+        menu = QMenu(self)
+        act_select = menu.addAction("Sélectionner")
+        act_follow = menu.addAction("Suivre")
+        act_inspect = menu.addAction("Ouvrir l'inspecteur")
+        chosen = menu.exec(event.globalPos())
+        if chosen is None:
+            return
+
+        if chosen == act_select:
+            self._select_agent(agent)
+            return
+
+        if chosen == act_follow:
+            self._select_agent(agent)
+            self.controller.ui_state.follow_selected = True
+            action = getattr(self.window(), "_follow_action", None)
+            if action is not None and hasattr(action, "setChecked"):
+                action.setChecked(True)
+            return
+
+        if chosen == act_inspect:
+            self._select_agent(agent)
+            self.controller.ui_state.active_tab = "etre"
+            dock = getattr(self.window(), "_inspector_dock", None)
+            if dock is not None and hasattr(dock, "raise_"):
+                dock.raise_()
+
+    def _context_menu_terrain(self, event, pos):
+        sim = self.controller.sim
+        grid = int(sim.w.g)
+        wx, wy = self.transform.to_world(pos.x(), pos.y())
+        tx, ty = int(wx // TILE), int(wy // TILE)
+        if not (0 <= tx < grid and 0 <= ty < grid):
+            return
+
+        ui_state = self.controller.ui_state
+        aid = getattr(ui_state, "selected_asset_id", None)
+
+        menu = QMenu(self)
+        act_tile = menu.addAction("Examiner la tuile")
+        act_place = menu.addAction("Poser l'asset sélectionné")
+        act_place.setEnabled(aid is not None)
+        menu.addSeparator()
+        act_agent = menu.addAction("Invoquer un habitant ici")
+        act_sheep = menu.addAction("Mouton ici")
+        act_monster = menu.addAction("Monstre ici")
+        menu.addSeparator()
+        act_center = menu.addAction("Centrer la caméra ici")
+
+        chosen = menu.exec(event.globalPos())
+        if chosen is None:
+            return
+
+        cx, cy = (tx + 0.5) * TILE, (ty + 0.5) * TILE
+        if chosen == act_tile:
+            self._run({"kind": "select_tile", "tx": tx, "ty": ty},
+                      invalidate=False)
+        elif chosen == act_place and aid is not None:
+            # Arme l'outil « Poser » puis réutilise le chemin de pose classique.
+            self._run({"kind": "set_mode", "mode": "place"}, invalidate=False)
+            dock = getattr(self.window(), "_tools_dock", None)
+            if dock is not None and hasattr(dock, "refresh"):
+                dock.refresh()
+            self.apply_tool(tx, ty)
+        elif chosen == act_agent:
+            self._run({"kind": "spawn_agent", "x": cx, "y": cy},
+                      invalidate=False)
+        elif chosen == act_sheep:
+            self._run({"kind": "spawn_sheep", "x": cx, "y": cy},
+                      invalidate=False)
+        elif chosen == act_monster:
+            cmd = {"kind": "spawn_monster", "x": cx, "y": cy}
+            monster_kind = getattr(ui_state, "monster_kind", "")
+            if monster_kind:
+                cmd["monster_kind"] = monster_kind
+            self._run(cmd, invalidate=False)
+        elif chosen == act_center:
+            self.transform.center_on(wx, wy, self.width(), self.height(),
+                                     max(1.0, grid * TILE))
+            self._sync_controller_from_transform()
         self.update()

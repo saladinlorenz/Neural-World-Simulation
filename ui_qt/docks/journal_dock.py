@@ -42,9 +42,24 @@ class JournalDock(QDockWidget):
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(8, 8, 8, 8)
 
-        # Compteur
+        # Ligne de titre : compteur + bouton repliable (Lot G)
+        title_layout = QHBoxLayout()
         self._count_label = QLabel("0 entrees")
-        layout.addWidget(self._count_label)
+        title_layout.addWidget(self._count_label)
+        title_layout.addStretch()
+        # Version robuste du plan : le bouton vit dans le dock lui-meme,
+        # pas dans le titleBarWidget (fragile selon les styles).
+        self._expand_button = QPushButton("Déplier")
+        self._expand_button.setCheckable(True)
+        self._expand_button.setToolTip(
+            "Déplie le journal (vue complete) ou le replie (mode compact)")
+        self._expand_button.toggled.connect(self._on_expanded)
+        title_layout.addWidget(self._expand_button)
+        layout.addLayout(title_layout)
+
+        # Compact par defaut : le journal ne doit pas prendre toute la fenetre.
+        self.setMinimumHeight(150)
+        self.setMaximumHeight(260)
 
         # Filtres en ligne
         filter_layout = QHBoxLayout()
@@ -112,6 +127,17 @@ class JournalDock(QDockWidget):
         snap = self.filtered_entries()
         self._model.set_snapshot(snap)
         self._count_label.setText(f"{len(snap)} entrees")
+
+    def _on_expanded(self, expanded):
+        """Lot G : replie (compact) ou déplie le dock journal."""
+        if expanded:
+            self.setMinimumHeight(420)
+            self.setMaximumHeight(16777215)
+            self._expand_button.setText("Replier")
+        else:
+            self.setMinimumHeight(150)
+            self.setMaximumHeight(260)
+            self._expand_button.setText("Déplier")
 
     def _on_filter(self):
         self.refresh()

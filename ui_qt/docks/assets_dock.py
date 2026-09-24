@@ -21,6 +21,10 @@ class AssetsDock(QDockWidget):
     THUMB_LIST_SIZE = 96
     THUMB_DETAIL_SIZE = 128
     THUMB_CACHE_MAX = 1024
+    #: Sentinel de classe : ``getattr`` trouve l'attribut sans retomber sur
+    #: l'accesseur C++ de sip, qui leve ``RuntimeError`` quand ``__init__``
+    #: n'a pas ete appele (cas ``__new__`` des tests).
+    _thumb_cache = None
 
     def __init__(self, controller, parent=None):
         super().__init__("Assets", parent)

@@ -1,7 +1,7 @@
 """MainWindow — QMainWindow principale de l'interface PyQt6."""
 from PyQt6.QtWidgets import (QMainWindow, QToolBar, QLabel,
                               QSpinBox, QStatusBar, QPushButton,
-                              QInputDialog, QMessageBox)
+                              QInputDialog, QMessageBox, QMenu)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
 
@@ -17,7 +17,8 @@ from ui_qt.docks.assets_dock import AssetsDock
 from ui_qt.docks.tools_dock import ToolsDock
 from ui_qt.docks.tile_dock import TileDock
 from ui_qt.dialogs import SaveDialog, SpawnAgentDialog, ToolEditorDialog
-from ui_qt.theme.theme import apply_theme
+from ui_qt.theme.theme import apply_theme, get_theme_name
+from ui_qt.widgets.status_pill import StatusPill
 from ui_qt.studio.parameter_dock import ParameterDock
 from ui_qt.studio.scenario_dialog import ScenarioDialog
 from game.studio_scenarios import get_scenario
@@ -48,8 +49,35 @@ class MainWindow(QMainWindow):
         # les docks, dont la construction peut déjà émettre des commandes.
         self._setup_statusbar()
         self._setup_docks()
+        # Lot B-fix : UIState.active_mode vaut « agent » par défaut
+        # (game/ui_state.py, valeur verifiee par un test qu'on ne touche pas),
+        # donc tout clic sur la carte aurait posé un habitant. On demarre en
+        # mode « examen » : le clic selectionne / examine au lieu de creer.
+        # Placé après _setup_docks (le dock Outils existe) et avant
+        # _restore_settings, pour qu'un chargement puisse surcharger le mode.
+        # Le dock Outils reste la source explicite : choisir « Etre », c'est
+        # demander des clics repetes pour creer — c'est voulu.
+        self.report_command_result(
+            self.controller.execute({"kind": "set_mode", "mode": "inspect"}))
+        self._tools_dock.refresh()
         self._setup_timer()
         self._restore_settings()
+
+    def add_menu_action(self, menu, text, slot, shortcut=None, tooltip=None):
+        """Ajoute une entree de menu (Lot B) avec raccourci optionnel.
+
+        L'action est aussi rattachee a la fenetre : rangee dans un menu de
+        bouton, elle doit garder son raccourci actif au niveau fenetre.
+        """
+        action = QAction(text, self)
+        if shortcut:
+            action.setShortcut(shortcut)
+            self.addAction(action)
+        if tooltip:
+            action.setToolTip(tooltip)
+        action.triggered.connect(slot)
+        menu.addAction(action)
+        return action
 
     def _setup_toolbar(self):
         tb = QToolBar("Controle")
@@ -57,14 +85,13 @@ class MainWindow(QMainWindow):
         tb.setMovable(False)
         self.addToolBar(tb)
 
-        # Pause/Play
+        # ── Groupe simulation : pause, pas, presets de vitesse ──
         self._pause_action = QAction("Pause", self)
         self._pause_action.setShortcut("Space")
         self._pause_action.setToolTip("Espace : met en pause / reprend la simulation")
         self._pause_action.triggered.connect(self._on_pause)
         tb.addAction(self._pause_action)
 
-        # Step
         step_action = QAction("Step", self)
         step_action.setShortcut("N")
         step_action.setToolTip("N : avance la simulation d'un tick")
@@ -73,70 +100,114 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        # Vitesse
-        tb.addWidget(QLabel(" Vitesse: "))
-        self._speed_spin = QSpinBox()
-        self._speed_spin.setRange(1, 8)
-        self._speed_spin.setValue(self.controller.sim.speed)
-        self._speed_spin.valueChanged.connect(self._on_speed)
-        tb.addWidget(self._speed_spin)
+        # Presets de vitesse (les raccourcis 1..8 sont plus bas)
+        for speed in [1, 2, 4, 8]:
+            btn = QPushButton("%d×" % speed)
+            btn.setFixedWidth(42)
+            btn.setToolTip("Vitesse %dx (touche %d du clavier)" % (speed, speed))
+            btn.clicked.connect(lambda checked, s=speed: self._set_speed(s))
+            tb.addWidget(btn)
 
         tb.addSeparator()
 
-        # Spawn
-        spawn_btn = QAction("+ Habitants", self)
-        spawn_btn.setToolTip("Ajoute un habitant aleatoire dans le monde")
-        spawn_btn.triggered.connect(
-            lambda: self.report_command_result(
-                self.controller.execute({"kind": "spawn_agent"})))
-        tb.addAction(spawn_btn)
-
-        spawn_sheep = QAction("+ Mouton", self)
-        spawn_sheep.setToolTip("Ajoute un mouton (nourriture, laine)")
-        spawn_sheep.triggered.connect(
-            lambda: self.report_command_result(
-                self.controller.execute({"kind": "spawn_sheep"})))
-        tb.addAction(spawn_sheep)
-
-        spawn_monster = QAction("+ Monstre", self)
-        spawn_monster.setToolTip(
-            "Type de monstre : aléatoire si aucun n'est choisi dans Outils")
-        spawn_monster.triggered.connect(self._on_spawn_monster)
-        tb.addAction(spawn_monster)
-
-        tb.addSeparator()
-
-        spawn_custom = QAction("Créer un habitant...", self)
+        # ── Creation d'habitant : une seule QAction Ctrl+H, partagee avec
+        # le menu Vue (aucun raccourci duplique) ──
+        spawn_custom = QAction("Créer un habitant…", self)
         spawn_custom.setShortcut("Ctrl+H")
         spawn_custom.setToolTip("Sexe, clan, classe, cerveau, energie, nom et "
                                 "gabarits : le prochain clic sur la carte pose "
                                 "cet habitant.")
         spawn_custom.triggered.connect(self._open_spawn_dialog)
-        tb.addAction(spawn_custom)
+        self.addAction(spawn_custom)
         # Reference partagee avec le menu Vue : une seule QAction garde
         # le raccourci Ctrl+H sans ambiguite.
         self._spawn_custom_action = spawn_custom
 
-        tool_editor = QAction("Editeur d'outil...", self)
-        tool_editor.setToolTip("Dessine un outil 16x16 et l'enregistre au catalogue")
-        tool_editor.triggered.connect(self._open_tool_editor)
-        tb.addAction(tool_editor)
+        # ── Menu Créer ▾ ──
+        create_btn = QPushButton("Créer ▾")
+        create_btn.setProperty("role", "primary")
+        create_btn.setToolTip("Ajouter un habitant, un mouton ou un monstre")
+        create_menu = QMenu(create_btn)
+        self.add_menu_action(
+            create_menu, "Habitant aléatoire", self._menu_spawn_agent,
+            tooltip="Ajoute un habitant aleatoire dans le monde")
+        create_menu.addAction(self._spawn_custom_action)
+        self.add_menu_action(
+            create_menu, "Mouton", self._menu_spawn_sheep,
+            tooltip="Ajoute un mouton (nourriture, laine)")
+        self.add_menu_action(
+            create_menu, "Monstre", self._menu_spawn_monster,
+            tooltip="Type de monstre : aleatoire si aucun n'est choisi dans Outils")
+        create_menu.addSeparator()
+        self.add_menu_action(
+            create_menu, "Éditeur d'outil…", self._open_tool_editor,
+            tooltip="Dessine un outil 16x16 et l'enregistre au catalogue")
+        create_btn.setMenu(create_menu)
+        tb.addWidget(create_btn)
+
+        # ── Menu Monde ▾ ──
+        world_btn = QPushButton("Monde ▾")
+        world_btn.setToolTip("Nouveau monde, scenarios, parametres, export")
+        world_menu = QMenu(world_btn)
+        self.add_menu_action(
+            world_menu, "Nouveau monde…", self._on_new_world, "Ctrl+N",
+            "Genere un nouveau monde (la partie actuelle est perdue)")
+        self.add_menu_action(world_menu, "Scénarios…", self._open_scenarios)
+        self.add_menu_action(
+            world_menu, "Paramètres", lambda: self._toggle_dock(self._param_dock))
+        # Une seule QAction Ctrl+E : deux actions de fenetre au meme
+        # raccourci seraient « ambiguës » et Qt n'activerait aucune des deux.
+        # La meme part avec le menu Vue (_setup_docks).
+        self._export_action = QAction("Exporter l'image", self)
+        self._export_action.setShortcut("Ctrl+E")
+        self._export_action.setToolTip("Exporte l'image visible de la carte")
+        self._export_action.triggered.connect(self._export_viewport)
+        self.addAction(self._export_action)
+        world_menu.addAction(self._export_action)
+        world_btn.setMenu(world_menu)
+        tb.addWidget(world_btn)
+
+        # ── Menu Édition ▾ ──
+        edit_btn = QPushButton("Édition ▾")
+        edit_btn.setToolTip("Annuler, retablir, grille et legende")
+        edit_menu = QMenu(edit_btn)
+        self.add_menu_action(edit_menu, "Annuler", self._on_undo, "Ctrl+Z")
+        self.add_menu_action(edit_menu, "Rétablir", self._on_redo, "Ctrl+Shift+Z")
+        edit_menu.addSeparator()
+        # Les memes QAction sont partagees avec le menu Vue (_setup_docks) :
+        # un seul objet garde l'etat coche synchronise avec la carte.
+        self._grid_action = QAction("Grille", self)
+        self._grid_action.setCheckable(True)
+        self._grid_action.setToolTip("Affiche ou masque la grille de tuiles")
+        self._grid_action.triggered.connect(self._toggle_grid)
+        edit_menu.addAction(self._grid_action)
+        self._legend_action = QAction("Légende", self)
+        self._legend_action.setCheckable(True)
+        self._legend_action.setToolTip("Affiche ou masque la legende de la carte")
+        self._legend_action.triggered.connect(self._toggle_legend)
+        edit_menu.addAction(self._legend_action)
+        edit_btn.setMenu(edit_menu)
+        tb.addWidget(edit_btn)
+
+        # ── Menu Studio ▾ ──
+        studio_btn = QPushButton("Studio ▾")
+        studio_btn.setToolTip("Timeline, laboratoire, comparaison A/B")
+        studio_menu = QMenu(studio_btn)
+        self.add_menu_action(
+            studio_menu, "Timeline", lambda: self._toggle_dock(self._timeline_dock))
+        self.add_menu_action(
+            studio_menu, "Laboratoire", lambda: self._toggle_dock(self._lab_dock))
+        self.add_menu_action(
+            studio_menu, "Comparaison A/B", self._open_comparison)
+        studio_menu.addSeparator()
+        self.add_menu_action(
+            studio_menu, "Configurer l'overlay", self._open_overlay_config)
+        studio_btn.setMenu(studio_menu)
+        tb.addWidget(studio_btn)
 
         tb.addSeparator()
 
-        undo_action = QAction("Annuler", self)
-        undo_action.setShortcut("Ctrl+Z")
-        undo_action.triggered.connect(self._on_undo)
-        tb.addAction(undo_action)
-
-        redo_action = QAction("Retablir", self)
-        redo_action.setShortcut("Ctrl+Shift+Z")
-        redo_action.triggered.connect(self._on_redo)
-        tb.addAction(redo_action)
-
-        tb.addSeparator()
-
-        # Suivi caméra
+        # ── Groupe lecture / sauvegarde / theme ──
         self._follow_action = QAction("Suivre", self)
         self._follow_action.setCheckable(True)
         self._follow_action.setToolTip(
@@ -145,29 +216,31 @@ class MainWindow(QMainWindow):
         self._follow_action.triggered.connect(self._on_follow)
         tb.addAction(self._follow_action)
 
-        tb.addSeparator()
+        save_btn = QPushButton("Sauvegarder ▾")
+        save_btn.setToolTip("F5 : quicksave (slot 0) — Maj+F5 : sauvegarder sous")
+        save_menu = QMenu(save_btn)
+        self.add_menu_action(
+            save_menu, "Quicksave", self._on_quicksave, "F5",
+            "Sauvegarde immediate dans le slot 0")
+        self.add_menu_action(
+            save_menu, "Sauvegarder sous…", self._on_save, "Shift+F5")
+        save_btn.setMenu(save_menu)
+        tb.addWidget(save_btn)
 
-        # Sauvegarde : F5 = slot 0 direct, Maj+F5 = dialogue
-        quick_action = QAction("Quicksave", self)
-        quick_action.setShortcut("F5")
-        quick_action.setToolTip("Sauvegarde immediate dans le slot 0")
-        quick_action.triggered.connect(self._on_quicksave)
-        tb.addAction(quick_action)
-
-        save_action = QAction("Sauvegarder sous...", self)
-        save_action.setShortcut("Shift+F5")
-        save_action.triggered.connect(self._on_save)
-        tb.addAction(save_action)
-
-        load_action = QAction("Charger (F9)", self)
+        load_action = QAction("Charger", self)
         load_action.setShortcut("F9")
+        load_action.setToolTip("F9 : charger une partie")
         load_action.triggered.connect(self._on_load)
+        self.addAction(load_action)
         tb.addAction(load_action)
 
         tb.addSeparator()
 
-        # Theme toggle
-        self._theme_action = QAction("Theme sombre", self)
+        # Theme toggle : l'intitule annonce la cible du clic (comme apres un
+        # basculement dans _toggle_theme). Neural Lab sombre = defaut.
+        self._theme_action = QAction(
+            "Theme clair" if get_theme_name() == "sombre" else "Theme sombre",
+            self)
         self._theme_action.setToolTip("Bascule entre le theme clair et le theme sombre")
         self._theme_action.triggered.connect(self._toggle_theme)
         tb.addAction(self._theme_action)
@@ -192,12 +265,15 @@ class MainWindow(QMainWindow):
         tb.addWidget(QLabel("Vue: "))
         tb.addWidget(self._overlay_combo)
 
-        # Speed presets
-        for speed in [1, 2, 4, 8]:
-            btn = QPushButton(f"{speed}x")
-            btn.setFixedWidth(36)
-            btn.clicked.connect(lambda checked, s=speed: self._set_speed(s))
-            tb.addWidget(btn)
+        tb.addSeparator()
+        # Curseur de vitesse (complement des presets : 1 a 8)
+        tb.addWidget(QLabel(" Vitesse: "))
+        self._speed_spin = QSpinBox()
+        self._speed_spin.setRange(1, 8)
+        self._speed_spin.setValue(self.controller.sim.speed)
+        self._speed_spin.setToolTip("Vitesse de simulation (1 a 8)")
+        self._speed_spin.valueChanged.connect(self._on_speed)
+        tb.addWidget(self._speed_spin)
 
         # Raccourcis clavier 1..8 : une touche = une vitesse
         for speed in range(1, 9):
@@ -206,12 +282,31 @@ class MainWindow(QMainWindow):
             action.triggered.connect(lambda checked, s=speed: self._set_speed(s))
             self.addAction(action)
 
-        # Nouveau monde (destructif : confirme par _on_new_world)
-        new_world = QAction("Nouveau monde...", self)
-        new_world.setShortcut("Ctrl+N")
-        new_world.setToolTip("Genere un nouveau monde (la partie actuelle est perdue)")
-        new_world.triggered.connect(self._on_new_world)
-        tb.addAction(new_world)
+    def _menu_spawn_agent(self):
+        """Menu Créer ▾ « Habitant aléatoire » (ancien bouton + Habitants)."""
+        result = self.report_command_result(
+            self.controller.execute({"kind": "spawn_agent"}))
+        if isinstance(result, dict) and result.get("ok"):
+            self._status.showMessage(
+                "Habitant ajouté — pour en placer un précisément : "
+                "dock Outils ▸ Etre puis cliquez sur la carte", 6000)
+
+    def _menu_spawn_sheep(self):
+        """Menu Créer ▾ « Mouton » (ancien bouton + Mouton)."""
+        result = self.report_command_result(
+            self.controller.execute({"kind": "spawn_sheep"}))
+        if isinstance(result, dict) and result.get("ok"):
+            self._status.showMessage(
+                "Mouton ajouté — pour en placer un précisément : "
+                "dock Outils ▸ Mouton puis cliquez sur la carte", 6000)
+
+    def _menu_spawn_monster(self):
+        """Menu Créer ▾ « Monstre » (ancien bouton + Monstre)."""
+        result = self._on_spawn_monster()
+        if isinstance(result, dict) and result.get("ok"):
+            self._status.showMessage(
+                "Monstre ajouté — pour en placer un précisément : "
+                "dock Outils ▸ Monstre puis cliquez sur la carte", 6000)
 
     def _setup_central(self):
         self._map = MapView(self.controller, self)
@@ -221,6 +316,11 @@ class MainWindow(QMainWindow):
         self._map.hover_changed.connect(self._on_map_hover)
         self._map.map_clicked.connect(self._on_map_clicked)
         self.setCentralWidget(self._map)
+        # Les actions Grille / Légende sont créées dans la barre d'outils
+        # (avant la carte) : leur état initial suit les défauts de MapView.
+        # setChecked n'émet pas triggered : aucun basculement parasite.
+        self._grid_action.setChecked(self._map.debug_show_grid)
+        self._legend_action.setChecked(self._map.show_legend)
 
     def _on_map_hover(self, tx, ty):
         self._hover_tile = (int(tx), int(ty))
@@ -323,19 +423,12 @@ class MainWindow(QMainWindow):
         # est repliee dans le bouton « etendu ».
         vue.addAction(self._spawn_custom_action)
         vue.addSeparator()
-        export_image = QAction("Exporter l'image (Ctrl+E)", self)
-        export_image.setShortcut("Ctrl+E")
-        export_image.triggered.connect(self._export_viewport)
-        vue.addAction(export_image)
-        self._grid_action = QAction("Grille de tuiles", self)
-        self._grid_action.setCheckable(True)
-        self._grid_action.setChecked(self._map.debug_show_grid)
-        self._grid_action.triggered.connect(self._toggle_grid)
+        # Meme QAction que le menu « Monde » de la barre d'outils (Ctrl+E) :
+        # un seul objet = un seul raccourci, sans ambiguïté.
+        vue.addAction(self._export_action)
+        # Memes QAction que le menu « Édition » de la barre d'outils :
+        # un seul objet coche, tous les endroits restent synchronises.
         vue.addAction(self._grid_action)
-        self._legend_action = QAction("Legende", self)
-        self._legend_action.setCheckable(True)
-        self._legend_action.setChecked(self._map.show_legend)
-        self._legend_action.triggered.connect(self._toggle_legend)
         vue.addAction(self._legend_action)
 
         # Menu Aide : les raccourcis visibles sans fouiller la barre d'outils.
@@ -347,10 +440,22 @@ class MainWindow(QMainWindow):
     def _setup_statusbar(self):
         self._status = QStatusBar()
         self.setStatusBar(self._status)
-        self._status_label = QLabel()
-        self._status.addWidget(self._status_label)
-        self._fps_label = QLabel()
-        self._status.addPermanentWidget(self._fps_label)
+
+        # Lot H : la barre d'état se lit en blocs (pills) plutot qu'en une
+        # longue phrase. Les pills sont des widgets permanents, a droite ;
+        # showMessage (messages temporaires) reste libre a gauche.
+        self._clock_pill = StatusPill("⏱ —", "#91A0B2")
+        self._season_pill = StatusPill("🌱 —", "#62D394")
+        self._population_pill = StatusPill("◉ 0", "#4CC9F0")
+        self._speed_pill = StatusPill("⚡ 1×", "#F6BD60")
+        self._state_pill = StatusPill("▮▮ En pause", "#A78BFA")
+        self._tile_pill = StatusPill("⌖ —", "#91A0B2")
+        self._performance_pill = StatusPill("0 FPS · 0.0 TPS", "#91A0B2")
+        for pill in (self._clock_pill, self._season_pill, self._population_pill,
+                     self._speed_pill, self._state_pill, self._tile_pill,
+                     self._performance_pill):
+            self._status.addPermanentWidget(pill)
+
         self._seed_label = QLabel()
         self._status.addPermanentWidget(self._seed_label)
         self._scenario_label = QLabel()
@@ -383,7 +488,9 @@ class MainWindow(QMainWindow):
         monster_kind = getattr(self.controller.ui_state, "monster_kind", "")
         if monster_kind:
             cmd["monster_kind"] = monster_kind
-        self.report_command_result(self.controller.execute(cmd))
+        # Retourne le resultat : le menu Créer en a besoin pour ne promettre
+        # « Monstre ajouté » que si le moteur a accepte la commande.
+        return self.report_command_result(self.controller.execute(cmd))
 
     def _open_spawn_dialog(self):
         dlg = SpawnAgentDialog(self.controller, self.am, self)
@@ -529,14 +636,11 @@ class MainWindow(QMainWindow):
         if self._tick_count % 2 == 0:
             self._map.update()
 
-        # Indicateur FPS / TPS (moyennes glissantes)
+        # Indicateur FPS / TPS (moyennes glissantes) : la pill performance
+        # de la barre d'etat est rafraichie par _refresh_status (4x/sec).
         if dt > 0:
             self._fps_ema = 0.8 * getattr(self, "_fps_ema", 0.0) + 0.2 / dt
             self._tps_ema = 0.8 * getattr(self, "_tps_ema", 0.0) + 0.2 * steps / dt
-        if self._tick_count % 4 == 0:
-            self._fps_label.setText(
-                "%.0f fps - %.1f tps" % (getattr(self, "_fps_ema", 0.0),
-                                         getattr(self, "_tps_ema", 0.0)))
 
         # Mettre a jour la barre d'etat (4x par seconde suffit)
         if self._tick_count % 4 == 0:
@@ -575,20 +679,32 @@ class MainWindow(QMainWindow):
             self._lab_dock.refresh()
 
     def _refresh_status(self):
-        """Barre d'etat : tick, horloge, fps/tps, graine, scenario, tuile."""
+        """Barre d'etat en blocs : horloge, saison, population, vitesse,
+        etat, tuile survolée, performance, graine, scenario (Lot H)."""
         sim = self.controller.sim
         snap = simulation_snapshot(sim, self.controller.ui_state)
         clock = snap.get("clock", {})
         hover = getattr(self, "_hover_tile", None)
-        hover_text = f"Tuile {hover[0]},{hover[1]}" if hover else "Tuile —"
-        self._status_label.setText(
-            f"Tick {snap['tick']} | {clock.get('label', '')} | "
-            f"FPS {getattr(self, '_fps_ema', 0.0):.0f} | "
-            f"TPS {getattr(self, '_tps_ema', 0.0):.1f} | "
-            f"Pop: {snap['population']} | Speed: {snap['speed']} | "
-            f"{'Pause' if snap['paused'] else 'Running'} | "
-            f"{hover_text}"
-        )
+
+        label = str(clock.get("label", "") or "")
+        self._clock_pill.setText("⏱ %s" % label if label else "⏱ —")
+        season = str(clock.get("season", "") or "")
+        self._season_pill.setText("🌱 %s" % season if season else "🌱 —")
+        self._population_pill.setText("◉ %d" % snap["population"])
+        self._speed_pill.setText("⚡ %d×" % snap["speed"])
+
+        paused = bool(snap["paused"])
+        self._state_pill.setText("▮▮ En pause" if paused else "▶ En marche")
+        self._state_pill.set_pill_color("#A78BFA" if paused else "#62D394")
+
+        if hover:
+            self._tile_pill.setText("⌖ %d,%d" % (hover[0], hover[1]))
+        else:
+            self._tile_pill.setText("⌖ —")
+        self._performance_pill.setText(
+            "%.0f FPS · %.1f TPS" % (getattr(self, "_fps_ema", 0.0),
+                                     getattr(self, "_tps_ema", 0.0)))
+
         self._seed_label.setText("graine %s" % getattr(sim, "seed", "?"))
         # Garde de changement : evite un setText par tick.
         scenario = getattr(self, "_active_scenario", "manual")
@@ -732,6 +848,13 @@ class MainWindow(QMainWindow):
         if not hasattr(self, '_comparison_panel'):
             self._comparison_panel = ComparisonPanel()
             self._comparison_panel.setWindowTitle("Comparaison A/B")
+            self._comparison_panel.setObjectName("comparison_panel")
+        # La feuille du theme rend QWidget transparent : une fenetre sans
+        # parent doit recevoir un fond explicite (selectionneur d'id).
+        from ui_qt.theme.theme import get_theme_background
+        self._comparison_panel.setStyleSheet(
+            "#comparison_panel { background: %s; }" % get_theme_background()
+        )
         self._comparison_panel.show()
 
     def _open_overlay_config(self):

@@ -1,17 +1,33 @@
 """InspectorDock — dock Qt pour l'inspecteur d'habitant selectionne."""
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                               QTableView, QLabel, QScrollArea, QFrame,
-                              QGroupBox, QGridLayout, QSlider)
+                              QGroupBox, QGridLayout, QSlider,
+                              QStackedWidget)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
 from game.ui_snapshots import selected_agent_snapshot, anima_snapshot
 from game.ui_registry import C_CORPS, C_COG, C_PERSO, C_EMO, C_BESOIN, C_EXP, C_MEM
 from ui_qt.models.anima_model import AnimaModel
+from ui_qt.widgets.empty_state import EmptyState
+from ui_qt.widgets.stat_card import StatCard
 
 
 class InspectorDock(QDockWidget):
     """Dock inspecteur complet : identite + corps + Anima + relations."""
+
+    #: Cartes visuelles (Lot F.1) : (cle interne, titre, couleur Neural Lab).
+    #: Les valeurs proviennent de ``health`` et ``needs_named`` du snapshot.
+    CARD_SPECS = [
+        ("sante", "Santé", "#62D394"),
+        ("energie", "Énergie", "#F6BD60"),
+        ("faim", "Faim", "#FF6B6B"),
+        ("soif", "Soif", "#4CC9F0"),
+        ("sommeil", "Sommeil", "#A78BFA"),
+        ("securite", "Sécurité", "#F8E16C"),
+        ("appartenance", "Appartenance", "#B8C4FF"),
+        ("estime", "Estime", "#74D9F5"),
+    ]
 
     def __init__(self, controller, parent=None):
         super().__init__("Inspecteur", parent)
@@ -64,6 +80,18 @@ class InspectorDock(QDockWidget):
 
         head.addLayout(head_texts, 1)
         self._layout.addLayout(head)
+
+        # === Cartes visuelles (Lot F.1) ===
+        # Rangée de cartes Santé / besoins, mise à jour dans refresh().
+        cards_grid = QGridLayout()
+        cards_grid.setSpacing(6)
+        cards_grid.setContentsMargins(0, 2, 0, 2)
+        self._cards = {}
+        for index, (key, title, color) in enumerate(self.CARD_SPECS):
+            card = StatCard(title, color)
+            self._cards[key] = card
+            cards_grid.addWidget(card, index // 2, index % 2)
+        self._layout.addLayout(cards_grid)
 
         # === Groupes d'info ===
         self._create_info_groups()
@@ -169,7 +197,19 @@ class InspectorDock(QDockWidget):
         self._layout.addStretch()
 
         scroll.setWidget(widget)
-        self.setWidget(scroll)
+
+        # === Empilement vue vide / contenu (Lot E) ===
+        # Un seul EmptyState persistant : refresh() bascule la page courante.
+        self.empty_state = EmptyState(
+            icon="◎",
+            title="Aucun habitant sélectionné",
+            message="Cliquez un habitant sur la carte pour afficher sa fiche complète.",
+        )
+        self._stack = QStackedWidget()
+        self._stack.addWidget(self.empty_state)
+        self._stack.addWidget(scroll)
+        self._content = scroll
+        self.setWidget(self._stack)
 
     def _create_info_groups(self):
         """Cree les groupes Corps, Cognition, Personnalite, Emotions, Besoins."""
@@ -243,6 +283,10 @@ class InspectorDock(QDockWidget):
         anima_snap = anima_snapshot(self.controller.sim, self.controller.ui_state)
 
         if snap is None:
+            # Lot E : la vue vide remplace le contenu, les champs restent
+            # effacés (les tests lisent encore ces labels).
+            self._stack.setCurrentWidget(self.empty_state)
+            self._clear_cards()
             self._identity_label.setText("Aucun agent selectionne")
             self._state_label.setText("")
             self._position_label.setText("")
@@ -273,6 +317,10 @@ class InspectorDock(QDockWidget):
             self._relations_label.setText("")
             self._goal_label.setText("")
             return
+
+        # Lot E : contenu affiché ; Lot F.1 : cartes rafraîchies en premier.
+        self._stack.setCurrentWidget(self._content)
+        self._update_cards(snap)
 
         # Identite
         name = snap.get("name", "?")
@@ -531,6 +579,38 @@ class InspectorDock(QDockWidget):
             )
         else:
             self._goal_label.setText("<b>But:</b> aucun")
+
+    def _update_cards(self, snap):
+        """Remplit les cartes visuelles (Lot F.1) avec les vraies clés.
+
+        Santé = ``health`` ; les sept autres cartes = ``needs_named``
+        (libellés NEED_DEFS : faim, énergie, soif, sommeil, sécurité,
+        appartenance, estime). Toutes ces valeurs sont déjà en 0..1.
+        """
+        needs = snap.get("needs_named", {}) or {}
+        values = {
+            "sante": snap.get("health", 0.0),
+            "energie": needs.get("énergie", 0.0),
+            "faim": needs.get("faim", 0.0),
+            "soif": needs.get("soif", 0.0),
+            "sommeil": needs.get("sommeil", 0.0),
+            "securite": needs.get("sécurité", 0.0),
+            "appartenance": needs.get("appartenance", 0.0),
+            "estime": needs.get("estime", 0.0),
+        }
+        for key, value in values.items():
+            card = self._cards.get(key)
+            if card is None:
+                continue
+            try:
+                card.set_value(float(value), suffix="%")
+            except (TypeError, ValueError):
+                card.set_value("—")
+
+    def _clear_cards(self):
+        """Vide toutes les cartes (aucun habitant sélectionné)."""
+        for card in self._cards.values():
+            card.set_value("—")
 
     def _agent_label(self, eid):
         """Libelle lisible d'un habitant par son eid (vivant ou defunt)."""

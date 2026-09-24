@@ -6,14 +6,40 @@ et reputation (Lot E.2).
 """
 from PyQt6.QtWidgets import (
     QDockWidget,
+    QGridLayout,
     QGroupBox,
     QLabel,
     QScrollArea,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from ui_qt.widgets.empty_state import EmptyState
+from ui_qt.widgets.stat_card import StatCard
+
+
+def _top_pair(values):
+    """Clé dominante d'un dict de scores (Lot F) : renvoie (clé, score).
+
+    Renvoie ``(None, 0.0)`` si le dict est vide ou sans valeur numérique.
+    """
+    if not isinstance(values, dict) or not values:
+        return None, 0.0
+    best_key = None
+    best_score = float("-inf")
+    for key, value in values.items():
+        try:
+            score = float(value)
+        except (TypeError, ValueError):
+            continue
+        if score > best_score:
+            best_key, best_score = key, score
+    if best_key is None:
+        return None, 0.0
+    return best_key, best_score
 
 
 class AnimaDock(QDockWidget):
@@ -35,6 +61,22 @@ class AnimaDock(QDockWidget):
         self.title = QLabel("Selectionnez un habitant")
         self.title.setStyleSheet("font-weight: bold; font-size: 13px;")
         layout.addWidget(self.title)
+
+        # === Cartes de résumé (Lot F.2) ===
+        cards_grid = QGridLayout()
+        cards_grid.setSpacing(6)
+        cards_grid.setContentsMargins(0, 2, 0, 2)
+        self._cards = {
+            "identity": StatCard("Identité dominante", "#A78BFA"),
+            "value": StatCard("Valeur la plus haute", "#4CC9F0"),
+            "trauma": StatCard("Trauma principal", "#FF6B6B"),
+            "intention": StatCard("Intention courante", "#F6BD60"),
+            "plan": StatCard("Score de plan", "#62D394"),
+            "reputation": StatCard("Réputation sociale", "#F8E16C"),
+        }
+        for index, card in enumerate(self._cards.values()):
+            cards_grid.addWidget(card, index // 2, index % 2)
+        layout.addLayout(cards_grid)
 
         self.identity = self._make_table(["Identite", "Valeur"])
         self.values = self._make_table(["Valeur", "Score"])
@@ -67,7 +109,20 @@ class AnimaDock(QDockWidget):
         layout.addStretch(1)
 
         scroll.setWidget(root)
-        self.setWidget(scroll)
+
+        # === Empilement vue vide / contenu (Lot E) ===
+        # Un seul EmptyState persistant, basculé par refresh().
+        self.empty_state = EmptyState(
+            icon="◉",
+            title="Sélectionnez un habitant",
+            message=("Cliquez un habitant sur la carte ou choisissez-en un "
+                     "dans Habitants pour inspecter son esprit intérieur."),
+        )
+        self._stack = QStackedWidget()
+        self._stack.addWidget(self.empty_state)
+        self._stack.addWidget(scroll)
+        self._content = scroll
+        self.setWidget(self._stack)
 
     @staticmethod
     def _make_table(headers):
@@ -108,12 +163,18 @@ class AnimaDock(QDockWidget):
         snap = self.controller.snapshot_anima()
         anima = (snap or {}).get("anima") if snap else None
         if not snap or anima is None:
+            # Lot E : vue vide + tableaux/cartes remis à zéro.
+            self._stack.setCurrentWidget(self.empty_state)
             self.title.setText("Selectionnez un habitant")
             self._clear_tables()
+            self._clear_cards()
             self.intention_label.setText("Aucune intention")
             self.plan_label.setText("Aucun plan")
             return
 
+        # Lot E : contenu affiché ; Lot F.2 : cartes de résumé en premier.
+        self._stack.setCurrentWidget(self._content)
+        self._update_cards(anima)
         self.title.setText(f"Anima — {snap.get('name', 'Inconnu')}")
 
         self._fill(self.identity, sorted(anima.get("identity", {}).items()))
@@ -183,3 +244,63 @@ class AnimaDock(QDockWidget):
             [(index, f"{float(value):.3f}")
              for index, value in enumerate(anima.get("habits", []))],
         )
+
+    def _clear_cards(self):
+        """Vide les cartes de résumé (aucun habitant sélectionné)."""
+        for card in self._cards.values():
+            card.set_value("—")
+
+    def _update_cards(self, anima):
+        """Remplit les six cartes de résumé (Lot F.2).
+
+        Clés réelles du snapshot ``anima`` : ``identity``, ``values``,
+        ``trauma`` (dicts de scores 0..1), ``intention`` (dict avec ``kind``
+        et ``priority``), ``plan`` (dict avec ``score``) et ``reputation``
+        (dict avec ``social`` en -1..1).
+        """
+        # Identité / valeur / trauma dominantes (logique top_pair du plan).
+        for card_key, source in (
+            ("identity", "identity"),
+            ("value", "values"),
+            ("trauma", "trauma"),
+        ):
+            key, score = _top_pair(anima.get(source, {}))
+            card = self._cards[card_key]
+            if key is None:
+                card.set_value("—")
+            else:
+                card.set_value(score, text=str(key).title())
+
+        # Intention courante : libellé + priorité (barre).
+        intention = anima.get("intention")
+        if isinstance(intention, dict):
+            kind = str(intention.get("kind") or "—")
+            try:
+                priority = float(intention.get("priority", 0.0))
+            except (TypeError, ValueError):
+                priority = 0.0
+            self._cards["intention"].set_value(priority, text=kind)
+        else:
+            self._cards["intention"].set_value("Aucune")
+
+        # Score du meilleur plan (peut dépasser 1 : la barre est bornée).
+        plan = anima.get("plan")
+        if isinstance(plan, dict):
+            try:
+                score = float(plan.get("score", 0.0))
+            except (TypeError, ValueError):
+                score = 0.0
+            self._cards["plan"].set_value(score)
+        else:
+            self._cards["plan"].set_value("—")
+
+        # Réputation sociale : clé « social » (-1..1), pas « updated_tick ».
+        reputation = anima.get("reputation")
+        social = reputation.get("social") if isinstance(reputation, dict) else None
+        if social is None:
+            self._cards["reputation"].set_value("—")
+        else:
+            try:
+                self._cards["reputation"].set_value(float(social))
+            except (TypeError, ValueError):
+                self._cards["reputation"].set_value("—")
