@@ -248,6 +248,17 @@ class InspectorDock(QDockWidget):
             self._position_label.setText("")
             self._meta_label.setText("")
             self._portrait.clear()
+            self._brain_neurons_label.setText("")
+            self._brain_freq_label.setText("")
+            self._brain_badge.setText("")
+            self._inventory_label.setText("")
+            self._tool_label.setText("")
+            self._family_label.setText("")
+            for key, slider in self._needs_sliders.items():
+                slider.blockSignals(True)
+                slider.setValue(0)
+                slider.blockSignals(False)
+                self._needs_labels[key].setText("0%")
             self._belief_label.setText("")
             self._spatial_label.setText("")
             self._autobio_label.setText("")
@@ -284,15 +295,17 @@ class InspectorDock(QDockWidget):
         except Exception:
             self._portrait.clear()
 
-        # Etat
+        # Etat (``state`` = etape courante du cerveau, deja dans le snapshot)
         needs = snap.get("needs_named", {}) or {}
         health = snap.get("health", 0)
         energy = needs.get("énergie", 0)
         hunger = needs.get("faim", 0)
         pain = snap.get("pain", 0)
+        state = snap.get("state", "—")
         self._state_label.setText(
-            f"Sante: {health:.0%} | Energie: {energy:.0%} | "
-            f"Faim: {hunger:.0%} | Douleur: {pain:.1f}"
+            f"Etat: {state} | Sante: {health:.0%} | "
+            f"Energie: {energy:.0%} | Faim: {hunger:.0%} | "
+            f"Douleur: {pain:.1f}"
         )
 
         # Position (change pendant le deplacement)
@@ -442,7 +455,7 @@ class InspectorDock(QDockWidget):
                 last5 = episodes[-5:]
                 epi_lines = []
                 for i, ep in enumerate(last5):
-                    epi_lines.append(f"  [{i+1}] {ep}")
+                    epi_lines.append(f"  [{i+1}] {_format_episode(ep)}")
                 self._autobio_label.setText(
                     "<b>Autobiographie:</b>\n" + "\n".join(epi_lines)
                 )
@@ -450,7 +463,7 @@ class InspectorDock(QDockWidget):
                 self._autobio_label.setText("<b>Autobiographie:</b> aucune")
 
             if has_life:
-                life_lines = [f"  • {ev}" for ev in life_events[-8:]]
+                life_lines = [f"  • {_format_event(ev)}" for ev in life_events[-8:]]
                 self._life_label.setText(
                     "<b>Événements de vie:</b>\n" + "\n".join(life_lines)
                 )
@@ -568,6 +581,33 @@ class InspectorDock(QDockWidget):
             val_lbl.setStyleSheet("font-size: 11px;")
             grid.addWidget(lbl, row, col * 2)
             grid.addWidget(val_lbl, row, col * 2 + 1)
+
+
+def _format_episode(ep):
+    """Entree d'``agent.episodes`` : ``(tick, type, data)`` -> texte lisible."""
+    if isinstance(ep, (tuple, list)) and len(ep) >= 2:
+        tick, kind = ep[0], ep[1]
+        data = ep[2] if len(ep) > 2 else None
+        text = f"t{tick} · {kind}"
+        if isinstance(data, dict) and data:
+            detail = ", ".join(
+                f"{key}={value:.2f}" if isinstance(value, float)
+                else f"{key}={value}"
+                for key, value in data.items()
+            )
+        elif data:
+            detail = str(data)
+        else:
+            detail = ""
+        return f"{text} — {detail}" if detail else text
+    return str(ep)
+
+
+def _format_event(ev):
+    """Entree d'``agent.life`` : texte simple ou ``(type, nom)``."""
+    if isinstance(ev, (tuple, list)) and len(ev) >= 2:
+        return " — ".join(str(part) for part in ev[:2])
+    return str(ev)
 
 
 def _hex(t):

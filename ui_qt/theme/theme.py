@@ -61,6 +61,10 @@ def _hex(t):
     return f"#{t[0]:02x}{t[1]:02x}{t[2]:02x}"
 
 
+def _mix(c1, c2, t):
+    return tuple(round(a + (b - a) * t) for a, b in zip(c1, c2))
+
+
 def get_settings():
     return QSettings("UniversVivant", "UniversVivant")
 
@@ -99,17 +103,149 @@ def apply_theme(app, theme_name=None):
 
     bg = _hex(colors["surface"])
     bg2 = _hex(colors["surface_2"])
+    app_bg = _hex(colors["app"])
     border = _hex(colors["border"])
     border2 = _hex(colors["border_2"])
     text = _hex(colors["text"])
     muted = _hex(colors["muted"])
+    faint = _hex(colors["faint"])
     accent = _hex(colors["accent"])
     hover_bg = _hex(colors["hover"])
     select_bg = _hex(colors["select"])
+    accent_hover = _hex(_mix(colors["accent"], (255, 255, 255), 0.18))
 
     app.setStyleSheet(f"""
+        QMainWindow::separator {{
+            background: {border};
+            width: 2px;
+            height: 2px;
+        }}
+        QToolTip {{
+            background: {bg2};
+            color: {text};
+            border: 1px solid {border2};
+            padding: 6px 9px;
+            border-radius: 6px;
+            opacity: 235;
+        }}
+        QMenu {{
+            background: {bg};
+            color: {text};
+            border: 1px solid {border};
+            border-radius: 8px;
+            padding: 6px;
+        }}
+        QMenu::item {{
+            padding: 6px 28px 6px 28px;
+            border-radius: 5px;
+        }}
+        QMenu::item:selected {{
+            background: {select_bg};
+        }}
+        QMenu::item:disabled {{
+            color: {faint};
+        }}
+        QMenu::separator {{
+            height: 1px;
+            background: {border};
+            margin: 5px 10px;
+        }}
+        QTabWidget::pane {{
+            border: none;
+        }}
+        QTabBar::tab {{
+            background: transparent;
+            color: {muted};
+            padding: 7px 14px;
+            border: none;
+            border-bottom: 2px solid transparent;
+        }}
+        QTabBar::tab:hover {{
+            color: {text};
+        }}
+        QTabBar::tab:selected {{
+            color: {text};
+            border-bottom-color: {accent};
+        }}
+        QGroupBox {{
+            color: {muted};
+            border: 1px solid {border};
+            border-radius: 8px;
+            margin-top: 14px;
+            padding-top: 10px;
+            font-weight: bold;
+        }}
+        QGroupBox::title {{
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            left: 10px;
+            padding: 0 4px;
+        }}
+        QCheckBox, QRadioButton {{
+            color: {text};
+            spacing: 8px;
+        }}
+        QSlider::groove:horizontal {{
+            height: 4px;
+            background: {border};
+            border-radius: 2px;
+        }}
+        QSlider::handle:horizontal {{
+            width: 16px;
+            height: 16px;
+            margin: -6px 0;
+            border-radius: 8px;
+            background: {accent};
+        }}
+        QSlider::handle:horizontal:hover {{
+            background: {accent_hover};
+        }}
+        QProgressBar {{
+            border: 1px solid {border};
+            border-radius: 5px;
+            background: {bg2};
+            color: {text};
+            text-align: center;
+            min-height: 12px;
+            max-height: 14px;
+            font-size: 10px;
+        }}
+        QProgressBar::chunk {{
+            background: {accent};
+            border-radius: 4px;
+        }}
+        QSplitter::handle {{
+            background: transparent;
+        }}
+        QSplitter::handle:hover {{
+            background: {select_bg};
+        }}
+        QComboBox::drop-down {{
+            border: none;
+            width: 22px;
+        }}
+        QComboBox QAbstractItemView {{
+            background: {bg};
+            color: {text};
+            border: 1px solid {border2};
+            selection-background-color: {select_bg};
+            selection-color: {text};
+            outline: none;
+            padding: 4px;
+        }}
+        QDialog {{
+            background: {app_bg};
+        }}
+        QStatusBar::item {{
+            border: none;
+        }}
+        QStatusBar QLabel {{
+            color: {muted};
+            background: transparent;
+        }}
         QDockWidget {{
             font-weight: bold;
+            color: {text};
         }}
         QDockWidget::title {{
             background: {bg2};
@@ -164,8 +300,29 @@ def apply_theme(app, theme_name=None):
             border-radius: 4px;
             min-height: 32px;
         }}
+        QScrollBar::handle:vertical:hover {{
+            background: {faint};
+        }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
             height: 0;
+        }}
+        QScrollBar:horizontal {{
+            height: 8px;
+            background: transparent;
+        }}
+        QScrollBar::handle:horizontal {{
+            background: {border2};
+            border-radius: 4px;
+            min-width: 32px;
+        }}
+        QScrollBar::handle:horizontal:hover {{
+            background: {faint};
+        }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+            width: 0;
+        }}
+        QScrollBar::add-page, QScrollBar::sub-page {{
+            background: transparent;
         }}
         QLineEdit {{
             border: 1px solid {border2};
@@ -205,6 +362,19 @@ def apply_theme(app, theme_name=None):
             background: {select_bg};
             border-color: {accent};
         }}
+        QPushButton:default {{
+            background: {accent};
+            border-color: {accent};
+            color: white;
+            font-weight: bold;
+        }}
+        QPushButton:default:hover {{
+            background: {accent_hover};
+        }}
+        QPushButton:disabled {{
+            color: {faint};
+            background: {bg2};
+        }}
         QLabel {{
             color: {text};
         }}
@@ -225,6 +395,30 @@ def apply_theme(app, theme_name=None):
             background: {select_bg};
         }}
         QListWidget::item:hover {{
+            background: {hover_bg};
+        }}
+        QListView {{
+            border: 1px solid {border};
+            border-radius: 6px;
+            background: {bg};
+            color: {text};
+        }}
+        QListView::item {{
+            border-radius: 6px;
+            padding: 4px;
+        }}
+        QListView::item:selected {{
+            background: {select_bg};
+        }}
+        QListView::item:hover:!selected {{
+            background: {hover_bg};
+        }}
+        QDockWidget::close-button, QDockWidget::float-button {{
+            border: none;
+            border-radius: 4px;
+            padding: 2px;
+        }}
+        QDockWidget::close-button:hover, QDockWidget::float-button:hover {{
             background: {hover_bg};
         }}
     """)

@@ -60,8 +60,24 @@ python tools/screenshot.py --out docs/img/ui.png --window --zoom 1.1
 **Run the tests:**
 
 ```bash
-pytest tests/ -x -q
+# Full gate (unit + Qt offscreen + 10k-tick soak) — must stay green
+python -m compileall game ui_qt tests main_qt.py
+python -m pytest tests/ -x -q
 ```
+
+**Beta status (lots A–I):**
+
+| Lot | Scope | Status |
+|---|---|---|
+| A | English snapshot keys + inspector labels | DONE |
+| B | Shared journal/timeline category registry (11 ids) | DONE |
+| C | English overlay modes + help | DONE |
+| D | All studio parameters drive the engine | DONE |
+| E | Institutions emerge in live simulation | DONE |
+| F | Anima reputation updater (every 120 ticks) | DONE |
+| G | Remaining plan tests (10 suites) | DONE |
+| H | 10k-tick soak with invariants + NaN guards | DONE |
+| I | Docs match actual state | DONE |
 
 ---
 

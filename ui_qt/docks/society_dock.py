@@ -2,7 +2,7 @@
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                               QTableView, QTableWidget, QTableWidgetItem,
                               QLabel, QHeaderView)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 
 from game.ui_snapshots import society_snapshot
@@ -12,6 +12,8 @@ from ui_qt.widgets.population_history_widget import PopulationHistoryWidget
 
 class SocietyDock(QDockWidget):
     """Dock société avec stats démographiques et sociales."""
+
+    agent_selected = pyqtSignal(int)
 
     def __init__(self, controller, parent=None):
         super().__init__("Societe", parent)
@@ -78,6 +80,7 @@ class SocietyDock(QDockWidget):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self._relations_table)
+        self._relations_table.cellClicked.connect(self._on_relation_clicked)
 
         self.setWidget(widget)
 
@@ -106,7 +109,9 @@ class SocietyDock(QDockWidget):
     def _populate_relations(self, relations):
         self._relations_table.setRowCount(len(relations))
         for row, rel in enumerate(relations):
-            self._relations_table.setItem(row, 0, QTableWidgetItem(rel["name1"]))
+            item1 = QTableWidgetItem(rel["name1"])
+            item1.setData(Qt.ItemDataRole.UserRole, int(rel.get("eid1", -1)))
+            self._relations_table.setItem(row, 0, item1)
             self._relations_table.setItem(row, 1, QTableWidgetItem(rel["name2"]))
             self._relations_table.setItem(row, 2, QTableWidgetItem(rel["type"]))
             self._relations_table.setItem(
@@ -115,3 +120,13 @@ class SocietyDock(QDockWidget):
             self._relations_table.setItem(
                 row, 4, QTableWidgetItem(f'{rel["affinite"]:+.2f}')
             )
+
+    def _on_relation_clicked(self, row, _column):
+        item = self._relations_table.item(row, 0)
+        if item is None:
+            return
+        eid = item.data(Qt.ItemDataRole.UserRole)
+        if eid is None or int(eid) < 0:
+            return
+        self.controller.execute({"kind": "select_agent", "eid": int(eid)})
+        self.agent_selected.emit(int(eid))

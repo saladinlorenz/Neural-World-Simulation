@@ -50,6 +50,9 @@ class MapView(QWidget):
     command_result = pyqtSignal(dict)
     #: Tuile survolée par le curseur (tx, ty) — barre d'état (Lot E.6).
     hover_changed = pyqtSignal(int, int)
+    #: Clic gauche sur le monde (hors minimap) — la fenêtre principale en
+    #: profite pour annuler le suivi caméra automatique.
+    map_clicked = pyqtSignal()
 
     def __init__(self, controller, parent=None):
         super().__init__(parent)
@@ -983,6 +986,8 @@ class MapView(QWidget):
             self._center_from_minimap(event.position())
             return
 
+        self.map_clicked.emit()
+
         wx, wy = self.transform.to_world(
             event.position().x(),
             event.position().y(),
@@ -1004,8 +1009,17 @@ class MapView(QWidget):
                               "pending_spawn_agent", None)
             if pending:
                 cmd.update(pending)
-                self.controller.ui_state.pending_spawn_agent = None
-            self._run(cmd, invalidate=False)
+            result = self._run(cmd, invalidate=False)
+            if pending:
+                # Un échec (plafond de population) ne doit pas détruire le
+                # gabarit : l'utilisateur reclique ailleurs pour réessayer.
+                if result.get("ok"):
+                    self.controller.ui_state.pending_spawn_agent = None
+                    # « Etre » pose un seul habitant par validation du dialogue :
+                    # sans ce retour, les clics suivants spawnaient des
+                    # habitants aléatoires sans prévenir.
+                    self.controller.execute(
+                        {"kind": "set_mode", "mode": "inspect"})
 
         elif mode == "sheep":
             self._run({

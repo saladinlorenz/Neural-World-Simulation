@@ -18,12 +18,17 @@ class AssetsDock(QDockWidget):
 
     asset_selected = pyqtSignal(int)
 
+    THUMB_LIST_SIZE = 96
+    THUMB_DETAIL_SIZE = 128
+    THUMB_CACHE_MAX = 1024
+
     def __init__(self, controller, parent=None):
         super().__init__("Assets", parent)
         self.controller = controller
         self._am = None
         self._filtered = []
         self._favs = []
+        self._thumb_cache = {}
         self.load_favorites()
         self._setup_ui()
 
@@ -84,8 +89,14 @@ class AssetsDock(QDockWidget):
 
         # Liste
         self._list = QListWidget()
-        self._list.setIconSize(QSize(48, 48))
-        self._list.setSpacing(2)
+        self._list.setViewMode(QListWidget.ViewMode.IconMode)
+        self._list.setIconSize(QSize(self.THUMB_LIST_SIZE, self.THUMB_LIST_SIZE))
+        self._list.setGridSize(QSize(126, 142))
+        self._list.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self._list.setMovement(QListWidget.Movement.Static)
+        self._list.setWordWrap(True)
+        self._list.setSpacing(6)
+        self._list.setEditTriggers(QListWidget.EditTrigger.NoEditTriggers)
         self._list.currentItemChanged.connect(self._on_selection_changed)
         self._list.itemDoubleClicked.connect(self._on_fav_toggle)
         splitter.addWidget(self._list)
@@ -96,7 +107,8 @@ class AssetsDock(QDockWidget):
         detail_layout.setContentsMargins(4, 4, 4, 4)
 
         self._thumb_label = QLabel()
-        self._thumb_label.setFixedSize(48, 48)
+        self._thumb_label.setFixedSize(self.THUMB_DETAIL_SIZE,
+                                       self.THUMB_DETAIL_SIZE)
         self._thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb_label.setStyleSheet("background: #2c3e50; border: 1px solid #555;")
         detail_layout.addWidget(self._thumb_label, alignment=Qt.AlignmentFlag.AlignHCenter)
@@ -196,39 +208,71 @@ class AssetsDock(QDockWidget):
                 item.setIcon(QIcon(pixmap))
             self._list.addItem(item)
 
-    def _load_thumbnail(self, aid, asset):
-        """Vignette réelle de l'asset ; repli sur un placeholder coloré."""
+    def _load_thumbnail(self, aid, asset, size=None):
+        """Vignette réelle de l'asset ; repli sur un placeholder coloré.
+
+        Le résultat est mémorisé : ``_refresh_catalog`` est appelé plusieurs
+        fois par seconde et la conversion PIL -> QPixmap n'est pas gratuite.
+        """
+        size = int(size or self.THUMB_LIST_SIZE)
+        # ``__new__`` sans ``__init__`` (tests) laisse le cache absent.
+        cache = getattr(self, "_thumb_cache", None)
+        if cache is None:
+            cache = self._thumb_cache = {}
+        key = (aid, size)
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+        pixmap = (self._render_thumbnail(aid, size)
+                  or self._placeholder_pixmap(asset, size))
+        if len(cache) >= self.THUMB_CACHE_MAX:
+            cache.pop(next(iter(cache)))
+        cache[key] = pixmap
+        return pixmap
+
+    def _render_thumbnail(self, aid, size):
         try:
             am = self.controller.sim.am
             # ``AssetManager.thumbnail`` attend un entier, pas un tuple : un
             # tuple faisait échouer à la fois le redimensionnement et le repli
             # interne, donc tous les assets affichaient le placeholder.
-            pix = am.thumbnail(aid, size=48)
-            if pix is not None:
-                from PIL import Image as PILImage
-                if isinstance(pix, PILImage.Image):
-                    return pil_to_pixmap(pix)
-                if isinstance(pix, QImage):
-                    return QPixmap.fromImage(pix)
-                if isinstance(pix, QPixmap):
-                    return pix
+            pix = am.thumbnail(aid, size=size)
         except Exception:
-            pass
-        # Coloured placeholder based on asset colour attribute
+            return None
+        if pix is None:
+            return None
+        from PIL import Image as PILImage
+        if isinstance(pix, PILImage.Image):
+            return pil_to_pixmap(pix)
+        if isinstance(pix, QImage):
+            return QPixmap.fromImage(pix)
+        if isinstance(pix, QPixmap):
+            return pix
+        return None
+
+    @staticmethod
+    def _placeholder_pixmap(asset, size=48):
+        """Pastille colorée tirée de l'attribut ``color`` de l'asset."""
         colour = getattr(asset, "color", None)
         if colour and isinstance(colour, str) and colour.startswith("#"):
             c = QColor(colour)
         else:
             c = QColor(80, 80, 80)
-        pm = QPixmap(48, 48)
+        inset = max(2, size // 24)
+        pm = QPixmap(size, size)
         pm.fill(QColor(0, 0, 0, 0))
         p = QPainter(pm)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setBrush(c)
         p.setPen(QPen(QColor(60, 60, 60), 1))
-        p.drawRoundedRect(2, 2, 44, 44, 6, 6)
+        p.drawRoundedRect(inset, inset, size - 2 * inset, size - 2 * inset,
+                          max(4, size // 8), max(4, size // 8))
         p.end()
         return pm
+
+    def invalidate_thumbnails(self):
+        """Le catalogue a change (outil redessine) : le cache doit tomber."""
+        self._thumb_cache = {}
 
     def _on_selection_changed(self, current, _previous):
         if current is None:
@@ -276,7 +320,7 @@ class AssetsDock(QDockWidget):
             f"Recette: {recipe}" if recipe else "Recette: —")
         self._detail_desc.setText(getattr(a, "description", ""))
 
-        pixmap = self._load_thumbnail(aid, a)
+        pixmap = self._load_thumbnail(aid, a, self.THUMB_DETAIL_SIZE)
         if pixmap:
             self._thumb_label.setPixmap(pixmap)
         else:

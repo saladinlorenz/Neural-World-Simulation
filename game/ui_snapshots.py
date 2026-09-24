@@ -41,7 +41,7 @@ def simulation_snapshot(sim, ui_state=None) -> dict[str, Any]:
             "light": float(clock.light) if clock else 1.0,
             "temperature": float(clock.temp) if clock else 20.0,
             "rain": float(clock.rain) if clock else 0.0,
-            "label": str(clock.label) if clock else "",
+            "label": clock.label() if clock else "",
         },
         "selection": {
             "agent_eid": getattr(ui_state, "selected_agent_eid", None),

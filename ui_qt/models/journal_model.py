@@ -59,4 +59,18 @@ class JournalModel(QAbstractTableModel):
                           int(hex_color[2:4], 16),
                           int(hex_color[4:6], 16))
 
+        if role == Qt.ItemDataRole.UserRole:
+            # Valeurs brutes : le tri d'un proxy Qt compare ce rôle, sinon
+            # « 10:00 » se classerait avant « 9:00 ».
+            if col == 0:
+                return int(row.get("tick", 0))
+            if col == 1:
+                cat = row.get("category", "")
+                return JOURNAL_CATEGORIES.get(cat, {}).get("label", cat)
+            if col == 2:
+                return row.get("text", "")
+            if col == 3:
+                return int(row.get("count", 1))
+            return None
+
         return None

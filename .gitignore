@@ -49,3 +49,6 @@ data/tmp_*
 data/t2.txt
 data/t3.txt
 data/test_out.txt
+
+# Soak test output (root)
+_soak_out.txt

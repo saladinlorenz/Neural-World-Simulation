@@ -1,6 +1,6 @@
 # Parity Checklist: Pygame Dashboard vs Qt Interface
 
-**Last updated:** 2026-09-21
+**Last updated:** 2026-09-24
 
 ---
 
@@ -12,7 +12,7 @@
 | Selection | 3 | 0 |
 | Population | 6 | 0 |
 | Journal | 5 | 0 |
-| Society | 2 | 0 |
+| Society | 4 | 0 |
 | Inspector | 9 | 0 |
 | Tools | 4 | 0 |
 | Map | 9 | 0 |
@@ -26,7 +26,9 @@
 | Studio Comparison | 4 | 0 |
 | Studio Overlay | 10 | 0 |
 | Studio Exports | 4 | 0 |
-| **TOTAL** | **90** | **0** |
+| **TOTAL** | **92** | **0** |
+
+**Beta gates (lots A–I, 2026-09-24):** DONE — English snapshot/overlay surfaces, shared 11-id journal registry (`world|life|family|social|combat|danger|weather|economy|building|culture|death`), all 14 parameters wired, institutions actually created in production (`shared_storage` / `construction` / decay), `update_reputation` every 120 ticks, 10 deferred test suites green, 10k-tick soak with invariants + NaN guards, README + this checklist up to date.
 
 ---
 

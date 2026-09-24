@@ -20,6 +20,7 @@ from ui_qt.dialogs import SaveDialog, SpawnAgentDialog, ToolEditorDialog
 from ui_qt.theme.theme import apply_theme
 from ui_qt.studio.parameter_dock import ParameterDock
 from ui_qt.studio.scenario_dialog import ScenarioDialog
+from game.studio_scenarios import get_scenario
 from ui_qt.studio.timeline_dock import TimelineDock
 from ui_qt.studio.laboratory_dock import LaboratoryDock
 from ui_qt.studio.comparison_panel import ComparisonPanel
@@ -33,6 +34,9 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.controller = controller
         self.am = am
+        # Le scenario vit sur la fenetre, pas sur ``sim`` : ``reset_world`` et
+        # le chargement reconstruisent le Sim et perdraient l'etiquette.
+        self._active_scenario = "manual"
         self.setWindowTitle("Univers Vivant — PyQt6")
         self.setMinimumSize(1200, 800)
 
@@ -56,12 +60,14 @@ class MainWindow(QMainWindow):
         # Pause/Play
         self._pause_action = QAction("Pause", self)
         self._pause_action.setShortcut("Space")
+        self._pause_action.setToolTip("Espace : met en pause / reprend la simulation")
         self._pause_action.triggered.connect(self._on_pause)
         tb.addAction(self._pause_action)
 
         # Step
         step_action = QAction("Step", self)
         step_action.setShortcut("N")
+        step_action.setToolTip("N : avance la simulation d'un tick")
         step_action.triggered.connect(self._on_step)
         tb.addAction(step_action)
 
@@ -79,12 +85,14 @@ class MainWindow(QMainWindow):
 
         # Spawn
         spawn_btn = QAction("+ Habitants", self)
+        spawn_btn.setToolTip("Ajoute un habitant aleatoire dans le monde")
         spawn_btn.triggered.connect(
             lambda: self.report_command_result(
                 self.controller.execute({"kind": "spawn_agent"})))
         tb.addAction(spawn_btn)
 
         spawn_sheep = QAction("+ Mouton", self)
+        spawn_sheep.setToolTip("Ajoute un mouton (nourriture, laine)")
         spawn_sheep.triggered.connect(
             lambda: self.report_command_result(
                 self.controller.execute({"kind": "spawn_sheep"})))
@@ -105,6 +113,9 @@ class MainWindow(QMainWindow):
                                 "cet habitant.")
         spawn_custom.triggered.connect(self._open_spawn_dialog)
         tb.addAction(spawn_custom)
+        # Reference partagee avec le menu Vue : une seule QAction garde
+        # le raccourci Ctrl+H sans ambiguite.
+        self._spawn_custom_action = spawn_custom
 
         tool_editor = QAction("Editeur d'outil...", self)
         tool_editor.setToolTip("Dessine un outil 16x16 et l'enregistre au catalogue")
@@ -128,6 +139,9 @@ class MainWindow(QMainWindow):
         # Suivi caméra
         self._follow_action = QAction("Suivre", self)
         self._follow_action.setCheckable(True)
+        self._follow_action.setToolTip(
+            "Centre la camera sur l'habitant selectionne "
+            "(la selection dans la liste l'active automatiquement)")
         self._follow_action.triggered.connect(self._on_follow)
         tb.addAction(self._follow_action)
 
@@ -154,6 +168,7 @@ class MainWindow(QMainWindow):
 
         # Theme toggle
         self._theme_action = QAction("Theme sombre", self)
+        self._theme_action.setToolTip("Bascule entre le theme clair et le theme sombre")
         self._theme_action.triggered.connect(self._toggle_theme)
         tb.addAction(self._theme_action)
 
@@ -194,6 +209,7 @@ class MainWindow(QMainWindow):
         # Nouveau monde (destructif : confirme par _on_new_world)
         new_world = QAction("Nouveau monde...", self)
         new_world.setShortcut("Ctrl+N")
+        new_world.setToolTip("Genere un nouveau monde (la partie actuelle est perdue)")
         new_world.triggered.connect(self._on_new_world)
         tb.addAction(new_world)
 
@@ -203,6 +219,7 @@ class MainWindow(QMainWindow):
         #: Tuile survolée par le curseur (Lot E.6).
         self._hover_tile = None
         self._map.hover_changed.connect(self._on_map_hover)
+        self._map.map_clicked.connect(self._on_map_clicked)
         self.setCentralWidget(self._map)
 
     def _on_map_hover(self, tx, ty):
@@ -230,6 +247,7 @@ class MainWindow(QMainWindow):
         self._society_dock.setObjectName("dock_societe")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._society_dock)
         self.tabifyDockWidget(self._inspector_dock, self._society_dock)
+        self._society_dock.agent_selected.connect(self._on_agent_selected)
 
         # Dock Tuile (droite, tabulé avec inspecteur) : examinateur de tuile
         self._tile_dock = TileDock(self.controller, self)
@@ -261,6 +279,7 @@ class MainWindow(QMainWindow):
         self._param_dock = ParameterDock(self.controller, self)
         self._param_dock.setObjectName("dock_parametres")
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._param_dock)
+        self._param_dock.parameters_applied.connect(self._refresh_all_docks)
         self._param_dock.hide()
 
         self._timeline_dock = TimelineDock(self.controller, self)
@@ -299,6 +318,11 @@ class MainWindow(QMainWindow):
         ):
             vue.addAction(self._dock_action(dock, title))
         vue.addSeparator()
+        # Meme QAction que le bouton de la barre d'outils : le raccourci
+        # Ctrl+H reste unique et le dialogue est visible meme si la barre
+        # est repliee dans le bouton « etendu ».
+        vue.addAction(self._spawn_custom_action)
+        vue.addSeparator()
         export_image = QAction("Exporter l'image (Ctrl+E)", self)
         export_image.setShortcut("Ctrl+E")
         export_image.triggered.connect(self._export_viewport)
@@ -314,6 +338,12 @@ class MainWindow(QMainWindow):
         self._legend_action.triggered.connect(self._toggle_legend)
         vue.addAction(self._legend_action)
 
+        # Menu Aide : les raccourcis visibles sans fouiller la barre d'outils.
+        aide = self.menuBar().addMenu("Aide")
+        raccourcis = QAction("Raccourcis clavier", self)
+        raccourcis.triggered.connect(self._show_shortcuts)
+        aide.addAction(raccourcis)
+
     def _setup_statusbar(self):
         self._status = QStatusBar()
         self.setStatusBar(self._status)
@@ -323,6 +353,8 @@ class MainWindow(QMainWindow):
         self._status.addPermanentWidget(self._fps_label)
         self._seed_label = QLabel()
         self._status.addPermanentWidget(self._seed_label)
+        self._scenario_label = QLabel()
+        self._status.addPermanentWidget(self._scenario_label)
         self._error_label = QLabel()
         self._error_label.setStyleSheet("color: #e08a7a;")
         self._status.addPermanentWidget(self._error_label)
@@ -366,6 +398,8 @@ class MainWindow(QMainWindow):
         if not dlg.exec():
             return
         self._map.asset_cache.clear()
+        # Le catalogue a change : les vignettes memorisees sont perimees.
+        self._assets_dock.invalidate_thumbnails()
         self._assets_dock.refresh()
         self._status.showMessage(
             "Outil enregistre : %s" % getattr(dlg, "created_path", ""), 6000)
@@ -429,6 +463,7 @@ class MainWindow(QMainWindow):
         self.controller.sync_from_simulation()
         self._map._sync_transform_from_controller()
         self._map.invalidate_all_caches()
+        self._active_scenario = "manual"
         self._refresh_all_docks()
         self._status.showMessage("Nouveau monde (%s, graine %d)" % (mode, seed), 4000)
 
@@ -488,21 +523,7 @@ class MainWindow(QMainWindow):
 
         # Mettre à jour les docks (assets 1x/sec, les autres selon le
         # paramètre Performance › Fréquence snapshot).
-        snap_every = max(1, int(
-            (self.controller.sim.runtime or {}).get("snapshot_frequency", 4)))
-        if self._tick_count % snap_every == 0:
-            self._pop_dock.refresh()
-            self._inspector_dock.refresh()
-            self._anima_dock.refresh()
-            self._journal_dock.refresh()
-            self._society_dock.refresh()
-            self._tools_dock.refresh()
-            self._tile_dock.refresh()
-        if self._tick_count % 60 == 0:
-            self._assets_dock.refresh()
-        # Lot F.2 : la chronologie suit le monde tous les 8 ticks.
-        if self._tick_count % 8 == 0 and self._timeline_dock.isVisible():
-            self._timeline_dock.refresh()
+        self._refresh_live_docks()
 
         # Mettre à jour la carte
         if self._tick_count % 2 == 0:
@@ -519,19 +540,7 @@ class MainWindow(QMainWindow):
 
         # Mettre a jour la barre d'etat (4x par seconde suffit)
         if self._tick_count % 4 == 0:
-            snap = simulation_snapshot(sim, self.controller.ui_state)
-            clock = snap.get("clock", {})
-            hover = getattr(self, "_hover_tile", None)
-            hover_text = f"Tuile {hover[0]},{hover[1]}" if hover else "Tuile —"
-            self._status_label.setText(
-                f"Tick {snap['tick']} | {clock.get('label', '')} | "
-                f"FPS {getattr(self, '_fps_ema', 0.0):.0f} | "
-                f"TPS {getattr(self, '_tps_ema', 0.0):.1f} | "
-                f"Pop: {snap['population']} | Speed: {snap['speed']} | "
-                f"{'Pause' if snap['paused'] else 'Running'} | "
-                f"{hover_text}"
-            )
-            self._seed_label.setText("graine %s" % getattr(sim, "seed", "?"))
+            self._refresh_status()
 
         # Mettre à jour les contrôles
         self._pause_action.setText("Reprendre" if sim.paused else "Pause")
@@ -539,6 +548,52 @@ class MainWindow(QMainWindow):
             self._speed_spin.blockSignals(True)
             self._speed_spin.setValue(sim.speed)
             self._speed_spin.blockSignals(False)
+
+    def _refresh_live_docks(self):
+        """Docks qui suivent la simulation vivante (pas tout le monde)."""
+        snap_every = max(1, int(
+            (self.controller.sim.runtime or {}).get("snapshot_frequency", 4)))
+        if self._tick_count % snap_every == 0:
+            self._pop_dock.refresh()
+            self._inspector_dock.refresh()
+            self._anima_dock.refresh()
+            self._journal_dock.refresh()
+            self._society_dock.refresh()
+            self._tools_dock.refresh()
+            self._tile_dock.refresh()
+        # Catalogue lourd : une fois par seconde, et seulement a l'ecran.
+        if self._tick_count % 60 == 0 and self._assets_dock.isVisible():
+            refresh = getattr(self._assets_dock, "refresh_if_dirty", None)
+            if callable(refresh):
+                refresh()
+            else:
+                self._assets_dock.refresh()
+        # Lot F.2 : la chronologie suit le monde tous les 8 ticks.
+        if self._tick_count % 8 == 0 and self._timeline_dock.isVisible():
+            self._timeline_dock.refresh()
+        if self._tick_count % snap_every == 0 and self._lab_dock.isVisible():
+            self._lab_dock.refresh()
+
+    def _refresh_status(self):
+        """Barre d'etat : tick, horloge, fps/tps, graine, scenario, tuile."""
+        sim = self.controller.sim
+        snap = simulation_snapshot(sim, self.controller.ui_state)
+        clock = snap.get("clock", {})
+        hover = getattr(self, "_hover_tile", None)
+        hover_text = f"Tuile {hover[0]},{hover[1]}" if hover else "Tuile —"
+        self._status_label.setText(
+            f"Tick {snap['tick']} | {clock.get('label', '')} | "
+            f"FPS {getattr(self, '_fps_ema', 0.0):.0f} | "
+            f"TPS {getattr(self, '_tps_ema', 0.0):.1f} | "
+            f"Pop: {snap['population']} | Speed: {snap['speed']} | "
+            f"{'Pause' if snap['paused'] else 'Running'} | "
+            f"{hover_text}"
+        )
+        self._seed_label.setText("graine %s" % getattr(sim, "seed", "?"))
+        # Garde de changement : evite un setText par tick.
+        scenario = getattr(self, "_active_scenario", "manual")
+        if self._scenario_label.text() != scenario:
+            self._scenario_label.setText(scenario)
 
     def _on_pause(self):
         self.controller.execute({"kind": "pause_toggle"})
@@ -563,6 +618,7 @@ class MainWindow(QMainWindow):
             self.controller.sync_from_simulation()
             self._map._sync_transform_from_controller()
             self._map.invalidate_all_caches()
+            self._active_scenario = "manual"
             self._refresh_all_docks()
             self._status.showMessage("Partie chargee", 3000)
 
@@ -570,7 +626,16 @@ class MainWindow(QMainWindow):
         self.report_command_result(
             self.controller.execute({"kind": "select_agent", "eid": eid}))
         self.controller.ui_state.active_tab = "etre"
+        self.controller.ui_state.follow_selected = True
+        # setChecked n'émet pas triggered : pas de récursion vers _on_follow.
+        self._follow_action.setChecked(True)
         self._inspector_dock.raise_()
+
+    def _on_map_clicked(self):
+        """Un clic sur la carte prend la main : fin du suivi automatique."""
+        if self.controller.ui_state.follow_selected:
+            self.controller.ui_state.follow_selected = False
+            self._follow_action.setChecked(False)
 
     def _on_asset_selected(self, aid):
         """Un asset choisi dans le catalogue arme l'outil « Poser »."""
@@ -584,6 +649,26 @@ class MainWindow(QMainWindow):
     def _on_mode_changed(self, mode):
         # showMessage : ne pas ecraser le libelle tick/population de la barre.
         self._status.showMessage("Outil : %s" % mode, 2500)
+
+    def _show_shortcuts(self):
+        QMessageBox.information(
+            self, "Raccourcis clavier", """
+<table cellspacing="8">
+<tr><td><b>Espace</b></td><td>Pause / Reprendre</td></tr>
+<tr><td><b>N</b></td><td>Avancer d'un tick (step)</td></tr>
+<tr><td><b>1 - 8</b></td><td>Vitesse de simulation</td></tr>
+<tr><td><b>Ctrl+H</b></td><td>Creer un habitant personnalise</td></tr>
+<tr><td><b>Ctrl+N</b></td><td>Nouveau monde</td></tr>
+<tr><td><b>Ctrl+E</b></td><td>Exporter l'image de la carte</td></tr>
+<tr><td><b>F5</b></td><td>Quicksave (slot 0)</td></tr>
+<tr><td><b>Maj+F5</b></td><td>Sauvegarder sous...</td></tr>
+<tr><td><b>F9</b></td><td>Charger une partie</td></tr>
+<tr><td><b>Ctrl+Z</b></td><td>Annuler</td></tr>
+<tr><td><b>Ctrl+Maj+Z</b></td><td>Retablir</td></tr>
+<tr><td><b>Clic droit (glisser)</b></td><td>Deplacer la camera</td></tr>
+<tr><td><b>Selection dans la liste Habitants</b></td><td>Suit l'habitant (un clic sur la carte arrete le suivi)</td></tr>
+</table>
+""")
 
     def _toggle_theme(self):
         from ui_qt.theme.theme import get_theme_name, set_theme_name, apply_theme
@@ -619,7 +704,13 @@ class MainWindow(QMainWindow):
 
     def _open_scenarios(self):
         dlg = ScenarioDialog(self.controller, self)
-        dlg.exec()
+        if not dlg.exec():
+            return
+        key = dlg.get_selected_scenario()
+        scenario = get_scenario(key) if key else None
+        self._active_scenario = scenario["label"] if scenario else (key or "manual")
+        self._refresh_all_docks()
+        self._refresh_status()
 
     def _export_viewport(self):
         """Exporte l'image visible de la carte (Lot F.5)."""

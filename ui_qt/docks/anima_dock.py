@@ -87,6 +87,15 @@ class AnimaDock(QDockWidget):
         layout.addWidget(content)
         return group
 
+    def _clear_tables(self):
+        for table in (
+            self.identity, self.values, self.trauma,
+            self.attachments, self.reputation, self.social,
+            self.episodes, self.traces, self.observations,
+            self.habits,
+        ):
+            table.setRowCount(0)
+
     @staticmethod
     def _fill(table, rows):
         table.setRowCount(len(rows))
@@ -100,13 +109,7 @@ class AnimaDock(QDockWidget):
         anima = (snap or {}).get("anima") if snap else None
         if not snap or anima is None:
             self.title.setText("Selectionnez un habitant")
-            for table in (
-                self.identity, self.values, self.trauma,
-                self.attachments, self.reputation, self.social,
-                self.episodes, self.traces, self.observations,
-                self.habits,
-            ):
-                table.setRowCount(0)
+            self._clear_tables()
             self.intention_label.setText("Aucune intention")
             self.plan_label.setText("Aucun plan")
             return

@@ -2,13 +2,28 @@
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                               QTableView, QComboBox, QPushButton, QLabel,
                               QLineEdit, QFileDialog)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSortFilterProxyModel
 from PyQt6.QtGui import QColor
 
 from game.config import JOURNAL_MAXLEN
 from game.ui_snapshots import journal_snapshot
 from game.ui_registry import JOURNAL_CATEGORIES, ALL_CATEGORIES
 from ..models.journal_model import JournalModel
+
+
+class _JournalSortProxy(QSortFilterProxyModel):
+    """Tri par valeurs brutes : ``QSortFilterProxyModel`` compare le texte
+    affiché par défaut, donc « 10:00 » passerait avant « 9:00 »."""
+
+    def lessThan(self, left, right):
+        left_value = left.data(Qt.ItemDataRole.UserRole)
+        right_value = right.data(Qt.ItemDataRole.UserRole)
+        if left_value is None or right_value is None:
+            return super().lessThan(left, right)
+        try:
+            return left_value < right_value
+        except TypeError:
+            return str(left_value) < str(right_value)
 
 
 class JournalDock(QDockWidget):
@@ -18,6 +33,8 @@ class JournalDock(QDockWidget):
         super().__init__("Journal", parent)
         self.controller = controller
         self._model = JournalModel()
+        self._proxy = _JournalSortProxy(self)
+        self._proxy.setSourceModel(self._model)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -68,7 +85,7 @@ class JournalDock(QDockWidget):
 
         # Tableau
         self._table = QTableView()
-        self._table.setModel(self._model)
+        self._table.setModel(self._proxy)
         self._table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setStretchLastSection(True)
@@ -77,10 +94,22 @@ class JournalDock(QDockWidget):
 
         self.setWidget(widget)
 
-    def refresh(self):
+    def filtered_entries(self, max_entries=None):
+        """Source unique du filtrage catégorie + recherche (affichage/export).
+
+        ``None`` laisse le plafond par defaut de ``journal_snapshot`` : passer
+        explicitement ``None`` casserait le tranchage interne.
+        """
         cat = self._filter_combo.currentData() or ALL_CATEGORIES
         search = self._search.text()
-        snap = journal_snapshot(self.controller.sim, category=cat, search=search)
+        if max_entries is None:
+            return journal_snapshot(self.controller.sim, category=cat,
+                                    search=search)
+        return journal_snapshot(self.controller.sim, category=cat,
+                                search=search, max_entries=max_entries)
+
+    def refresh(self):
+        snap = self.filtered_entries()
         self._model.set_snapshot(snap)
         self._count_label.setText(f"{len(snap)} entrees")
 
@@ -96,12 +125,9 @@ class JournalDock(QDockWidget):
         if not path:
             return
 
-        cat = self._filter_combo.currentData() or ALL_CATEGORIES
-        search = self._search.text()
         # L'affichage est plafonné à 200 lignes ; un export doit vider tout
         # le tampon du moteur.
-        snap = journal_snapshot(self.controller.sim, category=cat, search=search,
-                                max_entries=JOURNAL_MAXLEN)
+        snap = self.filtered_entries(max_entries=JOURNAL_MAXLEN)
 
         if fmt == "json":
             import json
