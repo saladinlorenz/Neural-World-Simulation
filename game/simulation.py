@@ -452,6 +452,9 @@ class Sim:
                                   and abs(o.tx - a.tx) + abs(o.ty - a.ty) < 8])
                     safety = 1.0 if a.needs[4] > 0.6 else 0.35
                     a.anima_decay_trauma(safety=safety, support=n_near / 4.0)
+                # Lot F : reputation (tous les 120 ticks)
+                if w.tick % 120 == 0:
+                    self.update_reputation(a)
         for s in self.sheep:
             if s.alive:
                 self._sheep(s)
@@ -1401,6 +1404,20 @@ class Sim:
             a, "resource_withdrawn", (storage.tx, storage.ty),
             actors=[a.eid], action="withdraw", outcome="success")
         return True
+
+    def update_reputation(self, agent):
+        """Lot F : maj anima["reputation"] depuis a.rep + a.rel (plan §3.4)."""
+        positive = 0.0
+        negative = 0.0
+        for relation in agent.rel.values():
+            if isinstance(relation, (tuple, list)):
+                positive += max(0.0, float(relation[0]))
+                negative += max(0.0, -float(relation[0]))
+        agent.anima["reputation"] = {
+            "social": max(-1.0, min(1.0, agent.rep / 10.0)),
+            "trust_balance": positive - negative,
+            "updated_tick": int(self.w.tick),
+        }
 
     # ------------------------------------------------------------------ agent
     def _agent(self, a: Being):
