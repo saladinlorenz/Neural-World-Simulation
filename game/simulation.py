@@ -101,7 +101,7 @@ class Sim:
 
     # ------------------------------------------------------------------ journal
     def log(self, text, color=None, cat="world"):
-        """cat: combat|social|meteo|economie|vie|batiment|monde — groupés à l'affichage."""
+        """cat: id du registre JOURNAL_CATEGORIES (world|life|family|…)."""
         if self.journal and self.journal[-1][1] == text and self.w.tick - self.journal[-1][0] < 900:
             t0, tx, c, k, n = self.journal[-1]
             self.journal[-1] = (self.w.tick, tx, c, k, n + 1)
@@ -1362,7 +1362,7 @@ class Sim:
             ck.record_practice(kind, tx, ty, eid, action, self.w.tick)
         if created:
             self.lab.event(self.w.tick, "institution",
-                           kind=kind, tx=tx, ty=ty, eid=eid)
+                           inst_kind=kind, tx=tx, ty=ty, eid=eid)
             self.log(f"Nouvelle institution : {kind} en ({tx},{ty}).",
                      (160, 112, 198), "social")
 

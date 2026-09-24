@@ -29,16 +29,21 @@ CATEGORY_MAP = {
 
 
 def normalize_event(raw):
-    """Normalize a raw event dict into a standard format."""
+    """Normalize a raw event dict into a standard format.
+
+    Sans ``kind`` explicite (entrées du journal moteur), la catégorie est
+    conservée telle quelle plutôt que d'être forcée à « life ».
+    """
+    kind = str(raw.get("kind", ""))
     return {
         "tick": int(raw.get("tick", 0)),
-        "category": CATEGORY_MAP.get(raw.get("kind", ""), "life"),
-        "title": str(raw.get("title", raw.get("kind", "Événement"))),
+        "category": CATEGORY_MAP.get(kind, raw.get("category") or "life"),
+        "title": str(raw.get("title") or raw.get("text") or kind or "Événement"),
         "text": str(raw.get("text", "")),
         "actors": [int(x) for x in raw.get("actors", []) if str(x).isdigit()],
         "place": raw.get("place"),
         "importance": float(raw.get("importance", 0.0)),
-        "kind": str(raw.get("kind", "")),
+        "kind": kind,
         "actor_name": str(raw.get("actor_name", "")),
     }
 
@@ -46,7 +51,7 @@ def normalize_event(raw):
 def event_sentence(event):
     """Turn a normalized event into a readable French sentence."""
     kind = event.get("kind", "")
-    actor = event.get("actor_name", "Un habitant")
+    actor = event.get("actor_name") or "Un habitant"
 
     sentences = {
         "monster_attack": f"{actor} a subi une attaque d'animal dangereux.",
