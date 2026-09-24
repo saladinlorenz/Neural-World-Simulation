@@ -224,7 +224,7 @@ class Being:
         self.talk_cd = {}
         # ---- Anima (memoire episodique emotive)
         self.anima = {
-            "episodic_memory": deque(maxlen=32),
+            "episodic_memory": deque(maxlen=200),
             "beliefs": {"places": {}, "beings": {}},
             "identity": {
                 "builder": 0.0, "provider": 0.0, "fighter": 0.0,
@@ -409,8 +409,12 @@ class Being:
 
     def remember_anima_episode(self, tick, kind, place, actors=None,
                                action="", outcome="", emotion=None,
-                               importance=0.0):
-        """Enregistre un episode dans la memoire episodique Anima."""
+                               importance=0.0, cap=None):
+        """Enregistre un episode dans la memoire episodique Anima.
+
+        ``cap`` = plafond runtime ``episodes_max`` (deque maxlen=200 est le
+        plafond dur du paramètre) ; au-delà, le plus ancien est évicté.
+        """
         if emotion is None:
             emotion = {}
         ep = {
@@ -421,7 +425,12 @@ class Being:
         }
         if importance < 0.20:
             return ep
-        self.anima["episodic_memory"].append(ep)
+        mem = self.anima["episodic_memory"]
+        mem.append(ep)
+        if cap:
+            cap = int(cap)
+            while len(mem) > cap:
+                mem.popleft()
         if importance >= 0.70:
             self._anima_strong_belief(kind, place, importance, emotion)
         else:

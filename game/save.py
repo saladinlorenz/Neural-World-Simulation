@@ -565,7 +565,10 @@ def _deserialize_agent(d):
     # Anima Phase 1
     ad = d.get("anima")
     if ad:
-        a.anima["episodic_memory"] = _dq(ad.get("episodic_memory", []), maxlen=32)
+        from .studio_parameters import DEFAULT_RUNTIME
+        ep_cap = max(1, int(DEFAULT_RUNTIME.get("episodes_max", 32)))
+        a.anima["episodic_memory"] = _dq(
+            list(ad.get("episodic_memory", []))[-ep_cap:], maxlen=200)
         places_raw = ad.get("beliefs", {}).get("places", {})
         a.anima["beliefs"]["places"] = {
             (int(k.split("|")[0]), int(k.split("|")[1])): v

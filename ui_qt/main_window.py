@@ -486,8 +486,11 @@ class MainWindow(QMainWindow):
                 )
                 self._map._sync_controller_from_transform()
 
-        # Mettre à jour les docks (assets 1x/sec, les autres 4x/sec)
-        if self._tick_count % 4 == 0:
+        # Mettre à jour les docks (assets 1x/sec, les autres selon le
+        # paramètre Performance › Fréquence snapshot).
+        snap_every = max(1, int(
+            (self.controller.sim.runtime or {}).get("snapshot_frequency", 4)))
+        if self._tick_count % snap_every == 0:
             self._pop_dock.refresh()
             self._inspector_dock.refresh()
             self._anima_dock.refresh()

@@ -280,6 +280,7 @@ class Sim:
             self.w.tick, kind, place, actors=actors,
             action=action, outcome=outcome, emotion=emotion,
             importance=importance,
+            cap=int(self.runtime.get("episodes_max", 32)),
         )
         if importance >= 0.20:
             cx, cy = place[0] // 8, place[1] // 8
@@ -528,7 +529,11 @@ class Sim:
                 plot.watered = True
             else:
                 plot.watered = False
-            growth_rate = 0.001 * float(self.runtime.get("regrowth_scale", 1.0))
+            food_mult = {"faible": 0.5, "normal": 1.0, "élevé": 1.5}.get(
+                self.runtime.get("food_level", "normal"), 1.0)
+            growth_rate = (0.001
+                           * float(self.runtime.get("regrowth_scale", 1.0))
+                           * food_mult)
             if plot.watered:
                 growth_rate *= 2.0
             if self.clock.is_night:

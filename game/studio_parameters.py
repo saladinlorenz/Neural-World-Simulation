@@ -64,7 +64,9 @@ PARAMETERS = [
     ParamDef("anima.culture", "Culture", "Transmission culturelle entre habitants.",
              "choice", "normal", choices=["désactivé", "faible", "normal", "fort"], runtime=True, group="Anima"),
     ParamDef("anima.episodes_max", "Épisodes max", "Nombre maximum d'épisodes en mémoire.",
-             "int", 50, 10, 200, runtime=True, group="Anima"),
+             "int", 32, 10, 200, runtime=True, group="Anima"),
+    ParamDef("anima.institutions", "Institutions", "Émergence des institutions sociales.",
+             "choice", "normal", choices=["désactivé", "normal"], runtime=True, group="Anima"),
     
     # Écologie
     ParamDef("ecology.regrowth", "Régénération", "Taux de régénération des ressources.",
@@ -106,6 +108,8 @@ class RuntimeConfig:
                 self.trauma_scale = {"faible": 0.5, "normal": 1.0, "fort": 2.0}.get(value, 1.0)
         elif key == "anima.culture":
             self.culture_enabled = value != "désactivé"
+        elif key == "anima.institutions":
+            self.institutions_enabled = value != "désactivé"
         elif key == "simulation.speed":
             self.speed = int(value)
         elif key == "performance.snapshot_freq":
@@ -181,7 +185,7 @@ DEFAULT_RUNTIME = {
     "births_enabled": True,
     "predators_enabled": True,
     "birth_rate": 0.01,
-    "episodes_max": 50,
+    "episodes_max": 32,
     "food_level": "normal",
     "predators_level": "normal",
     "max_agents_rendered": 200,
@@ -230,8 +234,20 @@ def apply_parameters(sim, store):
     sim.runtime["trauma_enabled"] = runtime_cfg.trauma_enabled
     sim.runtime["trauma_scale"] = runtime_cfg.trauma_scale
     sim.runtime["culture_enabled"] = runtime_cfg.culture_enabled
+    sim.runtime["institutions_enabled"] = runtime_cfg.institutions_enabled
     sim.runtime["snapshot_frequency"] = runtime_cfg.snapshot_freq
     sim.runtime["max_agents_rendered"] = runtime_cfg.max_agents_rendered
+
+    # Plafond dynamique des épisodes Anima : les deques existantes sont
+    # reconstruites à la nouvelle capacité (le plafond dur reste maxlen=200).
+    from collections import deque
+    cap = max(1, int(sim.runtime.get("episodes_max", 32)))
+    for agent in getattr(sim, "agents", None) or []:
+        anima = getattr(agent, "anima", None)
+        if not anima or "episodic_memory" not in anima:
+            continue
+        anima["episodic_memory"] = deque(
+            list(anima["episodic_memory"])[-cap:], maxlen=200)
 
     sim.parameters = values
     sim.parameter_store = store
