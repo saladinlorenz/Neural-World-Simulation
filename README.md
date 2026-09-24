@@ -7,14 +7,12 @@
 [![NumPy](https://img.shields.io/badge/engine-NumPy_%2B_PIL-orange.svg)](https://numpy.org/)
 [![Reinforcement Learning](https://img.shields.io/badge/learning-REINFORCE_%2B_Elman_RNN-purple.svg)](#-the-brain-each-agent-learns-for-real)
 [![License Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-lightgrey.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing--contribuer)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
 
 ![Living world — 140 inhabitants, sheep herds, forests and resources on a 1000×1000 procedural map](docs/img/hero.png)
 
 > **No missions. No scripts. No game over.**
 > Every inhabitant perceives a limited, local world (day/night, attention, memory — never omniscience), **decides with its own neural network**, acts through 15 composable primitive actions, and **learns from the consequences via REINFORCE** — for its whole life, from childhood to old age. Villages, farms, territories, families, cultures and reputations **emerge**. You just watch. Or intervene. 🔬
-
-*🇫🇷 Une société neurale open-ended : des centaines d'agents qui apprennent, vivent, construisent des villages et écrivent leur histoire — aucun script, aucune quête imposée. Voir [le résumé français](#-en-français) plus bas.*
 
 ---
 
@@ -65,9 +63,9 @@ python -m compileall game ui_qt tests main_qt.py
 python -m pytest tests/ -x -q
 ```
 
-**Beta status (lots A–I):**
+**Beta status (batches A–I):**
 
-| Lot | Scope | Status |
+| Batch | Scope | Status |
 |---|---|---|
 | A | English snapshot keys + inspector labels | DONE |
 | B | Shared journal/timeline category registry (11 ids) | DONE |
@@ -143,7 +141,7 @@ docs/img/                   ← hero.png, interface.png
 - [ ] **PPO / actor-critic upgrade** of the REINFORCE core (benchmark vs current baseline)
 - [ ] **Vectorized tick** (Numba) — push past 1000+ agents at 60 Hz
 - [ ] **Gymnasium-compatible wrapper** — `env = NeuralWorldEnv()` for SB3 / CleanRL users
-- [ ] **Save格式 v2 + replay mode** — deterministic re-simulation from event logs
+- [ ] **Save format v2 + replay mode** — deterministic re-simulation from event logs
 - [ ] **Online dashboard** (Flask-SocketIO was prototyped in engine history) — watch the world from a browser
 - [ ] **Pretrained "founder" brains** — ship `.npz` weights of a 10-generation survivor lineage
 - [ ] **i18n** — full English localization of the Studio UI (currently French-first)
@@ -152,7 +150,7 @@ docs/img/                   ← hero.png, interface.png
 
 ---
 
-## 🤝 Contributing / Contribuer
+## 🤝 Contributing
 
 1. Fork → branch (`feat/my-idea` or `fix/bug-name`) → commit → PR. Small PRs merge fastest.
 2. `pytest tests/ -x -q` must stay green. Add a test with every behavior change.
@@ -162,12 +160,6 @@ docs/img/                   ← hero.png, interface.png
 Questions, ideas, wild experiments? Open a **Discussion** or **Issue** — ML researchers, ALife enthusiasts, procedural-generation artists and curious beginners are all welcome.
 
 ⭐ **Star the repo** if the idea of a neural society excites you — it helps the project get discovered.
-
----
-
-## 🇫🇷 En français
-
-**Neural World Simulation** est une simulation de vie artificielle *open-ended* : des centaines d'habitants dotés chacun d'un **réseau de neurones récurrent (Elman) qui apprend en continu par REINFORCE** perçoivent leur monde, décident, agissent (15 actions primitives : manger, boire, récolter, construire, offrir, attaquer, fuir, parler, marquer son territoire…), subissent les conséquences et s'adaptent — de l'enfance à la vieillesse. Ils fondent des familles et des clans, construisent des villages (coffre, grenier, atelier, puits), cultivent, transmettent leur culture via une Académie, et entrent dans l'Histoire du monde. Le tout dans un monde procédural de **1000 × 1000 tuiles** (forêts, montagnes, lacs, saisons, cycle jour/nuit, incendies), piloté depuis un **studio PyQt6** (inspecteur d'agent, graphiques de population, journal exportable, éditeur d'outils, sauvegardes). Sans Pygame : moteur pur **NumPy + PIL**, mode headless, 12+ suites de tests. **Contributions bienvenues** — chercheurs ML, passionnés de simulation, artistes procéduraux, débutants curieux.
 
 ---
 
