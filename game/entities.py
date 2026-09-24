@@ -136,6 +136,7 @@ class ClanKnowledge:
         if count + 1 >= 3:
             inst["stability"] = min(1.0, inst["stability"] + 0.05)
         inst["age"] = tick - inst.get("created_tick", tick)
+        inst["last_practice_tick"] = tick
 
     def decay_institutions(self, tick, rate=0.001):
         """Dégrade les institutions inactives."""

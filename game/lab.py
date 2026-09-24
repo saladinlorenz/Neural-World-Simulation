@@ -15,6 +15,7 @@ EVENT_TYPES = (
     "route_used",
     "monster_killed",
     "birth", "death",
+    "institution",
 )
 
 

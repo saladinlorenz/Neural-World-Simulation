@@ -510,6 +510,9 @@ class Sim:
             from .invariants import validate_simulation
             for error in validate_simulation(self):
                 self.log(f"INVARIANT: {error}", (214, 84, 84), "world")
+        # Lot E : décroissance des institutions (gate runtime).
+        if w.tick % 600 == 0 and self.runtime.get("institutions_enabled", True):
+            self.clan_knowledge.decay_institutions(w.tick)
         if w.tick % 1800 == 0:
             for a in self.agents:
                 expired = [k for k, (_, until) in a.failed_targets.items() if w.tick > until]
@@ -1339,6 +1342,27 @@ class Sim:
         self.w.storages[(tx, ty)] = storage
         return storage
 
+    def _note_institution(self, kind, tx, ty, eid, action=None):
+        """Émergence d'institution (Lot E) : membre + pratique répétée.
+
+        Gate runtime ``institutions_enabled`` ; n'émet ``lab.event`` +
+        journal que lors de la création effective.
+        """
+        if not self.runtime.get("institutions_enabled", True):
+            return
+        ck = self.clan_knowledge
+        tx, ty = int(tx), int(ty)
+        key = (kind, tx // 8, ty // 8)
+        created = key not in ck.institutions
+        ck.add_institution(kind, tx, ty, eid, self.w.tick)
+        if action:
+            ck.record_practice(kind, tx, ty, eid, action, self.w.tick)
+        if created:
+            self.lab.event(self.w.tick, "institution",
+                           kind=kind, tx=tx, ty=ty, eid=eid)
+            self.log(f"Nouvelle institution : {kind} en ({tx},{ty}).",
+                     (160, 112, 198), "social")
+
     def deposit_to_storage(self, a, storage):
         material = max(a.inv, key=a.inv.get)
         if a.inv.get(material, 0) <= 0:
@@ -1353,6 +1377,8 @@ class Sim:
         self.lab.event(self.w.tick, "storage_deposit",
                        eid=a.eid, tx=storage.tx, ty=storage.ty,
                        material=material, amount=moved)
+        self._note_institution("shared_storage", storage.tx, storage.ty,
+                               a.eid, action="deposit")
         self._record_anima(
             a, "resource_deposited", (storage.tx, storage.ty),
             actors=[a.eid], action="deposit", outcome="success",
@@ -1369,6 +1395,8 @@ class Sim:
         self.lab.event(self.w.tick, "storage_withdraw",
                        eid=a.eid, tx=storage.tx, ty=storage.ty,
                        material=material, amount=moved)
+        self._note_institution("shared_storage", storage.tx, storage.ty,
+                               a.eid, action="withdraw")
         self._record_anima(
             a, "resource_withdrawn", (storage.tx, storage.ty),
             actors=[a.eid], action="withdraw", outcome="success")
@@ -2405,6 +2433,8 @@ class Sim:
                        tx=task.tx, ty=task.ty, phase=task.phase,
                        material=task.material,
                        progress=site.progress())
+        self._note_institution("construction", site.origin_tx, site.origin_ty,
+                               a.eid, action="build")
         self._fx("dust", task.tx * TILE + TILE / 2, task.ty * TILE + TILE / 2)
         self._reward(a, 0.10)
         if site.complete():
@@ -2458,6 +2488,8 @@ class Sim:
                 c.skills[1] = min(1.0, c.skills[1] + 0.04)
                 c.needs[6] = max(0.0, c.needs[6] - 0.12)
                 self._reward(c, 0.25)
+                self._note_institution("construction", site.origin_tx,
+                                       site.origin_ty, eid, action="complete")
         # Anima: episode construction
         if finisher and finisher.alive:
             self._record_anima(
