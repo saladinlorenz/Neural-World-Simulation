@@ -313,3 +313,104 @@ def world_snapshot(sim) -> dict[str, Any]:
         "champion": getattr(sim.academy, "champion_label", "aucun"),
         "score_champion": float(getattr(sim.academy, "champion_score", float("-inf"))),
     }
+
+
+def deliberation_snapshot(agent) -> dict[str, Any] | None:
+    """Snapshot de la dernière délibération de l'agent.
+
+    Construit le résumé « pensée sélectionnée » à partir des champs
+    déjà présents sur l'instance Being : needs, emotions, decision_trace,
+    goal, failed_targets, activity, local_context.
+
+    L'UI ne recalcule jamais les candidats ; elle lit ce dictionnaire.
+    """
+    if agent is None or not getattr(agent, "alive", False):
+        return None
+
+    # Besoin dominant (indice du besoin le plus élevé)
+    needs_arr = getattr(agent, "needs", None)
+    dominant_need = ""
+    if needs_arr is not None and len(needs_arr) >= 7:
+        idx = int(max(range(7), key=lambda i: float(needs_arr[i])))
+        dominant_need = NEED_DEFS[idx] if idx < len(NEED_DEFS) else f"#{idx}"
+
+    # Émotion dominante
+    emotions_arr = getattr(agent, "emotions", None)
+    dominant_emotion = ""
+    if emotions_arr is not None and len(emotions_arr) >= 8:
+        idx = int(max(range(8), key=lambda i: float(emotions_arr[i])))
+        dominant_emotion = EMOTION_DEFS[idx] if idx < len(EMOTION_DEFS) else f"#{idx}"
+
+    # Candidats évalués (déjà calculés par evaluate_candidates)
+    candidates = getattr(agent, "decision_trace", []) or []
+    # Ne garder que les 8 meilleurs (déjà triés : selected en premier)
+    top_candidates = candidates[:8]
+
+    # Candidat sélectionné
+    selected = None
+    for c in top_candidates:
+        if c.get("state") == "selected":
+            selected = {
+                "verb": c.get("verb"),
+                "target_kind": c.get("target_kind"),
+                "target_id": c.get("target_id"),
+                "tx": c.get("tx"),
+                "ty": c.get("ty"),
+                "score": c.get("score"),
+            }
+            break
+
+    # Raison du choix (du candidat sélectionné)
+    reason = ""
+    if selected:
+        # La raison est None pour le candidat selected, regarder les autres
+        for c in top_candidates:
+            if c.get("state") == "feasible" and c.get("reason"):
+                reason = c["reason"]
+                break
+        if not reason:
+            reason = "meilleur score parmi les faisables"
+
+    # Dernier échec (failed_targets)
+    failure_reason = ""
+    failed = getattr(agent, "failed_targets", {}) or {}
+    if failed:
+        # Prendre le plus récent (plus grand until_tick)
+        latest = max(failed.items(), key=lambda kv: kv[1][1] if isinstance(kv[1], tuple) else 0)
+        key, (count, until_tick) = latest
+        act, tx, ty = key
+        failure_reason = f"{act} vers ({tx},{ty}) : bloqué {count}x jusqu'au tick {until_tick}"
+
+    return {
+        "tick": int(getattr(agent, "age", 0)),  # utiliser age comme proxy de tick agent
+        "dominant_need": dominant_need,
+        "dominant_emotion": dominant_emotion,
+        "candidates": top_candidates,
+        "selected": selected,
+        "reason": reason,
+        "failure_reason": failure_reason,
+    }
+
+
+def activity_snapshot(agent) -> dict[str, Any] | None:
+    """Snapshot de l'activité courante de l'agent."""
+    if agent is None or not getattr(agent, "alive", False):
+        return None
+
+    activity = getattr(agent, "activity", None)
+    if activity is None:
+        # Fallback sur les champs existants (state, goal, stuck)
+        return {
+            "state": getattr(agent, "state", "idle"),
+            "goal_action": (int(agent.goal["act"]) if agent.goal and agent.goal.get("act") is not None else None),
+            "goal_tile": ([int(agent.goal["x"]), int(agent.goal["y"])] if agent.goal and agent.goal.get("x") is not None and agent.goal.get("y") is not None else None),
+            "position": [round(float(agent.x), 1), round(float(agent.y), 1)],
+            "stuck": int(getattr(agent, "stuck", 0)),
+        }
+
+    # Si activity est un objet avec attributs, le convertir
+    if hasattr(activity, "__dict__"):
+        return dict(activity.__dict__)
+    if isinstance(activity, dict):
+        return dict(activity)
+    return {"state": str(activity)}

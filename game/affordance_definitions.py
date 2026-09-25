@@ -19,6 +19,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "cost": {"time": 0.5, "energy": 0.0},
         "effect": {"world": "perception mise à jour"},
         "risk": 0.0,
+        "descriptive_only": True,
+        "executor": None,
     },
 
     "harvest": {
@@ -28,6 +30,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
                    "on_depletion": "spawn_material({materiau}, {recolte.amount})",
                    "on_pickup": "agent.inv[{materiau}] += gain * (2 si agent.tool)"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": "_do_harvest",
     },
 
     "eat": {
@@ -36,6 +40,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"world": "object consommé",
                    "agent": "faim -= {edible}/110.0, energie += {edible}/150.0, soif -= {edible}/260.0"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": "_do_eat",
     },
 
     "carry": {
@@ -44,6 +50,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"world": "object -> agent.inv",
                    "agent": "inv[{materiau}] += {recolte.amount}"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "place": {
@@ -52,6 +60,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"world": "agent.inv[{materiau}] -> world.object",
                    "agent": "inv[{materiau}] -= 1"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "use": {
@@ -60,6 +70,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "agent.tool = object.id (multiplicateur récolte ×2)",
                    "world": "outil équipé"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "shelter": {
@@ -68,6 +80,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "securite += 0.15, abri = true",
                    "world": "tuile marquée abri"},
         "risk": 0.0,
+        "descriptive_only": True,
+        "executor": None,
     },
 
     "sleep": {
@@ -76,6 +90,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "energie += REST_GAIN * (SHELTER_BONUS si abri)",
                    "world": "état = sleep"},
         "risk": 0.05,
+        "descriptive_only": False,
+        "executor": "_execute",
     },
 
     "burn": {
@@ -83,6 +99,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "cost": {"time": 1.0, "energy": 0.0},
         "effect": {"world": "allume feu (object.hp -= fire_damage), propagation possible"},
         "risk": 0.6,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "block": {
@@ -91,6 +109,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"world": "obstacle physique",
                    "agent": "mouvement empêché"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "hit": {
@@ -99,6 +119,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "cible.hp -= dmg(force)",
                    "world": "riposte possible"},
         "risk": 0.3,
+        "descriptive_only": False,
+        "executor": "_do_attack",
     },
 
     "throw": {
@@ -107,6 +129,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "projectile lancé (dégât à distance)",
                    "world": "projectile créé"},
         "risk": 0.2,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "give": {
@@ -115,6 +139,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "objet transféré, lien social +0.05",
                    "target": "inv[materiau] += 1"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": "_do_give",
     },
 
     "mourn": {
@@ -122,6 +148,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "cost": {"time": 2.0, "energy": 0.0},
         "effect": {"agent": "tristesse -0.2, mémoire deuil créée, lien social renforcé"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "mark": {
@@ -130,6 +158,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"world": "phéromone territoire déposée (marqueur clan)",
                    "agent": "reconnaissance territoire"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": "_execute",
     },
 
     "sit": {
@@ -138,6 +168,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "repos léger, energie +0.02",
                    "world": "état = sit"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "climb": {
@@ -146,6 +178,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "se déplace au-dessus de l'obstacle",
                    "world": "position modifiée"},
         "risk": 0.15,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "chase": {
@@ -154,6 +188,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "poursuit la cible",
                    "world": "poursuite engagée"},
         "risk": 0.2,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "shear": {
@@ -162,6 +198,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "laine/ressource récupérée",
                    "target": "recolte = laine"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "lean": {
@@ -170,6 +208,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "s'appuie, repos passif",
                    "world": "état = lean"},
         "risk": 0.0,
+        "descriptive_only": True,
+        "executor": None,
     },
 
     "decorate": {
@@ -178,6 +218,8 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "estime sociale +0.05, monde changé visuellement",
                    "world": "décoration posée"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": None,
     },
 
     "follow": {
@@ -186,6 +228,18 @@ AFFORDANCE_DEFS: Dict[str, Dict[str, Any]] = {
         "effect": {"agent": "suit la cible",
                    "world": "groupe formé"},
         "risk": 0.0,
+        "descriptive_only": False,
+        "executor": None,
+    },
+
+    "talk": {
+        "requires": {"proximity": 3, "energy": 0.04, "alive": True},
+        "cost": {"time": 1.0, "energy": 0.02},
+        "effect": {"agent": "communication sociale, partage connaissance, ajustement relation",
+                   "world": "effet sonore, bulle visuelle"},
+        "risk": 0.0,
+        "descriptive_only": False,
+        "executor": "do_talk",
     },
 }
 

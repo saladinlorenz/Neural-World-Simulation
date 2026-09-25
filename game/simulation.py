@@ -13,13 +13,15 @@ adulte -> ancien), s'allie, fonde une famille, transmet (culture), et meurt
 en laissant une reputation.
 """
 import math
-from collections import deque
+from collections import Counter, defaultdict, deque
+from dataclasses import dataclass, field
+from typing import Any, Optional
 
 import numpy as np
 
 from .brain_api import (ATTACK, BUILD, DRINK, DROP, EAT, EXPLORE, FLEE, GIVE,
-                     HARVEST, MARK, N_IN, N_OUT, REST, SLEEP, SOCIAL, TAKE,
-                     TALK, ACTION_NAMES_EXP as ACTION_NAMES, ACTION_TRAIT_EXP as ACTION_TRAIT)
+                      HARVEST, MARK, N_IN, N_OUT, REST, SLEEP, SOCIAL, TAKE,
+                      TALK, ACTION_NAMES_EXP as ACTION_NAMES, ACTION_TRAIT_EXP as ACTION_TRAIT)
 from .brain import Brain
 from .brain_schema import INPUT
 from .brain import (IMMEDIAT, PRUDENT, ECONOMIQUE, COOPERATIF, EXPLORATION, DEFENSIF,
@@ -32,7 +34,9 @@ from .config import (CLAN_COLORS, GRID, MAX_POP, MAX_SHEEP, TILE, WORLD_PX,
                       E_DRAIN, MOVE_DRAIN, REST_GAIN, SLEEP_GAIN, SHELTER_BONUS,
                       STARVE_HP, THIRST_HP, LOWE_HP, INV_CAP,
                       ATTACK_DMG, ATTACK_DMG_TOOL, WORK_TICKS, PERCEPT_CELLS,
-                      JOURNAL_MAXLEN, MONSTER_KINDS, MAX_MONSTERS)
+                      JOURNAL_MAXLEN, MONSTER_KINDS, MAX_MONSTERS,
+                      THINK_INTERVAL, CANDIDATE_INTERVAL, PLAN_INTERVAL,
+                      RESOURCE_UPDATE_INTERVAL, REPUTATION_INTERVAL, SOCIETY_INTERVAL)
 from .entities import Being, Sheep, Monster, ClanKnowledge
 from .world import Item
 from .universal_knowledge import UniversalKnowledge
@@ -40,12 +44,39 @@ from .academy import Academy
 from .lab import LabRecorder
 from .history import WorldHistory
 from .construction import ConstructionSite, blueprint_from_name
+from .actioncandidate import (ActionCandidate, propose_candidates,
+                               pick_best_candidate, score_candidate,
+                               evaluate_candidates, propose_talk_candidates)
+from .perfmetrics import PerfMetrics
 
 MAT_AIDS = {"bois": "item_wood", "pierre": "stone_res", "or": "gold_pile"}
 
+# ── Part A: TALK VOLONTAIRE constants ──────────────────────────────
+TALK_DISTANCE = 3
+TALK_COOLDOWN = 180
+
+# ── Part B: ActivityState infrastructure ───────────────────────────
+KNOWLEDGE_SHARE_FACTOR = 0.65
+
+
+@dataclass
+class ActivityState:
+    """État d'une activité à plusieurs étapes (plan §5)."""
+    kind: str
+    stage: str
+    target_tx: int | None = None
+    target_ty: int | None = None
+    target_eid: int | None = None
+    target_ref: Any = None
+    started_tick: int = 0
+    last_stage_tick: int = 0
+    reason: str = ""
+    failure_reason: str = ""
+    data: dict = field(default_factory=dict)
+
 
 class Sim:
-    def __init__(self, world, am, seed=7):
+    def __init__(self, world, am, seed=7, blank_world=False):
         self.w = world
         self.am = am
         self.seed = int(seed)
@@ -59,6 +90,7 @@ class Sim:
         self.next_eid = 1
         self.paused = True
         self.speed = 2
+        self.blank_world = bool(blank_world)
         self.grid_bucket = {}
         self.item_bucket = {}
         self.food_cells = {}
@@ -99,6 +131,53 @@ class Sim:
         self.districts = {}
         self.predator_zones = {}
 
+        # Performance metrics (Phase 1)
+        self.perf = PerfMetrics(window=120)
+
+        # Phase 1: activity reasons counter
+        self.activity_reasons = Counter()
+
+        # Phase 2: compteurs d'anomalies (erreurs avalées, récupérations
+        # NaN/Inf du cerveau, perceptions invalides, replis courts)
+        self.metrics = defaultdict(int)
+
+    # ── Phase 2: Fréquences différenciées ───
+    THINK_INTERVAL = THINK_INTERVAL
+    CANDIDATE_INTERVAL = CANDIDATE_INTERVAL
+    PLAN_INTERVAL = PLAN_INTERVAL
+
+    def agent_should_think(self, agent) -> bool:
+        """Détermine si l'agent doit réfléchir ce tick (staggered par eid)."""
+        period = max(4, int(getattr(agent.brain, "te", THINK_INTERVAL)))
+
+        urgent = (
+            agent.hunger > 0.90
+            or agent.needs[2] > 0.90
+            or agent.energy < 0.10
+            or agent.emotions[0] > 0.75
+            or agent.pain > 0.65
+        )
+
+        if urgent:
+            return True
+
+        return (self.w.tick + int(agent.eid)) % period == 0
+
+    def _should_generate_candidates(self, agent) -> bool:
+        """Détermine si on doit générer des candidats pour cet agent."""
+        return (self.w.tick + int(agent.eid)) % self.CANDIDATE_INTERVAL == 0
+
+    def _should_generate_plans(self, agent) -> bool:
+        """Détermine si on doit générer des plans pour cet agent."""
+        return (self.w.tick + int(agent.eid)) % self.PLAN_INTERVAL == 0
+
+    def _invalidate_agent_cache(self, agent):
+        """Invalide le cache de l'agent après un événement significatif."""
+        agent.cached_plans = None
+        agent.cached_plans_tick = -1
+        agent.cached_candidates = None
+        agent.cached_candidates_tick = -1
+
     # ------------------------------------------------------------------ journal
     def log(self, text, color=None, cat="world"):
         """cat: id du registre JOURNAL_CATEGORIES (world|life|family|…)."""
@@ -110,6 +189,741 @@ class Sim:
 
     def emit_sound(self, x, y, kind, intensity=1.0):
         self.sounds.append((x, y, kind, intensity, self.w.tick))
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # PART A: TALK VOLONTAIRE (plan §3)
+    # ═══════════════════════════════════════════════════════════════════════
+    def can_talk(self, speaker: Being, listener: Being) -> tuple[bool, str]:
+        """Vérifie si speaker peut parler à listener (plan §3.3)."""
+        if not speaker.alive or not listener.alive:
+            return False, "mort"
+        if speaker.eid == listener.eid:
+            return False, "meme_agent"
+        dist = max(abs(speaker.tx - listener.tx), abs(speaker.ty - listener.ty))
+        if dist > TALK_DISTANCE:
+            return False, "trop_loin"
+        last_talk = speaker.talk_cd.get(listener.eid, -999)
+        if self.w.tick - last_talk < TALK_COOLDOWN:
+            return False, "cooldown"
+        if speaker.energy < 0.04:
+            return False, "energie_faible"
+        return True, ""
+
+    def choose_talk_topic(self, speaker: Being, listener: Being) -> str | None:
+        """Choisit un sujet de conversation selon le contexte (plan §3.5)."""
+        # 1. listener a faim et speaker connait de la nourriture
+        if listener.hunger > 0.65:
+            mem = speaker.recall("food", speaker.tx, speaker.ty)
+            if mem and mem[2] < 100:  # confiance suffisante
+                return "food_location"
+        # 2. listener a soif et speaker connait de l'eau
+        if listener.needs[2] > 0.65:
+            mem = speaker.recall("water", speaker.tx, speaker.ty)
+            if mem and mem[2] < 100:
+                return "water_location"
+        # 3. danger proche
+        if speaker._near_monsters:
+            return "danger_warning"
+        # 4. listener en détresse
+        if listener.health < 0.4 or listener.hunger > 0.8:
+            return "need_help"
+        # 5. speaker en expédition -> follow_request
+        if speaker.activity and speaker.activity.kind in {"food_expedition", "explore_region"}:
+            return "follow_request"
+        # 6. personnalité extravertie -> greeting
+        if speaker.personality[0] > 0.65:
+            return "greeting"
+        return None
+
+    def apply_communication(self, speaker: Being, listener: Being, topic: str) -> bool:
+        """Applique l'effet de la communication selon le sujet (plan §3.7)."""
+        if topic == "food_location":
+            mem = self.best_shareable_memory(speaker, "food")
+            if mem:
+                return self.receive_shared_place(listener, mem, "food", speaker.eid)
+        elif topic == "water_location":
+            mem = self.best_shareable_memory(speaker, "water")
+            if mem:
+                return self.receive_shared_place(listener, mem, "water", speaker.eid)
+        elif topic == "danger_warning":
+            mem = self.best_shareable_danger(speaker)
+            if mem:
+                return self.receive_danger_warning(listener, mem, speaker.eid)
+        elif topic == "need_help":
+            return self.receive_help_request(listener, speaker.eid)
+        elif topic == "follow_request":
+            return self.receive_follow_request(listener, speaker.eid, speaker.activity)
+        elif topic == "greeting":
+            self.adjust_social_interaction(speaker, listener, trust=0.01, affection=0.02)
+            return True
+        return False
+
+    def best_shareable_memory(self, agent: Being, category: str) -> tuple[int, int, float] | None:
+        """Meilleur souvenir partageable pour une catégorie."""
+        mem = agent.recall(category, agent.tx, agent.ty)
+        if mem and mem[2] < 100:
+            return mem
+        return None
+
+    def best_shareable_danger(self, agent: Being) -> tuple[int, int, float] | None:
+        """Meilleur souvenir de danger partageable."""
+        if not agent._near_monsters:
+            return None
+        m = min(agent._near_monsters, key=lambda x: max(abs(x.tx - agent.tx), abs(x.ty - agent.ty)))
+        return (m.tx, m.ty, 0.8)
+
+    def receive_shared_place(self, listener: Being, mem: tuple[int, int, float],
+                             category: str, from_eid: int) -> bool:
+        """Reçoit un lieu partagé (plan §3.7)."""
+        tx, ty, conf = mem
+        trust = listener.trust(from_eid)
+        effective_conf = conf * KNOWLEDGE_SHARE_FACTOR * max(0.3, 0.5 + trust * 0.5)
+        if effective_conf < 0.2:
+            return False
+        listener.remember(category, tx, ty)
+        self.lab.event(self.w.tick, "knowledge_shared",
+                       from_eid=from_eid, to_eid=listener.eid,
+                       category=category, tx=tx, ty=ty, confidence=effective_conf)
+        return True
+
+    def receive_danger_warning(self, listener: Being, mem: tuple[int, int, float],
+                               from_eid: int) -> bool:
+        """Reçoit un avertissement de danger."""
+        tx, ty, conf = mem
+        trust = listener.trust(from_eid)
+        effective_conf = conf * KNOWLEDGE_SHARE_FACTOR * max(0.3, 0.5 + trust * 0.5)
+        if effective_conf < 0.2:
+            return False
+        listener.belief_places[(tx // 8, ty // 8)] = min(
+            1.0, listener.belief_places.get((tx // 8, ty // 8), 0.0) + effective_conf)
+        listener.emotions[0] = min(1.0, listener.emotions[0] + 0.15)
+        self.lab.event(self.w.tick, "danger_warning_received",
+                       from_eid=from_eid, to_eid=listener.eid,
+                       tx=tx, ty=ty, confidence=effective_conf)
+        return True
+
+    def receive_help_request(self, listener: Being, from_eid: int) -> bool:
+        """Reçoit une demande d'aide."""
+        trust = listener.trust(from_eid)
+        if trust < -0.2:
+            return False
+        listener.emotions[5] = min(1.0, listener.emotions[5] + 0.1)  # surprise
+        listener.emotions[7] = min(1.0, listener.emotions[7] + 0.05)  # affection
+        self.lab.event(self.w.tick, "help_request_received",
+                       from_eid=from_eid, to_eid=listener.eid, trust=trust)
+        return True
+
+    def receive_follow_request(self, listener: Being, from_eid: int,
+                               activity: ActivityState | None) -> bool:
+        """Reçoit une demande de suivre."""
+        trust = listener.trust(from_eid)
+        if trust < 0.1:
+            return False
+        if activity and activity.target_tx is not None and activity.target_ty is not None:
+            listener.remember("agent", activity.target_tx, activity.target_ty)
+            self.lab.event(self.w.tick, "follow_request_received",
+                           from_eid=from_eid, to_eid=listener.eid,
+                           target_tx=activity.target_tx, target_ty=activity.target_ty)
+            return True
+        return False
+
+    def adjust_social_interaction(self, a: Being, b: Being,
+                                   trust: float = 0.0, affection: float = 0.0) -> None:
+        """Ajuste la relation sociale bidirectionnelle."""
+        r1 = a.rel.setdefault(b.eid, [0.0, 0.0])
+        r2 = b.rel.setdefault(a.eid, [0.0, 0.0])
+        r1[0] = min(1.0, r1[0] + trust)
+        r2[0] = min(1.0, r2[0] + trust)
+        r1[1] = min(1.0, r1[1] + affection)
+        r2[1] = min(1.0, r2[1] + affection)
+
+    def do_talk(self, speaker: Being, listener: Being) -> bool:
+        """Exécute l'action TALK (plan §3.6)."""
+        ok, reason = self.can_talk(speaker, listener)
+        if not ok:
+            self.record_activity_failure(speaker, "talk", reason)
+            return False
+        topic = self.choose_talk_topic(speaker, listener) or "greeting"
+        success = self.apply_communication(speaker, listener, topic)
+        if success:
+            speaker.talk_cd[listener.eid] = self.w.tick
+            listener.talk_cd[speaker.eid] = self.w.tick
+            self.emit_sound(speaker.x, speaker.y, "voice", 0.6)
+            self.effects.append({"kind": "talk", "x": speaker.x, "y": speaker.y,
+                                 "t0": self.w.tick, "ttl": 20})
+            speaker.state = "talk"
+            self.stats["talks"] += 1
+            self.journal.append((self.w.tick, f"{speaker.name} parle à {listener.name} : {topic}",
+                                 (148, 188, 228), "social", 1))
+            speaker.skills[3] = min(1.0, speaker.skills[3] + 0.01)
+            self._reward(speaker, 0.05)
+        return success
+
+    def record_activity_failure(self, agent: Being, activity: str, reason: str) -> None:
+        """Enregistre un échec d'activité pour apprentissage."""
+        self.metrics[f"activity_fail_{activity}"] += 1
+        self.activity_reasons[f"{activity}:{reason}"] += 1
+        self._reward(agent, -0.02)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # PART B: ActivityState infrastructure + FOOD_EXPEDITION (plan §5, §6)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def start_activity(self, agent: Being, kind: str, stage: str, **kwargs) -> ActivityState:
+        """Démarre une nouvelle activité (plan §5)."""
+        act = ActivityState(
+            kind=kind,
+            stage=stage,
+            target_tx=kwargs.get("target_tx"),
+            target_ty=kwargs.get("target_ty"),
+            target_eid=kwargs.get("target_eid"),
+            target_ref=kwargs.get("target_ref"),
+            started_tick=self.w.tick,
+            last_stage_tick=self.w.tick,
+            reason=kwargs.get("reason", ""),
+            data=kwargs.get("data", {}),
+        )
+        agent.activity = act
+        agent.goal = None  # l'activité gère ses propres buts
+        return act
+
+    def fail_activity(self, agent: Being, reason: str) -> None:
+        """Termine l'activité en échec (plan §5)."""
+        if agent.activity:
+            agent.activity.failure_reason = reason
+            self.record_activity_outcome(agent, agent.activity.kind, "failed", -0.1)
+            agent.last_activity_result = {"kind": agent.activity.kind, "outcome": "failed", "reason": reason}
+            agent.activity = None
+            agent.goal = None
+
+    def finish_activity(self, agent: Being, outcome: str = "success", reward: float = 0.1) -> None:
+        """Termine l'activité avec succès (plan §5)."""
+        if agent.activity:
+            kind = agent.activity.kind
+            self.record_activity_outcome(agent, kind, outcome, reward)
+            agent.last_activity_result = {"kind": kind, "outcome": outcome, "reward": reward}
+            agent.activity = None
+            agent.goal = None
+
+    def should_interrupt_activity(self, agent: Being, activity: ActivityState) -> str | None:
+        """Vérifie si l'activité doit être interrompue (plan §5)."""
+        if not agent.alive or agent.health <= 0:
+            return "mort"
+        if agent.stuck >= 20:
+            return "bloque"
+        if agent.energy <= 0.06:
+            return "energie_critique"
+        if agent.needs[2] >= 0.92:
+            return "soif_critique"
+        if agent._near_monsters:
+            return "danger_proche"
+        # timeout par type d'activité
+        elapsed = self.w.tick - activity.started_tick
+        timeouts = {
+            "food_expedition": 1800,
+            "water_search": 900,
+            "return_home": 1200,
+            "explore_region": 1200,
+        }
+        if elapsed > timeouts.get(activity.kind, 1200):
+            return "timeout"
+        return None
+
+    def record_activity_outcome(self, agent: Being, kind: str, outcome: str, reward: float) -> None:
+        """Enregistre le résultat d'une activité pour apprentissage (plan §5)."""
+        self.activity_reasons[f"{kind}:{outcome}"] += 1
+        self._reward(agent, reward)
+        # Mise à jour compétences selon activité
+        if kind == "food_expedition" and outcome == "success":
+            agent.skills[0] = min(1.0, agent.skills[0] + 0.02)  # récolte
+            agent.anima_add_identity("provider", 0.03)
+        elif kind == "water_search" and outcome == "success":
+            agent.skills[0] = min(1.0, agent.skills[0] + 0.01)
+            agent.anima_add_identity("explorer", 0.02)
+        elif kind == "return_home" and outcome == "success":
+            agent.skills[3] = min(1.0, agent.skills[3] + 0.01)  # social
+            agent.anima_add_identity("survivor", 0.02)
+
+    def best_memory_for(self, agent: Being, category: str) -> dict | None:
+        """Meilleur souvenir pour une catégorie avec métadonnées."""
+        mem = agent.recall(category, agent.tx, agent.ty)
+        if mem:
+            return {"tx": mem[0], "ty": mem[1], "confidence": max(0.0, 1.0 - mem[2] / 100.0)}
+        return None
+
+    # ── water_search helpers ────────────────────────────────────────
+    def verify_water_access(self, agent: Being, memory: dict) -> bool:
+        """Vérifie que la mémoire d'eau est encore valide et accessible."""
+        tx, ty = memory["tx"], memory["ty"]
+        if not (0 <= tx < self.w.g and 0 <= ty < self.w.g):
+            return False
+        # Vérifier qu'il y a de l'eau à cet endroit ou adjacent
+        has_water = False
+        water_tx, water_ty = tx, ty
+        if self.w.water[ty, tx]:
+            has_water = True
+        else:
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    nx, ny = tx + dx, ty + dy
+                    if 0 <= nx < self.w.g and 0 <= ny < self.w.g and self.w.water[ny, nx]:
+                        has_water = True
+                        water_tx, water_ty = nx, ny
+                        break
+                if has_water:
+                    break
+        if not has_water:
+            return False
+        # Vérifier que l'agent peut accéder à l'eau (case de terre adjacente à l'eau)
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                nx, ny = water_tx + dx, water_ty + dy
+                if 0 <= nx < self.w.g and 0 <= ny < self.w.g:
+                    if self.w.land[ny, nx] and not self.w.blocked[ny, nx]:
+                        return True
+        # Fallback: si l'agent est déjà adjacent à de l'eau, c'est accessible
+        if self.w.near_water(agent.tx, agent.ty):
+            return True
+        return False
+
+    def try_drink_at(self, agent: Being, tx: int, ty: int) -> bool:
+        """Tentative de boire à la position donnée."""
+        if not (0 <= tx < self.w.g and 0 <= ty < self.w.g):
+            return False
+        # Vérifier présence d'eau
+        if not self.w.water[ty, tx]:
+            # Chercher eau adjacente
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    nx, ny = tx + dx, ty + dy
+                    if 0 <= nx < self.w.g and 0 <= ny < self.w.g and self.w.water[ny, nx]:
+                        tx, ty = nx, ny
+                        break
+                else:
+                    continue
+                break
+            else:
+                return False
+        # Boire
+        before = agent.needs[2]
+        agent.needs[2] = max(0.0, agent.needs[2] - 0.6)
+        agent.temp = max(0.0, agent.temp - 0.1)
+        agent.state = "drink"
+        self.stats["drinks"] += 1
+        self._reward(agent, (before - agent.needs[2]) * 0.8)
+        # Mettre à jour la confiance de la mémoire
+        agent.remember("water", tx, ty)
+        return True
+
+    # ── food_expedition helpers (plan §6) ───────────────────────────
+    def verify_food_memory(self, agent: Being, memory: dict) -> bool:
+        """Vérifie que la mémoire de nourriture est encore valide."""
+        tx, ty = memory["tx"], memory["ty"]
+        if not (0 <= tx < self.w.g and 0 <= ty < self.w.g):
+            return False
+        aid = self.w.content_at(tx, ty)
+        if aid >= 0:
+            asd = self.am.assets[aid]
+            return asd.edible > 0
+        # Vérifier items au sol
+        cell_key = (int(tx * TILE // 128), int(ty * TILE // 128))
+        for it in self.food_cells.get(cell_key, ()):
+            if it.kind == "food" and max(abs(it.x - tx * TILE), abs(it.y - ty * TILE)) < 32:
+                return True
+        return False
+
+    def try_harvest_or_pickup_near(self, agent: Being) -> bool:
+        """Tente de récolter ou ramasser de la nourriture à proximité."""
+        tx, ty = agent.tx, agent.ty
+        # D'abord vérifier la tuile courante
+        aid = self.w.content_at(tx, ty)
+        if aid >= 0:
+            asd = self.am.assets[aid]
+            if asd.edible > 0:
+                self._do_eat(agent, tx, ty)
+                return True
+        # Puis items au sol proches
+        cell_key = (int(agent.x // 128), int(agent.y // 128))
+        for it in list(self.food_cells.get(cell_key, ())):
+            if it.kind == "food" and (it.x - agent.x) ** 2 + (it.y - agent.y) ** 2 < 32 * 32:
+                self.w.items.remove(it)
+                self._eat(agent, it.nutrition)
+                return True
+        return False
+
+    def try_eat_inventory_food(self, agent: Being) -> bool:
+        """Tente de manger de la nourriture de l'inventaire."""
+        # Pas d'inventaire de nourriture directe, mais on peut manger si on a récolté
+        # Pour l'instant, on délègue à _do_eat sur place
+        return self.try_harvest_or_pickup_near(agent)
+
+    def choose_return_target(self, agent: Being) -> tuple[int, int, str] | None:
+        """Choisit la cible de retour (maison, dépôt, ou clan)."""
+        # Priorité 1: maison
+        if agent.home:
+            hx, hy = agent.home
+            if 0 <= hx < self.w.g and 0 <= hy < self.w.g:
+                return hx, hy, "home"
+        # Priorité 2: dépôt le plus proche
+        storage = self.nearest_storage(agent.tx, agent.ty, max_dist=30)
+        if storage:
+            return storage.tx, storage.ty, "storage"
+        # Priorité 3: aller vers alliés
+        if agent._near_agents:
+            ally = max(agent._near_agents, key=lambda o: agent.trust(o.eid))
+            if agent.trust(ally.eid) > 0.2:
+                return ally.tx, ally.ty, "ally"
+        return None
+
+    def store_or_share_food(self, agent: Being) -> None:
+        """Stocke ou partage la nourriture ramenée."""
+        storage = self.nearest_storage(agent.tx, agent.ty, max_dist=2)
+        if storage:
+            self.deposit_to_storage(agent, storage)
+            return
+        # Partager avec alliés proches
+        for other in agent._near_agents:
+            if agent.trust(other.eid) > 0.3 and agent.carry() > 0:
+                self._do_give(agent, other)
+                break
+
+    # ── maybe_start_food_expedition (plan §6) ───────────────────────
+    def maybe_start_food_expedition(self, agent: Being) -> bool:
+        """Tente de démarrer une expédition nourriture (plan §6)."""
+        if agent.activity is not None:
+            return False
+        if agent.hunger < 0.62:
+            return False
+        if agent.child:
+            return False
+        mem = self.best_memory_for(agent, "food")
+        if not mem or mem["confidence"] < 0.35:
+            return False
+        self.start_activity(
+            agent,
+            kind="food_expedition",
+            stage="travel",
+            target_tx=mem["tx"],
+            target_ty=mem["ty"],
+            reason="hungry + reliable food memory",
+            data={"memory": mem},
+        )
+        self.activity_reasons["food_expedition:started"] += 1
+        return True
+
+    def step_food_expedition(self, agent: Being) -> bool:
+        """Machine à états pour food_expedition (plan §6)."""
+        act = agent.activity
+        if act is None or act.kind != "food_expedition":
+            return False
+
+        # Vérifier interruption
+        interrupt = self.should_interrupt_activity(agent, act)
+        if interrupt:
+            self.fail_activity(agent, interrupt)
+            return True
+
+        act.last_stage_tick = self.w.tick
+
+        if act.stage == "travel":
+            # Aller vers la cible
+            tx, ty = act.target_tx, act.target_ty
+            if tx is not None and ty is not None:
+                self.set_goal_to_tile(agent, EXPLORE, tx, ty)
+                dist = max(abs(agent.tx - tx), abs(agent.ty - ty))
+                if dist <= 3:
+                    act.stage = "verify"
+                    act.data["memory"] = {"tx": tx, "ty": ty, "confidence": 0.5}
+
+        elif act.stage == "verify":
+            mem = act.data.get("memory", {"tx": act.target_tx, "ty": act.target_ty})
+            if not self.verify_food_memory(agent, mem):
+                self.fail_activity(agent, "food_memory_invalid")
+                return True
+            act.stage = "harvest"
+
+        elif act.stage == "harvest":
+            if self.try_harvest_or_pickup_near(agent):
+                act.stage = "consume_or_return"
+            else:
+                self.fail_activity(agent, "harvest_failed")
+                return True
+
+        elif act.stage == "consume_or_return":
+            if agent.hunger >= 0.86:
+                if self.try_eat_inventory_food(agent):
+                    self.finish_activity(agent, "ate_on_site", 0.3)
+                    return True
+            act.stage = "return"
+
+        elif act.stage == "return":
+            ret = self.choose_return_target(agent)
+            if ret:
+                tx, ty, kind = ret
+                self.set_goal_to_tile(agent, EXPLORE, tx, ty)
+                act.data["return_kind"] = kind
+                act.stage = "store_or_share"
+            else:
+                self.fail_activity(agent, "no_return_target")
+                return True
+
+        elif act.stage == "store_or_share":
+            self.store_or_share_food(agent)
+            self.finish_activity(agent, "food_returned", 0.35)
+            return True
+
+        return True  # activité gérée ce tick
+
+    # ── water_search activity ──────────────────────────────────────
+    def maybe_start_water_search(self, agent: Being) -> bool:
+        """Tente de démarrer une recherche d'eau (plan §5, §6)."""
+        if agent.activity is not None:
+            return False
+        if agent.needs[2] < 0.7:
+            return False
+        if agent.child:
+            return False
+        mem = self.best_memory_for(agent, "water")
+        if not mem or mem["confidence"] < 0.3:
+            return False
+        self.start_activity(
+            agent,
+            kind="water_search",
+            stage="choose",
+            target_tx=mem["tx"],
+            target_ty=mem["ty"],
+            reason="thirsty + reliable water memory",
+            data={"memory": mem},
+        )
+        self.activity_reasons["water_search:started"] += 1
+        return True
+
+    def step_water_search(self, agent: Being) -> bool:
+        """Machine à états pour water_search : choose → travel → verify → drink → update_memory → return_or_continue."""
+        act = agent.activity
+        if act is None or act.kind != "water_search":
+            return False
+
+        # Vérifier interruption (soif critique = priorité absolue)
+        interrupt = self.should_interrupt_activity(agent, act)
+        if interrupt and interrupt != "soif_critique":
+            self.fail_activity(agent, interrupt)
+            return True
+
+        act.last_stage_tick = self.w.tick
+
+        # États bloquants qui nécessitent d'attendre le tick suivant
+        blocking_stages = {"travel", "drink"}
+
+        while True:
+            if act.stage == "choose":
+                act.stage = "travel"
+                continue  # passer à travel immédiatement
+
+            elif act.stage == "travel":
+                tx, ty = act.target_tx, act.target_ty
+                if tx is not None and ty is not None:
+                    self.set_goal_to_tile(agent, EXPLORE, tx, ty)
+                    dist = max(abs(agent.tx - tx), abs(agent.ty - ty))
+                    if dist <= 3:
+                        act.stage = "verify"
+                        continue  # passer à verify immédiatement
+                break  # bloquant : attendre déplacement
+
+            elif act.stage == "verify":
+                mem = act.data.get("memory", {"tx": act.target_tx, "ty": act.target_ty})
+                if not self.verify_water_access(agent, mem):
+                    self.fail_activity(agent, "water_memory_invalid")
+                    return True
+                act.stage = "drink"
+                continue  # passer à drink immédiatement
+
+            elif act.stage == "drink":
+                tx, ty = act.target_tx, act.target_ty
+                if tx is not None and ty is not None:
+                    # Trouver la position exacte de l'eau (peut être adjacente)
+                    water_tx, water_ty = tx, ty
+                    if not self.w.water[water_ty, water_tx]:
+                        found = False
+                        for dy in (-1, 0, 1):
+                            for dx in (-1, 0, 1):
+                                nx, ny = tx + dx, ty + dy
+                                if 0 <= nx < self.w.g and 0 <= ny < self.w.g and self.w.water[ny, nx]:
+                                    water_tx, water_ty = nx, ny
+                                    found = True
+                                    break
+                            if found:
+                                break
+                    # Aller vers l'eau si pas adjacent
+                    dist = max(abs(agent.tx - water_tx), abs(agent.ty - water_ty))
+                    if dist <= 1:
+                        self._set_goal(agent, DRINK)
+                        if self.try_drink_at(agent, water_tx, water_ty):
+                            act.stage = "update_memory"
+                            continue  # passer à update_memory immédiatement
+                    else:
+                        self.set_goal_to_tile(agent, EXPLORE, water_tx, water_ty)
+                break  # bloquant : attendre d'être adjacent et boire
+
+            elif act.stage == "update_memory":
+                # Mettre à jour la confiance de la mémoire (elle s'est avérée fiable)
+                tx, ty = act.target_tx, act.target_ty
+                if tx is not None and ty is not None:
+                    agent.remember("water", tx, ty)
+                act.stage = "return_or_continue"
+                continue  # passer à return_or_continue immédiatement
+
+            elif act.stage == "return_or_continue":
+                # Si encore soif, continuer à chercher ; sinon finir
+                if agent.needs[2] >= 0.6:
+                    # Chercher une autre source
+                    mem = self.best_memory_for(agent, "water")
+                    if mem and mem["confidence"] >= 0.3:
+                        act.target_tx = mem["tx"]
+                        act.target_ty = mem["ty"]
+                        act.data["memory"] = mem
+                        act.stage = "travel"
+                        continue  # boucler vers travel
+                self.finish_activity(agent, "water_found", 0.3)
+                return True
+
+            else:
+                break
+
+        return True  # activité gérée ce tick
+
+    # ── return_home activity ──────────────────────────────────────
+    def maybe_start_return_home(self, agent: Being) -> bool:
+        """Tente de démarrer un retour au foyer (plan §5)."""
+        if agent.activity is not None:
+            return False
+        # Triggers : energy < 0.22, night, rain > 0.55, safety need > 0.75, carry >= 0.85
+        if agent.energy >= 0.22 and not self.clock.is_night and self.clock.rain <= 0.55 \
+                and agent.needs[4] <= 0.75 and agent.carry() < 0.85:
+            return False
+        if agent.child:
+            return False  # les enfants ne font pas return_home seuls
+        target = self.choose_return_home_target(agent)
+        if not target:
+            return False
+        tx, ty, kind = target
+        self.start_activity(
+            agent,
+            kind="return_home",
+            stage="choose_target",
+            target_tx=tx,
+            target_ty=ty,
+            reason=f"return_home:{kind}",
+            data={"return_kind": kind},
+        )
+        self.activity_reasons[f"return_home:started:{kind}"] += 1
+        return True
+
+    def choose_return_home_target(self, agent: Being) -> tuple[int, int, str] | None:
+        """Choisit la cible de retour selon la priorité :
+        personal home → personal shelter → clan shelter → allied storage/depot → family/ally group."""
+        # Priorité 1: maison personnelle
+        if agent.home:
+            hx, hy = agent.home
+            if 0 <= hx < self.w.g and 0 <= hy < self.w.g:
+                return hx, hy, "home"
+        # Priorité 2: abri personnel connu
+        shelter_mem = self.best_memory_for(agent, "shelter")
+        if shelter_mem:
+            return shelter_mem["tx"], shelter_mem["ty"], "shelter"
+        # Priorité 3: abri du clan (stockage avec shelter)
+        for storage in self.w.storages.values():
+            if storage.owner_clan == agent.color:
+                if self.w.shelter[storage.ty, storage.tx]:
+                    return storage.tx, storage.ty, "clan_shelter"
+        # Priorité 4: dépôt allié / stockage
+        storage = self.nearest_storage(agent.tx, agent.ty, max_dist=30)
+        if storage:
+            return storage.tx, storage.ty, "storage"
+        # Priorité 5: groupe famille/allié
+        if agent._near_agents:
+            ally = max(agent._near_agents, key=lambda o: agent.trust(o.eid))
+            if agent.trust(ally.eid) > 0.2:
+                return ally.tx, ally.ty, "ally"
+        return None
+
+    def step_return_home(self, agent: Being) -> bool:
+        """Machine à états pour return_home : choose_target → travel → at_destination."""
+        act = agent.activity
+        if act is None or act.kind != "return_home":
+            return False
+
+        interrupt = self.should_interrupt_activity(agent, act)
+        if interrupt:
+            self.fail_activity(agent, interrupt)
+            return True
+
+        act.last_stage_tick = self.w.tick
+
+        # États bloquants
+        blocking_stages = {"travel"}
+
+        while True:
+            if act.stage == "choose_target":
+                act.stage = "travel"
+                continue
+
+            elif act.stage == "travel":
+                tx, ty = act.target_tx, act.target_ty
+                if tx is not None and ty is not None:
+                    self.set_goal_to_tile(agent, EXPLORE, tx, ty)
+                    dist = max(abs(agent.tx - tx), abs(agent.ty - ty))
+                    if dist <= 2:
+                        act.stage = "at_destination"
+                        continue
+                break  # bloquant : attendre arrivée
+
+            elif act.stage == "at_destination":
+                kind = act.data.get("return_kind", "")
+                tx, ty = act.target_tx, act.target_ty
+                # Vérifier s'il y a un abri ici
+                if tx is not None and ty is not None and self.w.shelter[ty, tx]:
+                    self._set_goal(agent, SLEEP)
+                    self.finish_activity(agent, "returned_to_shelter", 0.25)
+                # Vérifier s'il y a un stockage
+                elif tx is not None and ty is not None and (tx, ty) in self.w.storages:
+                    storage = self.w.storages[(tx, ty)]
+                    self.deposit_appropriate_items(agent, storage)
+                    self.finish_activity(agent, "returned_to_storage", 0.2)
+                else:
+                    # Juste se reposer sur place
+                    self._set_goal(agent, REST)
+                    self.finish_activity(agent, "returned_to_rest", 0.15)
+                return True
+
+            else:
+                break
+
+        return True
+
+    def deposit_appropriate_items(self, agent: Being, storage) -> None:
+        """Dépose les items appropriés selon le besoin (nourriture si faim, matériaux si construction)."""
+        # Priorité: déposer ce qui est en excès
+        if agent.needs[0] < 0.4 and agent.inv.get("food", 0) > 0:
+            self.deposit_to_storage(agent, storage)
+        elif agent.inv.get("bois", 0) > 6:
+            self.deposit_to_storage(agent, storage)
+        elif agent.inv.get("pierre", 0) > 3:
+            self.deposit_to_storage(agent, storage)
+        elif agent.inv.get("or", 0) > 1:
+            self.deposit_to_storage(agent, storage)
+        else:
+            # Déposer le matériau le plus abondant
+            if agent.carry() > 0:
+                self.deposit_to_storage(agent, storage)
+
+    def set_goal_to_tile(self, agent: Being, act_type: int, tx: int, ty: int) -> None:
+        """Définit un but de déplacement vers une tuile."""
+        agent.goal = {"act": act_type, "x": tx, "y": ty, "ref": None,
+                      "intensity": 1.0, "until": self.w.tick + 600}
+        agent.goal_t = 0
+        agent.stuck = 0
+        agent._last_px, agent._last_py = agent.x, agent.y
 
     # ------------------------------------------------------------------ spawns
     def spawn_agent(self, x=None, y=None, color=None, gen=0, brain=None, parents=(),
@@ -334,6 +1148,18 @@ class Sim:
         "loss": {"loss": 0.15},
         "fire": {"fire": 0.10},
     }
+    # Lot D : biais d'action associés a chaque intention persistante.
+    # Sorti de _bias() (ou il etait recree a chaque appel) pour rejoindre
+    # les tables ci-dessus, deja definies au niveau classe.
+    INTENTION_BIAS = {
+        "secure_food": {HARVEST: 0.25, EAT: 0.10, EXPLORE: 0.05},
+        "protect_family": {FLEE: 0.15, ATTACK: 0.10, SOCIAL: 0.10},
+        "build_home": {BUILD: 0.30, HARVEST: 0.15},
+        "recover_from_loss": {REST: 0.20, SOCIAL: 0.10},
+        "avoid_danger": {FLEE: 0.30, EXPLORE: -0.10},
+        "help_ally": {GIVE: 0.20, SOCIAL: 0.15, TALK: 0.10},
+        "explore_unknown": {EXPLORE: 0.30},
+    }
 
     def update_anima_from_event(self, agent, event):
         """Met a jour la psychologie personnelle apres un evenement reel."""
@@ -442,8 +1268,15 @@ class Sim:
         self._bucket()
         for a in self.agents:
             if a.alive:
-                self._perceive(a)
-                self._agent(a)
+                with self.perf.measure("perception"):
+                    self._perceive(a)
+                # Phase 2: décision staggerée selon la fréquence de l'agent
+                if self.agent_should_think(a):
+                    self._agent(a)
+                else:
+                    # L'agent ne pense pas ce tick, mais continue son but courant
+                    if a.goal is not None:
+                        self._execute(a)
                 # Lot C : decroissance trauma + identite (tous les 100 ticks)
                 if w.tick % 100 == 0:
                     a.anima_decay_identity()
@@ -1068,16 +1901,7 @@ class Sim:
         if intent and intent.get("priority", 0) > 0.3:
             ik = intent.get("kind", "")
             ip = intent["priority"]
-            INTENTION_BIAS = {
-                "secure_food": {HARVEST: 0.25, EAT: 0.10, EXPLORE: 0.05},
-                "protect_family": {FLEE: 0.15, ATTACK: 0.10, SOCIAL: 0.10},
-                "build_home": {BUILD: 0.30, HARVEST: 0.15},
-                "recover_from_loss": {REST: 0.20, SOCIAL: 0.10},
-                "avoid_danger": {FLEE: 0.30, EXPLORE: -0.10},
-                "help_ally": {GIVE: 0.20, SOCIAL: 0.15, TALK: 0.10},
-                "explore_unknown": {EXPLORE: 0.30},
-            }
-            for act_key, bdelta in INTENTION_BIAS.get(ik, {}).items():
+            for act_key, bdelta in self.INTENTION_BIAS.get(ik, {}).items():
                 bias[act_key] += bdelta * ip
 
         # ── Lot E : plans courts → biais additionnel ──
@@ -1128,13 +1952,27 @@ class Sim:
 
     def _decide(self, a: Being):
         x = self._sense(a)
+        if not np.all(np.isfinite(x)):
+            # Perception invalide : pas de délibération, repli REST ce tick.
+            self.metrics["invalid_perceptions"] += 1
+            a.goal = None
+            return
         bias = self._bias(a)
         temperature = 0.5 + 0.9 * a.personality[6] + 0.4 * a.emotions[4]
-        act, probs = a.brain.think(
-            x, temperature, bias,
-            curiosity=a.personality[2],
-            caution=a.personality[3],
-        )
+        try:
+            act, probs = a.brain.think(
+                x, temperature, bias,
+                curiosity=a.personality[2],
+                caution=a.personality[3],
+            )
+        except ValueError:
+            self.metrics["invalid_perceptions"] += 1
+            self.log(f"Perception invalide pour {a.name} : repli REST.",
+                     (232, 136, 112))
+            a.goal = None
+            return
+        finally:
+            self._count_numeric_recoveries()
         f = self._feasible(a)
         if not f[act]:
             order = np.argsort(-probs)
@@ -1151,6 +1989,33 @@ class Sim:
         act_name = ACTION_NAMES_EXP.get(act, str(act))
         self.debug_action_counts[act_name] = self.debug_action_counts.get(act_name, 0) + 1
         self._set_goal(a, act)
+
+    def _count_numeric_recoveries(self):
+        """Compte (puis remet à zéro) les récupérations NaN/Inf du cerveau.
+
+        Import paresseux : si ``take_numeric_recoveries`` n'existe pas
+        encore dans ``game.brain``, on ignore silencieusement.
+        """
+        try:
+            from .brain import take_numeric_recoveries
+        except ImportError:
+            return
+        n = take_numeric_recoveries()
+        if n:
+            self.metrics["numeric_recoveries"] += n
+
+    def _capture_decision_trace(self, a: Being):
+        """Enregistre les candidats réellement évalués pour l'inspecteur.
+
+        Toute erreur est avalée : le diagnostic ne doit jamais casser la
+        simulation. La trace est lue telle quelle par le snapshot, l'UI ne
+        recalcule jamais les candidats.
+        """
+        try:
+            a.decision_trace = evaluate_candidates(self, a)
+        except Exception:
+            self.metrics["unhandled_action_errors"] += 1
+            a.decision_trace = []
 
     def _known_or_universal(self, a, category, tx, ty):
         personal = a.recall(category, tx, ty)
@@ -1312,6 +2177,36 @@ class Sim:
         a.stuck = 0
         a._last_px, a._last_py = a.x, a.y
 
+    def fallback_goal(self, a, reason="aucune_cible"):
+        """Repli contextuel court (Phase 2A) quand aucun but n'a pu être posé.
+
+        Contrat : pose un but REST bref sur la case courante de l'agent
+        (``until`` = tick + 60, donc expiré proprement par ``_execute``),
+        ne lève jamais d'exception et est idempotent : si un but existe
+        déjà, il est conservé tel quel. ``reason`` trace la cause dans les
+        compteurs d'activité.
+        """
+        w = self.w
+        if a.goal is not None:
+            return a.goal
+        try:
+            tx, ty = int(a.tx), int(a.ty)
+        except (ValueError, OverflowError):
+            # position corrompue (NaN/Inf) : on se replace au centre
+            tx = ty = w.g // 2
+        if not w.inb(tx, ty):
+            tx = min(max(tx, 0), w.g - 1)
+            ty = min(max(ty, 0), w.g - 1)
+        g = {"act": REST, "x": tx, "y": ty, "ref": None, "intensity": 0.6,
+             "until": w.tick + 60}
+        a.goal = g
+        a.goal_t = 0
+        a.stuck = 0
+        a._last_px, a._last_py = a.x, a.y
+        self.metrics["fallback_goals"] += 1
+        self.activity_reasons[f"fallback:{reason}"] += 1
+        return g
+
     def register_goal_failure(self, a, reason="blocked"):
         goal = a.goal or {}
         key = (goal.get("act"), goal.get("x"), goal.get("y"))
@@ -1322,6 +2217,7 @@ class Sim:
         a.goal = None
         a.stuck = 0
         a.emotions[3] = min(1.0, a.emotions[3] + 0.04)
+        self.activity_reasons[reason] += 1
         self._reward(a, -0.03)
 
     def target_is_blocked(self, a, act, tx, ty):
@@ -1428,6 +2324,59 @@ class Sim:
         a.goal_t += 1
         a.pain = max(0.0, a.pain - 0.0004)
 
+        # PART B: ActivityState - vérifier activité en cours
+        if a.activity is not None:
+            handled = False
+            if a.activity.kind == "food_expedition":
+                handled = self.step_food_expedition(a)
+            elif a.activity.kind == "water_search":
+                handled = self.step_water_search(a)
+            elif a.activity.kind == "return_home":
+                handled = self.step_return_home(a)
+            if handled:
+                # L'activité a géré ce tick, on saute la décision normale
+                self._metabolize(a)
+                after = self._wellbeing(a)
+                delta = after - getattr(a, 'prev_wellbeing', after)
+                if abs(delta) > 0.001:
+                    self._reward(a, 0.08 * delta)
+                a.prev_wellbeing = after
+                # Exécuter le but de mouvement si l'activité en a posé un
+                if a.goal is not None and a.goal["act"] in (EXPLORE, DRINK, SLEEP, REST):
+                    self._execute(a)
+                return
+
+        # Priorité 1: water_search si soif critique (≥ 0.85) - interrompt autres activités non-vitales
+        critical_thirst = a.needs[2] >= 0.85
+        if critical_thirst and self.maybe_start_water_search(a):
+            self._metabolize(a)
+            after = self._wellbeing(a)
+            delta = after - getattr(a, 'prev_wellbeing', after)
+            if abs(delta) > 0.001:
+                self._reward(a, 0.08 * delta)
+            a.prev_wellbeing = after
+            return
+
+        # Priorité 2: food_expedition
+        if self.maybe_start_food_expedition(a):
+            self._metabolize(a)
+            after = self._wellbeing(a)
+            delta = after - getattr(a, 'prev_wellbeing', after)
+            if abs(delta) > 0.001:
+                self._reward(a, 0.08 * delta)
+            a.prev_wellbeing = after
+            return
+
+        # Priorité 3: return_home
+        if self.maybe_start_return_home(a):
+            self._metabolize(a)
+            after = self._wellbeing(a)
+            delta = after - getattr(a, 'prev_wellbeing', after)
+            if abs(delta) > 0.001:
+                self._reward(a, 0.08 * delta)
+            a.prev_wellbeing = after
+            return
+
         # VOLONTE : le but persiste (engagement). On ne re-delibere que si :
         # but fini/expiré/bloque, urgence viscerale, ou mollesse (petit cerveau
         # en veille). Un grand cerveau stratege va au bout de sa tache.
@@ -1443,6 +2392,17 @@ class Sim:
             )
             if not memories:
                 self.bootstrap_resource_memory(a, radius=12)
+
+        # Phase 2: régénération des plans selon la fréquence
+        if self._should_generate_plans(a):
+            a._cached_plans = self._generate_plans(a)
+            a.anima["plan"] = dict(a._cached_plans[0]) if a._cached_plans else None
+            a._cached_plans_tick = self.w.tick
+
+        # Phase 2: candidats pour l'inspecteur (Phase 1 diagnostic)
+        if self._should_generate_candidates(a):
+            self._capture_decision_trace(a)
+
         if g is None or expired or a.stuck > 20 + 50 * a.personality[8]:
             self._decide(a)
         elif a.goal_t % a.brain.te == 0:
@@ -1452,9 +2412,8 @@ class Sim:
                     (0.4 + 0.5 * a.personality[4] - 0.4 * a.personality[6]):
                 self._decide(a)
         if a.goal is None:
-            a.goal = {"act": REST, "x": a.tx, "y": a.ty, "ref": None,
-                      "intensity": 1.0, "until": w.tick + 300}
-            a.goal_t = 0
+            # repli contextuel court (Phase 2A) — plus de repos de 300 ticks
+            self.fallback_goal(a)
 
         self._execute(a)
         self._metabolize(a)
@@ -1468,10 +2427,6 @@ class Sim:
         # ── Lot D : generation d'intentions (tous les 200 ticks) ──
         if w.tick % 200 == 0 and not a.anima_intention_valid(w.tick):
             self._generate_intention(a)
-        # ── Lot E : generation de plans (tous les 100 ticks) ──
-        if w.tick % 100 == 0:
-            a._cached_plans = self._generate_plans(a)
-            a.anima["plan"] = dict(a._cached_plans[0]) if a._cached_plans else None
         # ── Lot F+H : décroissance traces causales + observation learning ──
         if w.tick % 150 == 0:
             a.anima_decay_causal_traces()
@@ -1704,7 +2659,7 @@ class Sim:
             a.set_dir(dx / d * sp, dy / d * sp)
             self._move(a, dx / d * sp, dy / d * sp)
             a.energy -= MOVE_DRAIN * a.drain_f()
-            a.state = "run" if not a.child else "run"
+            a.state = "run"
             return
 
         done = False
@@ -1768,7 +2723,7 @@ class Sim:
         elif act == SOCIAL:
             done = self._do_social(a, ref)
         elif act == MARK:
-            if a.energy > 0.12:
+            if a.energy > 0.12 and w.inb(a.tx, a.ty):
                 w.marker[a.ty, a.tx] = min(1.0, w.marker[a.ty, a.tx] + 0.25)
                 w.marker_col[a.ty, a.tx] = a.col_idx
                 a.energy -= 0.004
@@ -2158,85 +3113,7 @@ class Sim:
                     key=lambda o: a.anima_social_score(o.eid))
         if e is None:
             return True
-        self.stats["talks"] += 1
-        a.talk_cd[e.eid] = self.w.tick
-        self.emit_sound(a.x, a.y, "voice", 0.6)
-        # Bulle de parole (Lot J) : effet visuel seul, purge par TTL.
-        self.effects.append({"kind": "talk", "x": a.x, "y": a.y,
-                             "t0": self.w.tick, "ttl": 20})
-        a.state = "talk"
-        msg = "chat"
-        if a.needs[2] > 0.65:
-            memory = a.recall("water", a.tx, a.ty)
-            if memory is not None:
-                self.send_fact(a, e, "water", memory[0], memory[1])
-                msg = "fait"
-        elif a.hunger > 0.65:
-            memory = a.recall("food", a.tx, a.ty)
-            if memory is not None:
-                self.send_fact(a, e, "food", memory[0], memory[1])
-                msg = "fait"
-        elif a.emotions[1] > 0.5:
-            msg = "salut"
-        elif a.emotions[0] > 0.5:
-            msg = "alerte"
-        elif a.emotions[2] > 0.5:
-            msg = "menace"
-        elif a.emotions[7] > 0.38 and a.bonded != e.eid and not e.child and not a.child:
-            msg = "cour"
-        elif self.rng.random() < 0.15:
-            msg = "fait"
-        r1 = a.rel.setdefault(e.eid, [0, 0])
-        r2 = e.rel.setdefault(a.eid, [0, 0])
-        if msg == "salut":
-            r1[0] = min(1, r1[0] + 0.08)
-            r2[0] = min(1, r2[0] + 0.08)
-            e.emotions[1] = min(1, e.emotions[1] + 0.06)
-        elif msg == "alerte":
-            r2[0] = min(1, r2[0] + 0.1)
-            e.emotions[0] = min(1, e.emotions[0] + 0.2)
-            e.remember("agent", a.tx, a.ty)
-        elif msg == "menace":
-            r2[0] = max(-1, r2[0] - 0.15)
-            e.emotions[2] = min(1, e.emotions[2] + 0.2)
-        elif msg == "cour":
-            e.emotions[7] = min(1, e.emotions[7] + 0.15 + 0.2 * a.personality[0])
-            r1[1] = min(1, r1[1] + 0.12)
-            r2[1] = min(1, r2[1] + 0.12)
-            # mariage : M+F obligatoire, pas d'inceste, pas déjà marié
-            eligible = (
-                a.sex != e.sex
-                and not a.married and not e.married
-                and not self._are_related(a, e)
-                and not a.child and not e.child
-                and r1[1] > 0.45 and r2[1] > 0.45
-            )
-            if eligible:
-                a.bonded, e.bonded = e.eid, a.eid
-                a.married, e.married = True, True
-                a.partner_id, e.partner_id = e.eid, a.eid
-                a.life.append(("mariage", e.name))
-                e.life.append(("mariage", a.name))
-                self.log(f"{a.name} et {e.name} se sont mariés.",
-                         (248, 178, 218), "social")
-        elif msg == "fait":
-            for cat in ("food", "water", "wood"):
-                memory = a.recall(cat, a.tx, a.ty)
-                if memory is not None:
-                    self.send_fact(a, e, cat, memory[0], memory[1])
-                    break
-        else:
-            r1[0] = min(1, r1[0] + 0.03)
-            r2[0] = min(1, r2[0] + 0.03)
-            if e.child and a.skills[0] > e.skills[0]:
-                e.skills[0] = min(1.0, e.skills[0] + 0.05)   # enseignement oral
-        a.skills[3] = min(1.0, a.skills[3] + 0.01)
-        if msg in ("salut", "cour"):
-            self.social_memory.record(e.eid, a.eid, "help", 0.12, self.w.tick)
-        elif msg == "alerte":
-            self.social_memory.record(e.eid, a.eid, "help", 0.15, self.w.tick)
-        self._reward(a, 0.1)
-        return True
+        return self.do_talk(a, e)
 
     def _do_social(self, a, ref):
         e = ref if isinstance(ref, Being) and ref.alive else None
@@ -2267,6 +3144,12 @@ class Sim:
     # ------------------------------------------------------------------ construction
     def _do_build(self, a, tx, ty):
         w, am = self.w, self.am
+
+        # ── garde coordonnées : but hors monde = indexation négative numpy ──
+        if not w.inb(tx, ty):
+            tx, ty = self._free_near(tx, ty)
+            if not w.inb(tx, ty):
+                return False
 
         # ── repli brique-par-brique si ressources insuffisantes ──
         if (a.inv.get("bois", 0) < 3 or a.inv.get("pierre", 0) < 1) \
@@ -2548,6 +3431,10 @@ class Sim:
                 return self.place_site_block(a, site, task)
             return True
         w, am = self.w, self.am
+        if not w.inb(tx, ty):
+            tx, ty = self._free_near(tx, ty)
+            if not w.inb(tx, ty):
+                return False
         if w.blocked[ty, tx] or w.content_at(tx, ty) >= 0 or not w.land[ty, tx]:
             tx, ty = self._free_near(tx, ty)
             if w.blocked[ty, tx] or w.content_at(tx, ty) >= 0:
@@ -2983,7 +3870,7 @@ class Sim:
             dist = math.sqrt(dx*dx + dy*dy)
             if dist < 14:
                 target.health -= m.damage
-                m.state = "attack" if hasattr(m, "state") else "idle"
+                m.state = "attack"
                 if isinstance(target, Being):
                     self._record_anima(
                         target, "monster_attack",

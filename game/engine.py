@@ -28,6 +28,8 @@ from __future__ import annotations
 import numpy as np
 
 from game.config import GRID, TILE
+from game.resourcesites import (ResourceSite, add_resource_site,
+                                 region_key)
 from game.world import World
 from game.simulation import Sim
 
@@ -179,11 +181,56 @@ def populate(w, am, rng, dense=True):
         x, y = int(rng.integers(4, GRID - 4)), int(rng.integers(4, GRID - 4))
         place(bushes + rocks, x, y)
 
-    # ── fruits sauvages : prairies et lisières ────────────────────────
-    for x, y in _biome_sites(w, rng, 2500 if dense else 250,
-                             (B.BIOME_GRASS, B.BIOME_FOREST, B.BIOME_MARSH),
-                             margin=4):
-        place(foods, x, y, hp=1)
+    # ── fruits sauvages : poches localisées (remplace 2500 isolés) ──────
+    FOOD_SITE_COUNT_DENSE = 55
+    FOOD_SITE_COUNT_SPARSE = 14
+    FOOD_SITE_RADIUS_MIN = 4
+    FOOD_SITE_RADIUS_MAX = 9
+    FOOD_SITE_DENSITY = 0.24
+    FOOD_SITE_MIN_DISTANCE = 28
+
+    def spaced_biome_sites(w, rng, count, biomes, *, min_distance=28, margin=12):
+        """Choisit des centres compatibles avec les biomes, suffisamment éloignés."""
+        candidates = _biome_sites(w, rng, count * 12, biomes, margin=margin)
+        accepted = []
+        for tx, ty in candidates:
+            if all(max(abs(tx - ox), abs(ty - oy)) >= min_distance
+                   for ox, oy in accepted):
+                accepted.append((tx, ty))
+            if len(accepted) >= count:
+                break
+        return accepted
+
+    food_sites = spaced_biome_sites(
+        w, rng,
+        FOOD_SITE_COUNT_DENSE if dense else FOOD_SITE_COUNT_SPARSE,
+        (B.BIOME_FOREST, B.BIOME_GRASS, B.BIOME_MARSH),
+        min_distance=FOOD_SITE_MIN_DISTANCE,
+        margin=12,
+    )
+
+    for cx, cy in food_sites:
+        radius = int(rng.integers(FOOD_SITE_RADIUS_MIN, FOOD_SITE_RADIUS_MAX + 1))
+        blob(w, am, rng, cx, cy, radius,
+             lambda tx, ty: place(foods, tx, ty, hp=1),
+             density=FOOD_SITE_DENSITY)
+
+        # Créer le site de ressource persistant (Phase 3)
+        biome_id = int(w.gen.biome[cy, cx]) if w.gen is not None else -1
+        site = ResourceSite(
+            id=w.next_resource_site_id,
+            kind="wild_food",
+            tx=cx, ty=cy,
+            radius=radius,
+            capacity=28.0,
+            remaining=28.0,
+            regrowth_per_tick=0.006,
+            biome=biome_id,
+            region=region_key(cx, cy),
+            visible_cap=14,
+        )
+        w.next_resource_site_id += 1
+        add_resource_site(w, site)
 
     # ── carcasses ─────────────────────────────────────────────────────
     for _ in range(34 if dense else 5):
@@ -246,12 +293,22 @@ def seed_life(w, sim, rng, *, n_agents=60, n_sheep=40, n_monsters=0):
 
 def build_world(am, seed, procedural=False, *, populate_dense=True,
                 n_agents=0, tile_period=None, ridge_width=None,
-                water_frac=WATER_FRAC, mountain_frac=MOUNTAIN_FRAC):
+                water_frac=WATER_FRAC, mountain_frac=MOUNTAIN_FRAC,
+                start_paused=False, blank_world=False):
     """Construit le monde complet : heightmap, décor, simulation prête.
 
     `procedural=False` conserve l'ancien comportement (terre pleine, pas de
     relief) ; `procedural=True` génère les chaînes de montagnes.
+
+    `start_paused=False` démarre la simulation immédiatement (monde peuplé).
+
+    `blank_world=True` crée un monde minimal (256x256), sans génération
+    procédurale, sans agents, sans moutons, sans prédateurs, sans ressources,
+    sans décor. La simulation démarre en pause.
     """
+
+    if blank_world:
+        return build_world_blank(am, seed)
 
     rng = np.random.default_rng(seed)
     w = World()
@@ -267,14 +324,14 @@ def build_world(am, seed, procedural=False, *, populate_dense=True,
         w.gen = None
     w.save_mountains()
 
-    sim = Sim(w, am, seed=seed)
+    sim = Sim(w, am, seed=seed, blank_world=blank_world)
 
     # ← la v1 sautait cette étape : le monde naissait stérile
     populate(w, am, rng, dense=populate_dense)
 
     seed_life(w, sim, rng, n_agents=n_agents)
 
-    sim.paused = True
+    sim.paused = bool(start_paused)
     if gen is not None:
         from game import worldgen as _wg
         parts = sorted(_wg.stats(gen).items(), key=lambda kv: -kv[1])[:4]
@@ -298,10 +355,44 @@ def build_world_blank(am, seed):
     w = World()
     w.set_land(np.zeros((GRID, GRID), dtype=np.uint8))
     w.gen = None
-    sim = Sim(w, am, seed=seed)
+    sim = Sim(w, am, seed=seed, blank_world=True)
     sim.paused = True
     sim.log("Monde vide — tout est océan. Peignez des îles avec les outils "
             "de terrain.", (78, 168, 232), "world")
+    return w, sim
+
+
+def make_engine(am, seed=7, *, blank_world=False, procedural=False,
+                populate_dense=True, n_agents=0, n_sheep=0,
+                start_paused=None):
+    """Point d'entrée unique pour créer un moteur de simulation.
+
+    `blank_world=True` : monde laboratoire (256x256), sans génération
+    procédurale, sans vie, sans ressources, sans décor. Pause forcée.
+    Indicateurs UI : "LAB WORLD — manual setup — paused".
+
+    Retourne (world, sim).
+    """
+    if blank_world:
+        # Monde laboratoire : on force la pause
+        start_paused = True
+
+    w, sim = build_world(
+        am, seed,
+        procedural=procedural,
+        populate_dense=populate_dense,
+        n_agents=n_agents,
+        start_paused=start_paused if start_paused is not None else False,
+        blank_world=blank_world,
+    )
+
+    # Pour blank_world, on s'assure qu'il n'y a aucune vie
+    if blank_world:
+        sim.agents.clear()
+        sim.sheep.clear()
+        sim.monsters.clear()
+        sim.blank_world = True
+
     return w, sim
 
 

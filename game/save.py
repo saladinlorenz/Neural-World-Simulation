@@ -1,7 +1,21 @@
 """Sauvegarde / chargement complet de la simulation.
 
 Sauvegarde : world + sim + agents + cerveaux + camera → data/saves/slot_N.npz
-Charge : restaure l'état exact, y compris les poids de neurones."""
+Charge : restaure l'état exact, y compris les poids de neurones.
+
+Politique de validation au chargement (sauvegarde corrompue / NaN-Inf) :
+- jamais d'exception pour une valeur non finie : le chargement aboutit ;
+- scalaires d'entités (x, y, santé, énergie, ...) : repli sûr si non fini,
+  puis bornes appliquées ([0,1] pour les ratios vitaux, [0, GRID*TILE] pour
+  les positions) ;
+- poids de cerveau : NaN/Inf remplacés par `np.nan_to_num` (les poids sains
+  sont conservés, même garde-fou que Brain.learn) ; taille historique
+  128 entrées migrée AVANT la construction du Brain ; taille inconnue →
+  cerveau régénéré (le chargement ne plante pas) ;
+- chaque correction est comptée : compteur module `load_anomalies()`,
+  recopié sur `sim.metrics["load_anomalies"]` si ce dictionnaire existe ;
+- seule une absence de données exploitables reste fatale : fichier pickle
+  illisible → `ValueError("Sauvegarde corrompue : <path>")`."""
 import ast
 import os
 import pickle
@@ -16,6 +30,156 @@ SAVE_VERSION = 3
 def _slot_path(slot=0):
     os.makedirs(SAVE_DIR, exist_ok=True)
     return os.path.join(SAVE_DIR, f"slot_{slot}.pkl")
+
+
+# ------------------------------------------------------- validation au chargement
+#: Nombre d'anomalies (valeur non finie, poids corrompus, taille inconnue)
+#: assainies lors du dernier chargement. Remis à zéro au début de `load_game`
+#: puis reporté sur `sim.metrics["load_anomalies"]`.
+_LOAD_ANOMALIES = 0
+
+#: Bornes monde (pixels) pour recaler les positions chargées.
+_WORLD_MAX_PX = float(GRID * TILE - 1)
+_WORLD_CENTER_PX = float(GRID * TILE) / 2.0
+
+
+def load_anomalies():
+    """Nombre d'anomalies assainies lors du dernier `load_game` (0 = sain)."""
+    return _LOAD_ANOMALIES
+
+
+def _reset_anomalies():
+    """Remet à zéro le compteur d'anomalies de chargement."""
+    global _LOAD_ANOMALIES
+    _LOAD_ANOMALIES = 0
+
+
+def _count_anomaly(name):
+    """Compte une anomalie assainie (nom conservé pour diagnostic)."""
+    global _LOAD_ANOMALIES
+    _LOAD_ANOMALIES += 1
+    return name
+
+
+def _require_finite(value, name, default=None):
+    """Vérifie qu'une valeur (scalaire ou tableau) ne contient ni NaN ni Inf.
+
+    Politique : valeur finie → renvoyée telle quelle ; sinon `default` est
+    renvoyé si fourni (assainissement silencieux, compté comme anomalie),
+    sinon `ValueError` — un repli doit être fourni pour toute donnée de la
+    simulation, seuls les fichiers illibles restent fatals.
+    """
+    try:
+        arr = np.asarray(value, dtype=np.float64)
+    except (TypeError, ValueError):
+        _count_anomaly(name)
+        if default is not None:
+            return default
+        raise ValueError(f"{name} contient des valeurs non finies") from None
+    if np.all(np.isfinite(arr)):
+        return value
+    _count_anomaly(name)
+    if default is not None:
+        return default
+    raise ValueError(f"{name} contient des valeurs non finies")
+
+
+def _sanitize_finite(value, name, default=None):
+    """Assainit un tableau : NaN→0, ±Inf→±1, poids sains inchangés.
+
+    `default` est renvoyé si la conversion échoue (sinon `None`).
+    """
+    try:
+        arr = np.asarray(value, dtype=np.float64)
+    except (TypeError, ValueError):
+        _count_anomaly(name)
+        return default
+    if np.all(np.isfinite(arr)):
+        return arr
+    _count_anomaly(name)
+    return np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=-1.0)
+
+
+def _finite_scalar(value, name, default, lo=None, hi=None):
+    """Assainit un scalaire d'état : non fini → `default`, hors bornes → clamp.
+
+    Toute correction est comptée comme anomalie de chargement.
+    """
+    try:
+        v = float(_require_finite(value, name, default=default))
+    except (TypeError, ValueError):
+        return float(default)
+    if lo is not None and v < lo:
+        _count_anomaly(name)
+        v = float(lo)
+    elif hi is not None and v > hi:
+        _count_anomaly(name)
+        v = float(hi)
+    return v
+
+
+def _expected_params_size(n_hid, n_in):
+    """Taille des poids attendue : Wx(n_in*n)+Wd(n)+b1(n)+Wo(N_OUT*n)+b2."""
+    from .brain import N_OUT
+    return n_in * n_hid + 2 * n_hid + N_OUT * n_hid + N_OUT
+
+
+def _prepare_brain_params(raw, n_hid, kind="agent"):
+    """Valide et migre les poids de cerveau d'une sauvegarde.
+
+    - NaN/Inf remplacés par `np.nan_to_num` (poids sains conservés) ;
+    - taille historique 128 entrées migrée VERS N_IN courant **avant** la
+      construction du Brain (unpack() plante sinon sur un vecteur trop court) ;
+    - taille non interprétable → `None`, l'appelant régénère un cerveau neuf.
+
+    Retourne le vecteur de poids prêt pour `Brain(params=...)`, ou `None`.
+    """
+    from . import brain as _brain
+    n_in = int(getattr(_brain, "N_IN", 132))
+    old_nin = int(getattr(_brain, "OLD_NIN", 128))
+    p = _sanitize_finite(raw, f"{kind}.brain_p")
+    if p is None:
+        return None
+    p = np.asarray(p, dtype=np.float64).ravel()
+    params_size = getattr(_brain, "params_size", None)
+    if callable(params_size):
+        expected = int(params_size(n_hid))
+    else:
+        expected = _expected_params_size(n_hid, n_in)
+    if p.size == expected:
+        return p
+    # ancien format (128 entrées) : migrer AVANT toute construction Brain
+    migrate = getattr(_brain, "migrate_input_weights", None)
+    if migrate is not None:
+        cand, _new_n = migrate(p, old_n=old_nin, new_n=n_in)
+        cand = np.asarray(cand, dtype=np.float64).ravel()
+        if cand.size == expected:
+            return cand
+    _count_anomaly(f"{kind}.brain_p (taille {p.size} inattendue)")
+    return None
+
+
+def _fresh_brain(n_hid, eid=0):
+    """Cerveau neuf de repli, graine déterministe dérivée de l'eid."""
+    from . import brain as _brain
+    rng = np.random.default_rng(int(eid) * 7919 + 13)
+    return _brain.Brain(n_hid=int(n_hid), rng=rng)
+
+
+def _publish_load_anomalies(sim):
+    """Reporte le compteur d'anomalies sur le Sim chargé (défensif : le
+    dictionnaire `metrics` peut être absent ou de type inconnu)."""
+    n = _LOAD_ANOMALIES
+    if not n:
+        return
+    try:
+        m = getattr(sim, "metrics", None)
+        if isinstance(m, dict):
+            m["load_anomalies"] = int(m.get("load_anomalies", 0)) + n
+        elif m is None:
+            sim.metrics = {"load_anomalies": n}
+    except (AttributeError, TypeError, ValueError):
+        pass
 
 
 def save_game(sim, cam=None, slot=0, ui_state=None):
@@ -102,6 +266,9 @@ def save_game(sim, cam=None, slot=0, ui_state=None):
         "clock_growth_f": sim.clock.growth_f,
         "clock_storm": sim.clock._storm,
         "rng_state": sim.rng.bit_generator.state,
+        # graine de la simulation (determinisme + affichage UI) ; absent des
+        # sauvegardes antérieures → 0 au rechargement
+        "seed": int(getattr(sim, "seed", 0)),
         # --- sim social/commerce ---
         "clan_knowledge": {
             "places": sim.clan_knowledge.places,
@@ -194,8 +361,14 @@ def load_game(am, slot=0):
     path = _slot_path(slot)
     if not os.path.exists(path):
         return None, None
-    with open(path, "rb") as f:
-        data = pickle.load(f)
+    _reset_anomalies()
+    try:
+        with open(path, "rb") as f:
+            data = pickle.load(f)
+    except (EOFError, pickle.UnpicklingError, AttributeError) as e:
+        raise ValueError(f"Sauvegarde corrompue : {path}") from e
+    if not isinstance(data, dict):
+        raise ValueError(f"Sauvegarde corrompue : {path}")
 
     ver = data.get("version", 1)
     if ver > SAVE_VERSION:
@@ -301,7 +474,7 @@ def load_game(am, slot=0):
         w.gen = None
 
     # --- reconstruire sim ---
-    sim = Sim(w, am, seed=0)
+    sim = Sim(w, am, seed=int(data.get("seed", 0)))
     sim.next_eid = data["next_eid"]
     sim.paused = data["paused"]
     sim.speed = data["speed"]
@@ -385,6 +558,9 @@ def load_game(am, slot=0):
     sim.monsters = []
     for md in data.get("monsters", []):
         sim.monsters.append(_deserialize_monster(md))
+
+    # --- anomalies de chargement assainies (valeurs non finies, poids) ---
+    _publish_load_anomalies(sim)
 
     # --- rebuild spatial hash (grid_bucket + _entity_cells) ---
     sim.grid_bucket = {}
@@ -495,49 +671,73 @@ def _serialize_agent(a):
 
 def _deserialize_agent(d):
     from collections import deque as _dq
-    from .brain import Brain, N_IN, OLD_NIN, migrate_input_weights
-    brain = Brain(n_hid=d["brain_n"], params=d["brain_p"])
-    brain.h = d["brain_h"]
-    brain.last_out = d["brain_last_out"]
-    brain.probs = d["brain_probs"]
-    brain.base = d["brain_base"]
-    # Migration 128→132 entrées pour anciennes saves
-    from .brain import N_OUT
-    denom = OLD_NIN + 2 + N_OUT
-    old_h = (d["brain_p"].size - N_OUT) // denom
-    if old_h > 0 and (d["brain_p"].size - N_OUT) % denom == 0:
-        expected_old = old_h * denom + N_OUT
-        if d["brain_p"].size == expected_old:
-            brain.p, _ = migrate_input_weights(d["brain_p"], old_n=OLD_NIN, new_n=N_IN)
+    from . import brain as _brain
+    n_hid = int(d["brain_n"])
+    # --- cerveau : validation + migration 128→132 AVANT construction ------
+    # (unpack() plante sur un vecteur 128 entrées : la migration doit donc
+    # précéder Brain(...) ; aucune réaffectation de brain.p ensuite, donc
+    # les vues _Wx/_Wo issues du constructeur restent cohérentes)
+    brain_p = _prepare_brain_params(d["brain_p"], n_hid, kind="agent")
+    if brain_p is None:
+        brain = _fresh_brain(n_hid, d["eid"])
+    else:
+        try:
+            brain = _brain.Brain(n_hid=n_hid, params=brain_p)
+        except (ValueError, TypeError):
+            _count_anomaly("agent.brain_p")
+            brain = _fresh_brain(n_hid, d["eid"])
+    brain.h = _sanitize_finite(d["brain_h"], "agent.brain_h", brain.h)
+    brain.last_out = _sanitize_finite(d["brain_last_out"], "agent.brain_last_out",
+                                      brain.last_out)
+    brain.probs = _sanitize_finite(d["brain_probs"], "agent.brain_probs", brain.probs)
+    brain.base = _finite_scalar(d["brain_base"], "agent.brain_base", 0.0)
     if d.get("brain_rng") is not None:
         brain.rng.bit_generator.state = d["brain_rng"]
     if d.get("brain_trace"):
         brain._trace = _dq(d["brain_trace"], maxlen=brain._trace.maxlen)
     # tete strategie + cible (fallback: aleatoire pour anciens saves)
     if d.get("brain_Wo_strat") is not None:
-        brain._Wo_strat = d["brain_Wo_strat"]
-        brain._b2_strat = d["brain_b2_strat"]
-        brain._Wo_targ = d["brain_Wo_targ"]
-        brain._b2_targ = d["brain_b2_targ"]
+        brain._Wo_strat = _sanitize_finite(d["brain_Wo_strat"], "agent.brain_Wo_strat",
+                                           brain._Wo_strat)
+        brain._b2_strat = _sanitize_finite(d["brain_b2_strat"], "agent.brain_b2_strat",
+                                           brain._b2_strat)
+        brain._Wo_targ = _sanitize_finite(d["brain_Wo_targ"], "agent.brain_Wo_targ",
+                                          brain._Wo_targ)
+        brain._b2_targ = _sanitize_finite(d["brain_b2_targ"], "agent.brain_b2_targ",
+                                          brain._b2_targ)
 
+    # --- positions : repli au centre du monde puis bornes [0, GRID*TILE] ---
+    x = _finite_scalar(d["x"], "agent.x", _WORLD_CENTER_PX, 0.0, _WORLD_MAX_PX)
+    y = _finite_scalar(d["y"], "agent.y", _WORLD_CENTER_PX, 0.0, _WORLD_MAX_PX)
     a = Being(
-        eid=d["eid"], x=d["x"], y=d["y"], color=d["color"], cls=d["cls"],
+        eid=d["eid"], x=x, y=y, color=d["color"], cls=d["cls"],
         states={}, gen=d["gen"], brain=brain, parents=d.get("parents", ()),
-        personality=d["personality"], rng=None, born_tick=d["born_tick"],
-        n_hid=d["brain_n"], body=d["body"], cog=d["cog"],
-        emotions=d["emotions"], needs=d["needs"], sex=d["sex"],
+        personality=_sanitize_finite(d["personality"], "agent.personality"),
+        rng=None, born_tick=d["born_tick"],
+        n_hid=n_hid, body=_sanitize_finite(d["body"], "agent.body"),
+        cog=_sanitize_finite(d["cog"], "agent.cog"),
+        emotions=_sanitize_finite(d["emotions"], "agent.emotions"),
+        needs=_sanitize_finite(d["needs"], "agent.needs"), sex=d["sex"],
     )
     a.name = d["name"]
     a.age = d["age"]
     a.natural_death_age = d.get("natural_death_age", AGE_MAX_NATURAL_DEATH_TICKS)
-    a.vx = d["vx"]; a.vy = d["vy"]
-    a.fx = d["fx"]; a.fy = d["fy"]
-    a.health = d["health"]; a.pain = d["pain"]; a.temp = d["temp"]
-    a.energy = d["energy"]; a.hunger = d["hunger"]
+    a.vx = _finite_scalar(d["vx"], "agent.vx", 0.0)
+    a.vy = _finite_scalar(d["vy"], "agent.vy", 0.0)
+    a.fx = int(_finite_scalar(d["fx"], "agent.fx", 0))
+    a.fy = int(_finite_scalar(d["fy"], "agent.fy", 0))
+    # --- état vital : repli sûr puis bornes [0, 1] ---
+    a.health = _finite_scalar(d["health"], "agent.health", 1.0, 0.0, 1.0)
+    a.pain = _finite_scalar(d["pain"], "agent.pain", 0.0, 0.0, 1.0)
+    a.temp = _finite_scalar(d["temp"], "agent.temp", 0.5, 0.0, 1.0)
+    a.energy = _finite_scalar(d["energy"], "agent.energy", 0.5, 0.0, 1.0)
+    a.hunger = _finite_scalar(d["hunger"], "agent.hunger", 0.0, 0.0, 1.0)
     a.tool = d["tool"]; a.inv = d["inv"]
     a.tool_durability = d.get("tool_durability", 0)
-    a.skills = d["skills"]; a.habits = d["habits"]
-    a.self_esteem = d["self_esteem"]; a.rep = d["rep"]
+    a.skills = _sanitize_finite(d["skills"], "agent.skills", np.zeros(4))
+    a.habits = _sanitize_finite(d["habits"], "agent.habits", np.full(15, 0.06))
+    a.self_esteem = _finite_scalar(d["self_esteem"], "agent.self_esteem", 0.5, 0.0, 1.0)
+    a.rep = _finite_scalar(d["rep"], "agent.rep", 0.0)
     a.state = d["state"]; a.alive = d["alive"]
     a.avatar = d["avatar"]; a.col_idx = d["col_idx"]
     a.commitment = d["commitment"]; a.stuck = d["stuck"]
@@ -622,14 +822,29 @@ def _serialize_sheep(s):
 
 
 def _deserialize_sheep(d):
-    from .brain import Brain
-    brain = Brain(n_hid=d["brain_n"], params=d["brain_p"])
-    brain.h = d["brain_h"]
-    s = Sheep(d["eid"], d["x"], d["y"], brain=brain)
-    s.vx = d["vx"]; s.vy = d["vy"]
-    s.energy = d["energy"]; s.health = d["health"]
+    from . import brain as _brain
+    n_hid = int(d["brain_n"])
+    # même politique que les agents : validation + migration 128→132 AVANT
+    # la construction du Brain (sinon unpack() plante sur l'ancien format)
+    brain_p = _prepare_brain_params(d["brain_p"], n_hid, kind="sheep")
+    if brain_p is None:
+        brain = _fresh_brain(n_hid, d["eid"])
+    else:
+        try:
+            brain = _brain.Brain(n_hid=n_hid, params=brain_p)
+        except (ValueError, TypeError):
+            _count_anomaly("sheep.brain_p")
+            brain = _fresh_brain(n_hid, d["eid"])
+    brain.h = _sanitize_finite(d["brain_h"], "sheep.brain_h", brain.h)
+    x = _finite_scalar(d["x"], "sheep.x", _WORLD_CENTER_PX, 0.0, _WORLD_MAX_PX)
+    y = _finite_scalar(d["y"], "sheep.y", _WORLD_CENTER_PX, 0.0, _WORLD_MAX_PX)
+    s = Sheep(d["eid"], x, y, brain=brain)
+    s.vx = _finite_scalar(d["vx"], "sheep.vx", 0.0)
+    s.vy = _finite_scalar(d["vy"], "sheep.vy", 0.0)
+    s.energy = _finite_scalar(d["energy"], "sheep.energy", 0.6, 0.0, 1.0)
+    s.health = _finite_scalar(d["health"], "sheep.health", 1.0, 0.0, 1.0)
     s.state = d["state"]; s.alive = d["alive"]
-    s.fear = d.get("fear", 0.0)
+    s.fear = _finite_scalar(d.get("fear", 0.0), "sheep.fear", 0.0, 0.0, 1.0)
     return s
 
 
@@ -644,9 +859,13 @@ def _serialize_monster(m):
 
 
 def _deserialize_monster(d):
-    m = Monster(d["eid"], d["x"], d["y"], kind=d["kind"])
-    m.vx = d["vx"]; m.vy = d["vy"]
-    m.energy = d["energy"]; m.health = d["health"]
+    x = _finite_scalar(d["x"], "monster.x", _WORLD_CENTER_PX, 0.0, _WORLD_MAX_PX)
+    y = _finite_scalar(d["y"], "monster.y", _WORLD_CENTER_PX, 0.0, _WORLD_MAX_PX)
+    m = Monster(d["eid"], x, y, kind=d["kind"])
+    m.vx = _finite_scalar(d["vx"], "monster.vx", 0.0)
+    m.vy = _finite_scalar(d["vy"], "monster.vy", 0.0)
+    m.energy = _finite_scalar(d["energy"], "monster.energy", 0.8, 0.0, 1.0)
+    m.health = _finite_scalar(d["health"], "monster.health", 1.0, 0.0, 1.0)
     m.alive = d["alive"]
     m.zone_id = d.get("zone_id")
     return m

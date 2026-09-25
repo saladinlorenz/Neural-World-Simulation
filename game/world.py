@@ -44,6 +44,10 @@ class World:
         # index de connaissance : ou est chaque categorie de ressource
         self.kidx = {k: {} for k in ("food", "wood", "stone", "gold", "tool", "shelter")}
         self._kcell = 8
+        # Sites de ressources persistants (Phase 3)
+        self.resource_sites: dict[int, "ResourceSite"] = {}
+        self.sites_by_region: dict[tuple[int, int], list[int]] = {}
+        self.next_resource_site_id: int = 1
         self.gen = None  # WorldGen instance (worldgen.py)
         self.rng_fire = np.random.default_rng(11)
         self._rng_regrow = np.random.default_rng(42)

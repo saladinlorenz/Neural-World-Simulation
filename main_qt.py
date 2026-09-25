@@ -49,7 +49,8 @@ def main():
     if args.blank:
         world, sim = build_world_blank(am, args.seed)
     else:
-        world, sim = build_world(am, args.seed, procedural=bool(args.procedural))
+        world, sim = build_world(am, args.seed, procedural=bool(args.procedural),
+                                 start_paused=False)
         seed_life(world, sim, sim.rng, n_agents=args.agents, n_sheep=args.sheep)
     sim.speed = args.speed
     print("[BOOT] monde construit", world.g, "x", world.g,

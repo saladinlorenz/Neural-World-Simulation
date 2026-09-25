@@ -200,5 +200,13 @@ class PopulationDock(QDockWidget):
             QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            self.controller.execute({"kind": "remove_agent", "eid": eid})
+            result = self.controller.execute({"kind": "remove_agent", "eid": eid})
+            if not result.get("ok", False):
+                error = result.get("error", "Erreur inconnue")
+                QMessageBox.warning(
+                    self,
+                    "Échec de la suppression",
+                    f"Impossible de supprimer l'habitant : {error}",
+                    QMessageBox.StandardButton.Ok,
+                )
             self.refresh()

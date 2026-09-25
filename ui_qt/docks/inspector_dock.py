@@ -3,11 +3,12 @@ from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                               QTableView, QLabel, QScrollArea, QFrame,
                               QGroupBox, QGridLayout, QSlider,
                               QStackedWidget)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 
 from game.ui_snapshots import selected_agent_snapshot, anima_snapshot
 from game.ui_registry import C_CORPS, C_COG, C_PERSO, C_EMO, C_BESOIN, C_EXP, C_MEM
+from game.diagnostics import action_name
 from ui_qt.models.anima_model import AnimaModel
 from ui_qt.widgets.empty_state import EmptyState
 from ui_qt.widgets.stat_card import StatCard
@@ -15,6 +16,8 @@ from ui_qt.widgets.stat_card import StatCard
 
 class InspectorDock(QDockWidget):
     """Dock inspecteur complet : identite + corps + Anima + relations."""
+
+    command_result = pyqtSignal(dict)
 
     #: Cartes visuelles (Lot F.1) : (cle interne, titre, couleur Neural Lab).
     #: Les valeurs proviennent de ``health`` et ``needs_named`` du snapshot.
@@ -28,6 +31,15 @@ class InspectorDock(QDockWidget):
         ("appartenance", "Appartenance", "#B8C4FF"),
         ("estime", "Estime", "#74D9F5"),
     ]
+
+    #: Libellés français du diagnostic de décision (Phase 1). Clés = valeurs
+    #: brutes de la trace moteur ; l'UI ne fait que traduire, jamais recalculer.
+    POSS_VERB = {"pickup": "Ramasser", "sit": "S'asseoir", "follow": "Suivre"}
+    POSS_TARGET = {"item": "objet", "spot": "lieu",
+                   "agent": "habitant", "terrain": "terrain"}
+    POSS_STATE = {"selected": "choisi", "feasible": "faisable",
+                  "rejected": "rejeté", "invalid": "invalide",
+                  "expired": "périmé"}
 
     def __init__(self, controller, parent=None):
         super().__init__("Inspecteur", parent)
@@ -189,6 +201,81 @@ class InspectorDock(QDockWidget):
         self._relations_label.setWordWrap(True)
         self._layout.addWidget(self._relations_label)
 
+        # === Activite (Phase 3 : bloc « activity » du snapshot) ===
+        self._activity_group = QGroupBox("Activité")
+        self._activity_group.setStyleSheet(
+            f"QGroupBox {{ font-weight: bold; color: {_hex(C_COG)}; }}"
+        )
+        act_layout = QVBoxLayout(self._activity_group)
+        act_layout.setContentsMargins(8, 16, 8, 8)
+        act_layout.setSpacing(2)
+        self._activity_state_label = QLabel("")
+        self._activity_action_label = QLabel("")
+        self._activity_target_label = QLabel("")
+        self._activity_stuck_label = QLabel("")
+        for act_lbl in (self._activity_state_label, self._activity_action_label,
+                        self._activity_target_label, self._activity_stuck_label):
+            act_lbl.setWordWrap(True)
+            act_lbl.setStyleSheet("font-size: 11px;")
+            act_layout.addWidget(act_lbl)
+        self._layout.addWidget(self._activity_group)
+
+        # === Possibilités évaluées (Phase 1 : diagnostic de décision) ===
+        # Lecture seule de la trace capturée par le moteur : l'UI ne recalcule
+        # jamais les candidats et ne balaie jamais le monde.
+        self._possibilities_group = QGroupBox("Possibilités évaluées")
+        self._possibilities_group.setStyleSheet(
+            f"QGroupBox {{ font-weight: bold; color: {_hex(C_EXP)}; }}"
+        )
+        poss_layout = QVBoxLayout(self._possibilities_group)
+        poss_layout.setContentsMargins(8, 16, 8, 8)
+        poss_layout.setSpacing(2)
+        self._possibilities_grid = QGridLayout()
+        self._possibilities_grid.setContentsMargins(0, 0, 0, 0)
+        self._possibilities_grid.setSpacing(2)
+        poss_layout.addLayout(self._possibilities_grid)
+        self._possibilities_empty = QLabel("Aucune possibilité évaluée récemment.")
+        self._possibilities_empty.setStyleSheet("font-size: 11px; color: #697281;")
+        poss_layout.addWidget(self._possibilities_empty)
+        self._layout.addWidget(self._possibilities_group)
+
+        # === Délibération (pensée sélectionnée visible) ===
+        # Résumé de la dernière délibération : besoin dominant, émotion,
+        # candidats, choix, raison, échec.
+        self._deliberation_group = QGroupBox("Délibération")
+        self._deliberation_group.setStyleSheet(
+            f"QGroupBox {{ font-weight: bold; color: {_hex(C_COG)}; }}"
+        )
+        delib_layout = QVBoxLayout(self._deliberation_group)
+        delib_layout.setContentsMargins(8, 16, 8, 8)
+        delib_layout.setSpacing(2)
+        self._delib_need_label = QLabel("")
+        self._delib_emotion_label = QLabel("")
+        self._delib_selected_label = QLabel("")
+        self._delib_reason_label = QLabel("")
+        self._delib_failure_label = QLabel("")
+        for lbl in (self._delib_need_label, self._delib_emotion_label,
+                    self._delib_selected_label, self._delib_reason_label,
+                    self._delib_failure_label):
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet("font-size: 11px;")
+            delib_layout.addWidget(lbl)
+        self._layout.addWidget(self._deliberation_group)
+
+        # === Contexte local (perception immédiate) ===
+        self._local_context_group = QGroupBox("Contexte local")
+        self._local_context_group.setStyleSheet(
+            f"QGroupBox {{ font-weight: bold; color: {_hex(C_EMO)}; }}"
+        )
+        lc_layout = QVBoxLayout(self._local_context_group)
+        lc_layout.setContentsMargins(8, 16, 8, 8)
+        lc_layout.setSpacing(2)
+        self._local_context_label = QLabel("")
+        self._local_context_label.setWordWrap(True)
+        self._local_context_label.setStyleSheet("font-size: 11px;")
+        lc_layout.addWidget(self._local_context_label)
+        self._layout.addWidget(self._local_context_group)
+
         # === Goal ===
         self._goal_label = QLabel("")
         self._goal_label.setWordWrap(True)
@@ -254,14 +341,8 @@ class InspectorDock(QDockWidget):
             self._needs_labels[key] = val_lbl
             slider.valueChanged.connect(lambda v, lbl=val_lbl: lbl.setText(f"{v}%"))
             slider.sliderReleased.connect(
-                lambda k=key, s=slider: self.controller.execute({
-                    "kind": "set_agent_stat",
-                    "eid": self.controller.ui_state.selected_agent_eid,
-                    "stat": k,
-                    "value": s.value() / 100.0,
-                })
+                lambda k=key, s=slider: self._on_set_stat(k, s)
             )
-        self._layout.addWidget(needs_group)
 
         # === Famille ===
         family_group = QGroupBox("Famille")
@@ -278,8 +359,19 @@ class InspectorDock(QDockWidget):
         self._layout.addWidget(family_group)
         self._groups["family"] = (family_group, None)
 
+    def _on_set_stat(self, stat_key, slider):
+        result = self.controller.execute({
+            "kind": "set_agent_stat",
+            "eid": self.controller.ui_state.selected_agent_eid,
+            "stat": stat_key,
+            "value": slider.value() / 100.0,
+        })
+        self.command_result.emit(result)
+
     def refresh(self):
-        snap = selected_agent_snapshot(self.controller.sim, self.controller.ui_state)
+        snap = selected_agent_snapshot(self.controller.sim,
+                                       self.controller.ui_state,
+                                       include_activity=True)
         anima_snap = anima_snapshot(self.controller.sim, self.controller.ui_state)
 
         if snap is None:
@@ -316,6 +408,22 @@ class InspectorDock(QDockWidget):
             self._memory_group.setVisible(False)
             self._relations_label.setText("")
             self._goal_label.setText("")
+            self._activity_group.setVisible(False)
+            self._activity_state_label.setText("")
+            self._activity_action_label.setText("")
+            self._activity_target_label.setText("")
+            self._activity_stuck_label.setText("")
+            self._possibilities_group.setVisible(False)
+            self._clear_grid(self._possibilities_grid)
+            self._possibilities_empty.setVisible(False)
+            self._deliberation_group.setVisible(False)
+            self._delib_need_label.setText("")
+            self._delib_emotion_label.setText("")
+            self._delib_selected_label.setText("")
+            self._delib_reason_label.setText("")
+            self._delib_failure_label.setText("")
+            self._local_context_group.setVisible(False)
+            self._local_context_label.setText("")
             return
 
         # Lot E : contenu affiché ; Lot F.1 : cartes rafraîchies en premier.
@@ -561,6 +669,85 @@ class InspectorDock(QDockWidget):
         else:
             self._relations_label.setText("<b>Relations:</b> aucune")
 
+        # === Activite (donnees reelles du bloc « activity ») ===
+        activity = snap.get("activity", {}) or {}
+        goal_action = activity.get("goal_action")
+        if goal_action is None:
+            action_text = "Aucun but"
+        else:
+            action_text = action_name(self.controller.sim, goal_action)
+        goal_tile = activity.get("goal_tile")
+        if goal_tile:
+            target_text = f"({goal_tile[0]}, {goal_tile[1]})"
+        else:
+            target_text = "—"
+        self._activity_state_label.setText(
+            f"État : {activity.get('state', '—')}"
+        )
+        self._activity_action_label.setText(f"Action : {action_text}")
+        self._activity_target_label.setText(f"Cible : {target_text}")
+        self._activity_stuck_label.setText(
+            f"Bloqué : {int(activity.get('stuck', 0))}"
+        )
+        self._activity_group.setVisible(True)
+
+        # === Délibération (pensée sélectionnée visible) ===
+        deliberation = snap.get("deliberation", {}) or {}
+        if deliberation:
+            self._deliberation_group.setVisible(True)
+            self._delib_need_label.setText(
+                f"<b>Besoin dominant :</b> {deliberation.get('dominant_need', '—')}"
+            )
+            self._delib_emotion_label.setText(
+                f"<b>Émotion dominante :</b> {deliberation.get('dominant_emotion', '—')}"
+            )
+            selected = deliberation.get("selected")
+            if selected:
+                verb = selected.get("verb", "—")
+                target_kind = selected.get("target_kind", "—")
+                target_id = selected.get("target_id")
+                tx = selected.get("tx")
+                ty = selected.get("ty")
+                score = selected.get("score", 0)
+                if target_id is not None:
+                    cible = f"{target_kind} #{target_id}"
+                else:
+                    cible = f"{target_kind} ({tx},{ty})"
+                self._delib_selected_label.setText(
+                    f"<b>Choix :</b> {verb} → {cible} (score: {score:.2f})"
+                )
+            else:
+                self._delib_selected_label.setText("<b>Choix :</b> aucun")
+            reason = deliberation.get("reason", "")
+            self._delib_reason_label.setText(
+                f"<b>Raison :</b> {reason}" if reason else "<b>Raison :</b> —"
+            )
+            failure = deliberation.get("failure_reason", "")
+            self._delib_failure_label.setText(
+                f"<b>Échec :</b> {failure}" if failure else "<b>Échec :</b> aucun"
+            )
+        else:
+            self._deliberation_group.setVisible(False)
+
+        # === Contexte local (perception immédiate) ===
+        local_ctx = snap.get("local_context", {}) or {}
+        if local_ctx:
+            self._local_context_group.setVisible(True)
+            lines = []
+            for key, value in local_ctx.items():
+                if isinstance(value, float):
+                    lines.append(f"  {key}: {value:.2f}")
+                else:
+                    lines.append(f"  {key}: {value}")
+            self._local_context_label.setText(
+                "<b>Perception locale :</b>\n" + "\n".join(lines)
+            )
+        else:
+            self._local_context_group.setVisible(False)
+
+        # === Possibilités évaluées (trace réelle, aucune recomputation) ===
+        self._fill_possibilities(snap.get("possibilities", []) or [])
+
         # Goal (action + destination + expiration)
         goal = snap.get("goal", {})
         if goal and goal.get("action_name"):
@@ -611,6 +798,64 @@ class InspectorDock(QDockWidget):
         """Vide toutes les cartes (aucun habitant sélectionné)."""
         for card in self._cards.values():
             card.set_value("—")
+
+    def _clear_grid(self, grid):
+        """Retire tous les widgets d'un QGridLayout."""
+        while grid.count():
+            item = grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _fill_possibilities(self, rows):
+        """Affiche la trace de décision : Action | Cible | Distance | Risque |
+        Score | État. ``rows`` provient du snapshot (déjà évalué par le
+        moteur) ; cette méthode ne fait que le mettre en forme.
+        """
+        grid = self._possibilities_grid
+        self._clear_grid(grid)
+        self._possibilities_group.setVisible(True)
+        if not rows:
+            self._possibilities_empty.setVisible(True)
+            return
+        self._possibilities_empty.setVisible(False)
+
+        for col, header in enumerate(
+                ("Action", "Cible", "Distance", "Risque", "Score", "État")):
+            lbl = QLabel(f"<b>{header}</b>")
+            lbl.setStyleSheet("font-size: 10px; color: #697281;")
+            grid.addWidget(lbl, 0, col)
+
+        for r, row in enumerate(rows[:8], start=1):
+            verb = self.POSS_VERB.get(row.get("verb"), row.get("verb", "—"))
+            kind = self.POSS_TARGET.get(
+                row.get("target_kind"), row.get("target_kind", ""))
+            tid = row.get("target_id")
+            if tid is not None:
+                cible = f"{kind} #{tid}"
+            else:
+                cible = f"{kind} ({row.get('tx')},{row.get('ty')})"
+            state_raw = row.get("state", "—")
+            state = self.POSS_STATE.get(state_raw, state_raw)
+            reason = row.get("reason")
+            state_text = f"{state} — {reason}" if reason else state
+            cells = (
+                str(verb),
+                str(cible),
+                str(row.get("distance", 0)),
+                f"{float(row.get('estimated_risk', 0.0)):.2f}",
+                f"{float(row.get('score', 0.0)):.2f}",
+                str(state_text),
+            )
+            selected = state_raw == "selected"
+            for col, text in enumerate(cells):
+                lbl = QLabel(text)
+                if selected and col == 5:
+                    lbl.setStyleSheet(
+                        "font-size: 10px; color: #62D394; font-weight: bold;")
+                else:
+                    lbl.setStyleSheet("font-size: 10px;")
+                grid.addWidget(lbl, r, col)
 
     def _agent_label(self, eid):
         """Libelle lisible d'un habitant par son eid (vivant ou defunt)."""

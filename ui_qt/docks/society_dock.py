@@ -14,6 +14,7 @@ class SocietyDock(QDockWidget):
     """Dock société avec stats démographiques et sociales."""
 
     agent_selected = pyqtSignal(int)
+    command_result = pyqtSignal(dict)
 
     def __init__(self, controller, parent=None):
         super().__init__("Societe", parent)
@@ -128,5 +129,6 @@ class SocietyDock(QDockWidget):
         eid = item.data(Qt.ItemDataRole.UserRole)
         if eid is None or int(eid) < 0:
             return
-        self.controller.execute({"kind": "select_agent", "eid": int(eid)})
+        result = self.controller.execute({"kind": "select_agent", "eid": int(eid)})
+        self.command_result.emit(result)
         self.agent_selected.emit(int(eid))

@@ -77,8 +77,16 @@ def population_snapshot(sim, include_dead: bool = False) -> list[dict[str, Any]]
 # ══════════════════════════════════════════════════════════════════════
 #  Snapshot agent sélectionné
 # ══════════════════════════════════════════════════════════════════════
-def selected_agent_snapshot(sim, ui_state=None) -> dict[str, Any] | None:
-    """Snapshot détaillé de l'habitant sélectionné."""
+def selected_agent_snapshot(sim, ui_state=None,
+                            include_activity: bool = False) -> dict[str, Any] | None:
+    """Snapshot détaillé de l'habitant sélectionné.
+
+    ``include_activity`` fusionne le bloc de diagnostic ``activity``
+    (Phase 3) : état, but, position et compteur « bloqué », lus sur
+    l'instance ``Being`` réelle. Opt-in car le contrat de clés du
+    snapshot de base est vérifié à l'identique par les tests (Lot A) ;
+    l'inspecteur demande explicitement le bloc enrichi.
+    """
     eid = getattr(ui_state, "selected_agent_eid", None)
     if eid is None:
         agent = getattr(sim, "selected", None)
@@ -89,8 +97,36 @@ def selected_agent_snapshot(sim, ui_state=None) -> dict[str, Any] | None:
     agent = next((a for a in sim.agents if a.eid == eid and a.alive), None)
     if agent is None:
         return None
-    from .diagnostics import agent_snapshot
-    return agent_snapshot(sim, agent)
+    from .diagnostics import agent_snapshot, deliberation_snapshot, activity_snapshot
+    snap = agent_snapshot(sim, agent)
+    if snap is None:
+        return None
+
+    # Délibération (pensée sélectionnée visible) — toujours incluse
+    deliberation = deliberation_snapshot(agent)
+    if deliberation:
+        snap["deliberation"] = deliberation
+
+    # Contexte local (perception immédiate) — lu sur agent.context
+    # qui est mis à jour par Sim._perceive à chaque tick.
+    local_ctx = getattr(agent, "context", {}) or {}
+    if local_ctx:
+        snap["local_context"] = dict(local_ctx)
+
+    if include_activity:
+        # Bloc activité enrichi (Phase 3)
+        act_snap = activity_snapshot(agent)
+        if act_snap:
+            snap["activity"] = act_snap
+
+        # Diagnostic de décision (Phase 1) : la trace capturée par le moteur
+        # lors de la dernière délibération. L'UI ne recalcule jamais les
+        # candidats ; on recopie des dictionnaires déjà simples.
+        snap["possibilities"] = [
+            dict(row) for row in (getattr(agent, "decision_trace", []) or [])
+        ]
+
+    return snap
 
 
 # ══════════════════════════════════════════════════════════════════════

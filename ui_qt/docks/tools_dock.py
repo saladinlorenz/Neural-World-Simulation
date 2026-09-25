@@ -21,6 +21,7 @@ class ToolsDock(QDockWidget):
     """Dock d'outils monde : poser, gommer, sol, eau, terre, mur, etc."""
 
     mode_changed = pyqtSignal(str)
+    command_result = pyqtSignal(dict)
 
     def __init__(self, controller, parent=None):
         super().__init__("Outils", parent)
@@ -90,6 +91,7 @@ class ToolsDock(QDockWidget):
 
     def _on_tool(self, tool_id):
         result = self.controller.execute({"kind": "set_mode", "mode": tool_id})
+        self.command_result.emit(result)
         if not result.get("ok"):
             return
         for tid, btn in self._buttons.items():
@@ -101,22 +103,25 @@ class ToolsDock(QDockWidget):
         if self._updating:
             return
         result = self.controller.execute({"kind": "set_brush_size", "size": value})
+        self.command_result.emit(result)
         if result.get("ok"):
             self._brush_val.setText(str(result["brush_size"]))
 
     def _on_material(self, material):
         result = self.controller.execute(
             {"kind": "set_block_material", "material": material})
+        self.command_result.emit(result)
         if not result.get("ok"):
             return
         for mat, btn in self._mat_buttons.items():
             btn.setChecked(mat == material)
 
     def _on_monster_kind(self, *_args):
-        self.controller.execute({
+        result = self.controller.execute({
             "kind": "set_monster_kind",
             "monster_kind": self._monster_combo.currentData() or "",
         })
+        self.command_result.emit(result)
 
     def refresh(self):
         ui_state = self.controller.ui_state

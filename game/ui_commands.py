@@ -650,8 +650,8 @@ def _cmd_reset_world(sim, cmd):
                                       "(attendu: procedural, plat ou vierge)"}
     seed = cmd.get("seed")
     seed = int(seed) if seed is not None else int(getattr(sim, "seed", 7))
-    n_agents = max(0, int(cmd.get("n_agents", 60)))
-    n_sheep = max(0, int(cmd.get("n_sheep", 40)))
+    n_agents = max(0, int(cmd.get("n_agents", 0)))
+    n_sheep = max(0, int(cmd.get("n_sheep", 0)))
 
     if mode == "vierge":
         world, new_sim = build_world_blank(am, seed)

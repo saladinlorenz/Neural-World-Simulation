@@ -28,6 +28,9 @@ from ui_qt.studio.comparison_panel import ComparisonPanel
 from ui_qt.studio.world_overlay import WorldOverlay
 
 
+TICK_BUDGET_MS = 50
+
+
 class MainWindow(QMainWindow):
     """Fenêtre principale PyQt6 avec docks, barre d'outils et carte."""
 
@@ -275,6 +278,14 @@ class MainWindow(QMainWindow):
         self._speed_spin.valueChanged.connect(self._on_speed)
         tb.addWidget(self._speed_spin)
 
+        # Bascule mode détail faible (Phase 6)
+        self._low_detail_action = QAction("Détail faible (L)", self, checkable=True)
+        self._low_detail_action.setShortcut("L")
+        self._low_detail_action.setToolTip(
+            "Mode détail faible : points au zoom loin, pas d'ombres/halos/effets")
+        self._low_detail_action.toggled.connect(self._toggle_low_detail)
+        tb.addAction(self._low_detail_action)
+
         # Raccourcis clavier 1..8 : une touche = une vitesse
         for speed in range(1, 9):
             action = QAction("Vitesse %d" % speed, self)
@@ -335,6 +346,7 @@ class MainWindow(QMainWindow):
         # Dock Inspecteur (droite)
         self._inspector_dock = InspectorDock(self.controller, self)
         self._inspector_dock.setObjectName("dock_inspecteur")
+        self._inspector_dock.command_result.connect(self.report_command_result)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._inspector_dock)
 
         # Dock Anima (droite, tabule avec inspecteur) : esprit interne
@@ -348,6 +360,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._society_dock)
         self.tabifyDockWidget(self._inspector_dock, self._society_dock)
         self._society_dock.agent_selected.connect(self._on_agent_selected)
+        self._society_dock.command_result.connect(self.report_command_result)
 
         # Dock Tuile (droite, tabulé avec inspecteur) : examinateur de tuile
         self._tile_dock = TileDock(self.controller, self)
@@ -360,14 +373,16 @@ class MainWindow(QMainWindow):
         self._assets_dock.setObjectName("dock_assets")
         if self.am:
             self._assets_dock.set_asset_manager(self.am)
+        self._assets_dock.asset_selected.connect(self._on_asset_selected)
+        self._assets_dock.command_result.connect(self.report_command_result)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._assets_dock)
         self.tabifyDockWidget(self._pop_dock, self._assets_dock)
-        self._assets_dock.asset_selected.connect(self._on_asset_selected)
 
         # Dock Outils (gauche)
         self._tools_dock = ToolsDock(self.controller, self)
         self._tools_dock.setObjectName("dock_outils")
         self._tools_dock.mode_changed.connect(self._on_mode_changed)
+        self._tools_dock.command_result.connect(self.report_command_result)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._tools_dock)
 
         # Dock Journal (bas)
@@ -594,14 +609,16 @@ class MainWindow(QMainWindow):
     def _tick(self):
         import time
 
-        now = time.perf_counter()
+        frame_started = time.perf_counter()
+        now = frame_started
         dt = now - getattr(self, "_last_tick_at", now)
         self._last_tick_at = now
 
         sim = self.controller.sim
         self._tick_count += 1
 
-        # Avancer la simulation
+        # 1. Simulation
+        sim_started = time.perf_counter()
         steps = 0
         if not sim.paused:
             from game.config import SIM_HZ, FPS
@@ -612,8 +629,13 @@ class MainWindow(QMainWindow):
                 acc -= 1.0
                 n += 1
             steps = n
+        sim_ms = (time.perf_counter() - sim_started) * 1000.0
 
-        # Synchroniser l'état
+        # Perf breakdown from sim.perf
+        self.last_perf_sections = sim.perf.summary()
+
+        # 2. Synchroniser l'état, docks, carte
+        ui_started = time.perf_counter()
         self.controller.sync_from_simulation()
 
         # Suivi caméra : centrer sur l'habitant sélectionné si activé
@@ -632,12 +654,22 @@ class MainWindow(QMainWindow):
         # paramètre Performance › Fréquence snapshot).
         self._refresh_live_docks()
 
-        # Mettre à jour la carte
-        if self._tick_count % 2 == 0:
+        # Mettre à jour la carte (tous les 3 ticks = ~6-7 Hz visuel à 20 FPS)
+        MAP_REDRAW_EVERY = 3
+        if self._tick_count % MAP_REDRAW_EVERY == 0:
             self._map.update()
 
-        # Indicateur FPS / TPS (moyennes glissantes) : la pill performance
-        # de la barre d'etat est rafraichie par _refresh_status (4x/sec).
+        ui_ms = (time.perf_counter() - ui_started) * 1000.0
+        total_ms = (time.perf_counter() - frame_started) * 1000.0
+
+        self.last_perf = {
+            "sim_ms": sim_ms,
+            "ui_ms": ui_ms,
+            "total_ms": total_ms,
+            "steps": steps,
+        }
+
+        # Indicateur FPS / TPS (moyennes glissantes)
         if dt > 0:
             self._fps_ema = 0.8 * getattr(self, "_fps_ema", 0.0) + 0.2 / dt
             self._tps_ema = 0.8 * getattr(self, "_tps_ema", 0.0) + 0.2 * steps / dt
@@ -654,17 +686,28 @@ class MainWindow(QMainWindow):
             self._speed_spin.blockSignals(False)
 
     def _refresh_live_docks(self):
-        """Docks qui suivent la simulation vivante (pas tout le monde)."""
+        """Docks qui suivent la simulation vivante (pas tout le monde).
+
+        Ne rafraîchit que les docks visibles pour économiser l'UI.
+        Fréquence par défaut augmentée à 8 ticks (Phase 4).
+        """
         snap_every = max(1, int(
-            (self.controller.sim.runtime or {}).get("snapshot_frequency", 4)))
+            (self.controller.sim.runtime or {}).get("snapshot_frequency", 8)))
         if self._tick_count % snap_every == 0:
-            self._pop_dock.refresh()
-            self._inspector_dock.refresh()
-            self._anima_dock.refresh()
-            self._journal_dock.refresh()
-            self._society_dock.refresh()
-            self._tools_dock.refresh()
-            self._tile_dock.refresh()
+            if self._pop_dock.isVisible():
+                self._pop_dock.refresh()
+            if self._inspector_dock.isVisible():
+                self._inspector_dock.refresh()
+            if self._anima_dock.isVisible():
+                self._anima_dock.refresh()
+            if self._journal_dock.isVisible():
+                self._journal_dock.refresh()
+            if self._society_dock.isVisible():
+                self._society_dock.refresh()
+            if self._tools_dock.isVisible():
+                self._tools_dock.refresh()
+            if self._tile_dock.isVisible():
+                self._tile_dock.refresh()
         # Catalogue lourd : une fois par seconde, et seulement a l'ecran.
         if self._tick_count % 60 == 0 and self._assets_dock.isVisible():
             refresh = getattr(self._assets_dock, "refresh_if_dirty", None)
@@ -701,24 +744,60 @@ class MainWindow(QMainWindow):
             self._tile_pill.setText("⌖ %d,%d" % (hover[0], hover[1]))
         else:
             self._tile_pill.setText("⌖ —")
+        perf = getattr(self, "last_perf", {})
+        sections = getattr(self, "last_perf_sections", {})
+
+        # Build compact perf line: percept=Xms think=Yms exec=Zms total=Tms
+        # Only show sections that exist (use .get with defaults)
+        parts = []
+        for key in ("perception", "decision", "execution"):
+            if key in sections:
+                parts.append("%s=%.1fms" % (key[:4], sections[key].get("avg_ms", 0.0)))
+        total_ms = sections.get("_total", {}).get("avg_ms", perf.get("sim_ms", 0.0))
+        if parts:
+            perf_line = "%s total=%.1fms" % (" ".join(parts), total_ms)
+        else:
+            perf_line = "S:%.1fms" % perf.get("sim_ms", 0.0)
+
+        # Budget indicator: warning color if total tick time > threshold
+        over_budget = total_ms > TICK_BUDGET_MS
         self._performance_pill.setText(
-            "%.0f FPS · %.1f TPS" % (getattr(self, "_fps_ema", 0.0),
-                                     getattr(self, "_tps_ema", 0.0)))
+            "%.0f FPS · %.1f TPS · %s" % (
+                getattr(self, "_fps_ema", 0.0),
+                getattr(self, "_tps_ema", 0.0),
+                perf_line,
+            ))
+        if over_budget:
+            self._performance_pill.set_pill_color("#E08A7A")  # warning orange/red
+        else:
+            self._performance_pill.set_pill_color("#91A0B2")  # default gray
 
         self._seed_label.setText("graine %s" % getattr(sim, "seed", "?"))
-        # Garde de changement : evite un setText par tick.
-        scenario = getattr(self, "_active_scenario", "manual")
-        if self._scenario_label.text() != scenario:
-            self._scenario_label.setText(scenario)
+        # Indicateur LAB WORLD pour mode laboratoire
+        is_blank = getattr(sim, "blank_world", False)
+        if is_blank:
+            lab_text = "LAB WORLD — manual setup — paused"
+        else:
+            lab_text = getattr(self, "_active_scenario", "manual")
+        if self._scenario_label.text() != lab_text:
+            self._scenario_label.setText(lab_text)
 
     def _on_pause(self):
-        self.controller.execute({"kind": "pause_toggle"})
+        self.report_command_result(self.controller.execute({"kind": "pause_toggle"}))
 
     def _on_step(self):
-        self.controller.execute({"kind": "step"})
+        self.report_command_result(self.controller.execute({"kind": "step"}))
 
     def _on_speed(self, value):
-        self.controller.execute({"kind": "set_speed", "speed": value})
+        self.report_command_result(self.controller.execute({"kind": "set_speed", "speed": value}))
+
+    def _toggle_low_detail(self, checked):
+        """Bascule le mode détail faible sur la carte (Phase 6)."""
+        self._map.low_detail_mode = checked
+        if checked:
+            self._status.showMessage("Mode détail faible activé (L)", 3000)
+        else:
+            self._status.showMessage("Mode détail normal", 3000)
 
     def _on_follow(self, checked):
         self.controller.ui_state.follow_selected = checked
@@ -873,7 +952,15 @@ class MainWindow(QMainWindow):
             self._map.set_overlay_mode(self.controller.ui_state.active_overlay)
 
     def _set_speed(self, speed):
-        self.controller.execute({"kind": "set_speed", "speed": speed})
+        self.report_command_result(self.controller.execute({"kind": "set_speed", "speed": speed}))
+
+    def keyPressEvent(self, event):
+        # Flèches/WASD non consommées par le widget focus (labels, boutons…)
+        # → navigation de la carte depuis n'importe quel dock ou la toolbar.
+        if getattr(self, "_map", None) is not None and \
+                self._map.handle_nav_key(event):
+            return
+        super().keyPressEvent(event)
 
     def closeEvent(self, event):
         self._save_settings()

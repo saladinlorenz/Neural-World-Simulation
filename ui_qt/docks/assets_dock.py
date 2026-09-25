@@ -17,6 +17,7 @@ class AssetsDock(QDockWidget):
     """Dock assets avec grille, catégories, recherche, favoris."""
 
     asset_selected = pyqtSignal(int)
+    command_result = pyqtSignal(dict)
 
     THUMB_LIST_SIZE = 96
     THUMB_DETAIL_SIZE = 128
@@ -284,7 +285,8 @@ class AssetsDock(QDockWidget):
         aid = current.data(Qt.ItemDataRole.UserRole)
         if aid is None:
             return
-        self.controller.execute({"kind": "select_asset", "aid": aid})
+        result = self.controller.execute({"kind": "select_asset", "aid": aid})
+        self.command_result.emit(result)
         self.asset_selected.emit(aid)
         if not self._am or not (0 <= aid < len(self._am.assets)):
             return

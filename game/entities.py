@@ -251,6 +251,9 @@ class Being:
         self.commitment = 0.0                        # engagement dans le but courant
         self.stuck = 0
         self.failed_targets = {}                     # {(act,tx,ty): (count, until_tick)}
+        # Trace de diagnostic (Phase 1) : candidats évalués à la dernière
+        # délibération. Transitoire, jamais sérialisé (save.py liste blanche).
+        self.decision_trace = []
         self.observed_actions = deque(maxlen=32)     # actions observees chez autrui
         self.context = {
             "food_density": 0.0,
@@ -271,6 +274,13 @@ class Being:
         self.work_t = 0
         self.atk_t = 0
         self.repro_cd = 400
+        # ---- Nouvelles capacités (Plan upgrade habitants)
+        self.local_context = {}
+        self.local_context_tick = -1
+        self.place_memories = {}
+        self.region_memory = {}
+        self.activity_experiences = deque(maxlen=48)
+        self.activity = None
         # ---- Mariage / reproduction / filiation
         self.married = False
         self.partner_id = None            # eid du conjoint

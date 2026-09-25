@@ -34,6 +34,10 @@ from ui_qt.studio.world_overlay import WorldOverlay
 #: Au-dela de ce zoom, le terrain global (1 px pour ~1.6 tuile) est remplace
 #: par le rendu detaille par chunks : 1 px par tuile, ombrage de pente inclus.
 CHUNK_ZOOM = 0.5
+# Seuils de rendu adaptatif (Phase 6)
+LOW_DETAIL_ZOOM = 0.45      # < 0.45 : points simples
+MEDIUM_DETAIL_ZOOM = 0.85   # 0.45-0.85 : simplifié
+HIGH_DETAIL_ZOOM = 0.85     # >= 0.85 : détail complet
 
 TERRAINGREEN = QColor(86, 150, 62)
 WATER = QColor(46, 92, 158)
@@ -223,8 +227,13 @@ class MapView(QWidget):
         self.debug_show_grid = False
         #: En mode debug seulement : identifiants et anneaux de sélection.
         self.debug_show_labels = False
+        #: Mode détail faible : désactive ombres, pluie, halos, grille, noms (sauf sélection)
+        #: et dessine les habitants sous forme de points au zoom faible.
+        self.low_detail_mode = False
 
         self.setMouseTracking(True)
+        # Les flèches/WASD doivent atteindre la vue quand on clique dessus.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMinimumSize(400, 300)
 
     # ------------------------------------------------------------------
@@ -248,6 +257,11 @@ class MapView(QWidget):
         for name in ("x", "y", "zoom", "tilt"):
             if hasattr(camera, name) and hasattr(self.transform, name):
                 setattr(camera, name, float(getattr(self.transform, name)))
+
+    def _visible(self, sx: float, sy: float, margin: float = 64.0) -> bool:
+        """Vérifie si un point écran est dans la zone visible (+ marge)."""
+        return (-margin <= sx <= self.width() + margin and
+                -margin <= sy <= self.height() + margin)
 
     # ------------------------------------------------------------------
     # Cache images
@@ -305,7 +319,10 @@ class MapView(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        # Désactiver l'antialiasing pour le terrain/sprites pixel-art (plus net, plus rapide)
+        # Garder l'antialiasing uniquement pour le texte/legend si nécessaire
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
 
         try:
             if self.auto_tilt:
@@ -458,19 +475,25 @@ class MapView(QWidget):
         # 5 — feu (au-dessus de tout le reste)
         drawables.extend(self._collect_fire(w, am, x0, y0, x1, y1))
 
-        # 1 — objets au sol
+        # 1 — objets au sol (avec culling visibilité)
         for item in getattr(w, "items", ()):
-            drawables.append((float(getattr(item, "y", 0.0)), 1, "item", item))
+            sx, sy = self.transform.to_screen(item.x, item.y)
+            if self._visible(sx, sy, margin=64):
+                drawables.append((float(getattr(item, "y", 0.0)), 1, "item", item))
 
-        # 3 — animaux
+        # 3 — animaux (avec culling visibilité)
         for sheep in sim.sheep:
             if sheep.alive:
-                drawables.append((float(sheep.y), 3, "sheep", sheep))
+                sx, sy = self.transform.to_screen(sheep.x, sheep.y)
+                if self._visible(sx, sy, margin=48):
+                    drawables.append((float(sheep.y), 3, "sheep", sheep))
         for monster in sim.monsters:
             if monster.alive:
-                drawables.append((float(monster.y), 3, "monster", monster))
+                sx, sy = self.transform.to_screen(monster.x, monster.y)
+                if self._visible(sx, sy, margin=48):
+                    drawables.append((float(monster.y), 3, "monster", monster))
 
-        # 4 — habitants (budget de rendu : performance.max_agents)
+        # 4 — habitants (budget de rendu : performance.max_agents) + culling visibilité
         selected_eid = getattr(self.controller.ui_state,
                                "selected_agent_eid", None)
         budget = int((sim.runtime or {}).get("max_agents_rendered", 200))
@@ -480,12 +503,17 @@ class MapView(QWidget):
             rest = [a for a in agents_alive if a.eid != selected_eid]
             agents_alive = head + rest[: max(0, budget - len(head))]
         for agent in agents_alive:
-            drawables.append((float(agent.y), 4, "agent", agent))
+            sx, sy = self.transform.to_screen(agent.x, agent.y)
+            if self._visible(sx, sy, margin=48):
+                drawables.append((float(agent.y), 4, "agent", agent))
 
         # 5 — effets d'action (liste déjà purgée par TTL côté moteur)
         for fx in getattr(sim, "effects", ()):
             try:
-                drawables.append((float(fx.get("y", 0.0)), 5, "effect", fx))
+                fx_y = float(fx.get("y", 0.0))
+                sx, sy = self.transform.to_screen(fx.get("x", 0), fx_y)
+                if self._visible(sx, sy, margin=64):
+                    drawables.append((fx_y, 5, "effect", fx))
             except (TypeError, ValueError):
                 continue
 
@@ -835,13 +863,41 @@ class MapView(QWidget):
         selected = getattr(self.controller.ui_state,
                            "selected_agent_eid", None) == agent.eid
 
-        # Marqueur de sélection au sol AVANT le sprite : l'halo jaune ne
-        # doit jamais recouvrir l'habitant (Lot C).
+        # Rendu adaptatif selon le zoom et le mode détail faible (Phase 6)
+        if self.low_detail_mode or zoom < LOW_DETAIL_ZOOM:
+            # Points simples : couleur du clan, pas de sprite
+            if self._visible(sx, sy, margin=16):
+                rgb = CLAN_COLORS.get(str(getattr(agent, "color", "gray")),
+                                      (150, 150, 150))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(QColor(*rgb)))
+                painter.drawEllipse(QPointF(sx, sy), 3.0, 3.0)
+            # Sélection : halo même en mode points
+            if selected and self._visible(sx, sy, 60):
+                self.draw_selected_agent_marker(painter, agent, sx, sy)
+            return
+
+        # Rendu simplifié (zoom moyen) : sprite sans ombre, pas de nom/statut
+        if zoom < MEDIUM_DETAIL_ZOOM:
+            pixmap = self._agent_pixmap(am, agent)
+            drawn = self._draw_grounded_sprite(painter, pixmap, agent.x, agent.y,
+                                               zoom, shadow=None)
+            if not drawn and self._visible(sx, sy):
+                rgb = CLAN_COLORS.get(str(getattr(agent, "color", "gray")),
+                                      (150, 150, 150))
+                painter.setPen(QPen(QColor(0, 0, 0), 1))
+                painter.setBrush(QBrush(QColor(*rgb)))
+                painter.drawEllipse(QPointF(sx, sy - 4), 6, 6)
+            if selected and self._visible(sx, sy, 60):
+                self.draw_selected_agent_marker(painter, agent, sx, sy)
+            return
+
+        # Rendu détaillé (zoom élevé) - code original
+        # Marqueur de sélection au sol AVANT le sprite
         if selected and self._visible(sx, sy, 60):
             self.draw_selected_agent_marker(painter, agent, sx, sy)
 
-        # Ligne but/cible discrète, seulement pour l'habitant sélectionné,
-        # tracée avant le sprite : le segment près des pieds passe dessous.
+        # Ligne but/cible discrète, seulement pour l'habitant sélectionné
         if selected:
             self._draw_goal_line(painter, agent, sx, sy, zoom)
 
@@ -850,8 +906,6 @@ class MapView(QWidget):
         drawn = self._draw_grounded_sprite(painter, pixmap, agent.x, agent.y,
                                            zoom, shadow=shadow)
         if not drawn:
-            # Aucun skin disponible : garder un repère plutôt qu'un habitant
-            # invisible. N'arrive que si le pack d'assets est absent.
             if self._visible(sx, sy):
                 rgb = CLAN_COLORS.get(str(getattr(agent, "color", "gray")),
                                       (150, 150, 150))
@@ -859,8 +913,7 @@ class MapView(QWidget):
                 painter.setBrush(QBrush(QColor(*rgb)))
                 painter.drawEllipse(QPointF(sx, sy - 4), 6, 6)
 
-        # Ligne de base des repères flottants : sommet de la tête du sprite
-        # (ou le sol si le skin est absent).
+        # Ligne de base des repères flottants
         ph = 0.0
         if pixmap is not None and not pixmap.isNull():
             ph = pixmap.height() * zoom
@@ -984,8 +1037,21 @@ class MapView(QWidget):
         return self.asset_cache.pixmap(am, aid, frame)
 
     def draw_sheep(self, painter: QPainter, sheep):
-        am = self.controller.sim.am
         zoom = self.transform.zoom
+        sx, sy = self.transform.to_screen(sheep.x, sheep.y)
+
+        # Rendu adaptatif (Phase 6)
+        if self.low_detail_mode or zoom < LOW_DETAIL_ZOOM:
+            if self._visible(sx, sy, margin=16):
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(QColor(200, 200, 180)))
+                painter.drawEllipse(QPointF(sx, sy), 2.5, 2.5)
+            return
+        if zoom < MEDIUM_DETAIL_ZOOM:
+            if not self._visible(sx, sy, margin=32):
+                return
+
+        am = self.controller.sim.am
         table = getattr(am, "sheep", {}) or {}
         state = str(getattr(sheep, "state", "idle"))
         aid = table.get(state)
@@ -996,13 +1062,27 @@ class MapView(QWidget):
         frames = max(1, int(getattr(am.assets[int(aid)], "frames", 1) or 1))
         tick = int(getattr(self.controller.sim.w, "tick", 0))
         frame = self._animation_frame(tick, sheep, frames, False)
+        shadow = None if zoom < MEDIUM_DETAIL_ZOOM else self.asset_cache.shadow(am)
         self._draw_grounded_sprite(
             painter, self.asset_cache.pixmap(am, int(aid), frame),
-            sheep.x, sheep.y, zoom, shadow=self.asset_cache.shadow(am))
+            sheep.x, sheep.y, zoom, shadow=shadow)
 
     def draw_monster(self, painter: QPainter, monster):
-        am = self.controller.sim.am
         zoom = self.transform.zoom
+        sx, sy = self.transform.to_screen(monster.x, monster.y)
+
+        # Rendu adaptatif (Phase 6)
+        if self.low_detail_mode or zoom < LOW_DETAIL_ZOOM:
+            if self._visible(sx, sy, margin=16):
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(QColor(180, 100, 100)))
+                painter.drawEllipse(QPointF(sx, sy), 3.0, 3.0)
+            return
+        if zoom < MEDIUM_DETAIL_ZOOM:
+            if not self._visible(sx, sy, margin=32):
+                return
+
+        am = self.controller.sim.am
         kinds = getattr(am, "monsters", {}) or {}
         table = kinds.get(str(getattr(monster, "kind", ""))) or {}
         if not table:
@@ -1019,27 +1099,39 @@ class MapView(QWidget):
         frames = max(1, int(getattr(am.assets[int(aid)], "frames", 1) or 1))
         tick = int(getattr(self.controller.sim.w, "tick", 0))
         frame = self._animation_frame(tick, monster, frames, state == "attack")
+        shadow = None if zoom < MEDIUM_DETAIL_ZOOM else self.asset_cache.shadow(am)
         self._draw_grounded_sprite(
             painter, self.asset_cache.pixmap(am, int(aid), frame),
-            monster.x, monster.y, zoom, shadow=self.asset_cache.shadow(am))
+            monster.x, monster.y, zoom, shadow=shadow)
 
     def draw_item(self, painter: QPainter, item):
-        am = self.controller.sim.am
         zoom = self.transform.zoom
         aid = getattr(item, "aid", -1)
         wx = float(getattr(item, "x", 0.0))
         wy = float(getattr(item, "y", 0.0))
+        sx, sy = self.transform.to_screen(wx, wy)
+
+        # Rendu adaptatif (Phase 6)
+        if self.low_detail_mode or zoom < LOW_DETAIL_ZOOM:
+            if self._visible(sx, sy, margin=16):
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(QColor(210, 180, 80)))
+                painter.drawEllipse(QPointF(sx, sy - 2), 2.5, 2.5)
+            return
+        if zoom < MEDIUM_DETAIL_ZOOM:
+            if not self._visible(sx, sy, margin=32):
+                return
+
+        am = self.controller.sim.am
         if aid is not None and 0 <= int(aid) < len(am.assets):
             if self._draw_grounded_sprite(
                     painter, self.asset_cache.pixmap(am, int(aid), 0),
                     wx, wy, zoom * 0.8):
                 return
-        sx, sy = self.transform.to_screen(wx, wy)
-        if not self._visible(sx, sy):
-            return
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(QColor(210, 180, 80)))
-        painter.drawEllipse(QPointF(sx, sy - 2), 3, 3)
+        if self._visible(sx, sy):
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor(210, 180, 80)))
+            painter.drawEllipse(QPointF(sx, sy - 2), 3, 3)
 
     # ------------------------------------------------------------------
     # Aperçu fantôme de pose (Lot D.3)
@@ -1578,6 +1670,72 @@ class MapView(QWidget):
         self.transform.clamp(GRID * TILE, self.width(), self.height())
         self._sync_controller_from_transform()
         self.update()
+
+    # ------------------------------------------------------------------
+    # Navigation clavier : flèches + WASD/ZQSD, zoom +/- / PageUp/Down
+    # ------------------------------------------------------------------
+
+    #: Pixels écran déplacés par pression (l'auto-repeat du système
+    #: permet un déplacement continu en maintenant la touche).
+    KEY_PAN_STEP = 96.0
+
+    def pan_by_screen(self, dx: float, dy: float) -> None:
+        """Déplace la caméra de ``dx``/``dy`` pixels écran."""
+        z = max(self.transform.zoom, 0.01)
+        self.transform.x += dx / z
+        self.transform.y += dy / (z * max(self.transform.ys, 0.01))
+        self.transform.clamp(GRID * TILE, self.width(), self.height())
+        self._sync_controller_from_transform()
+        self.update()
+
+    def zoom_step(self, factor: float) -> None:
+        """Zoom au centre de la vue (molette clavier)."""
+        new_zoom = max(0.08, min(4.0, self.transform.zoom * factor))
+        self.transform.set_zoom(
+            new_zoom,
+            (self.width() // 2, self.height() // 2),
+            self.width(),
+            self.height(),
+        )
+        self.transform.clamp(GRID * TILE, self.width(), self.height())
+        self._sync_controller_from_transform()
+        self.update()
+
+    def handle_nav_key(self, event) -> bool:
+        """Traite une touche de navigation. Retourne True si consommée.
+
+        Q/Z et A/Q couvrent QWERTY et AZERTY ; les flèches marchent
+        partout. Si la touche est prise par un widget input (spinbox,
+        liste…), celui-ci la consomme et on n'arrive jamais ici.
+        """
+        key = event.key()
+        step = self.KEY_PAN_STEP
+        dx = dy = 0.0
+        if key in (Qt.Key.Key_Right, Qt.Key.Key_D):
+            dx = step
+        elif key in (Qt.Key.Key_Left, Qt.Key.Key_A, Qt.Key.Key_Q):
+            dx = -step
+        elif key in (Qt.Key.Key_Down, Qt.Key.Key_S):
+            dy = step
+        elif key in (Qt.Key.Key_Up, Qt.Key.Key_W, Qt.Key.Key_Z):
+            dy = -step
+        if dx or dy:
+            self.pan_by_screen(dx, dy)
+            event.accept()
+            return True
+        if key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal, Qt.Key.Key_PageUp):
+            self.zoom_step(1.2)
+            event.accept()
+            return True
+        if key in (Qt.Key.Key_Minus, Qt.Key.Key_PageDown):
+            self.zoom_step(1 / 1.2)
+            event.accept()
+            return True
+        return False
+
+    def keyPressEvent(self, event):
+        if not self.handle_nav_key(event):
+            super().keyPressEvent(event)
 
     # ------------------------------------------------------------------
     # Menus contextuels (Lot I)
