@@ -1,6 +1,6 @@
 # 🧠🌍 Neural World Simulation
 
-### An open-ended artificial-life laboratory where autonomous inhabitants perceive, decide, remember, learn, build, cooperate, compete, and shape a persistent world.
+### An open-ended artificial-life laboratory for building, observing, and experimenting with autonomous neural societies.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![PyQt6](https://img.shields.io/badge/UI-PyQt6_Studio-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
@@ -11,352 +11,399 @@
 
 ![Living world — procedural terrain, inhabitants, ecology and resources on a 1000×1000 map](docs/img/hero.png)
 
-> **No assigned jobs. No scripted quests. No omniscient inhabitants.**
+> **No scripted quests. No assigned professions. No omniscient agents.**
 >
-> Neural World Simulation is a persistent artificial-life environment and laboratory application. The world may begin with a very small group, a large population, or an empty editable map. Each inhabitant has limited perception, individual memory, needs, emotions, personality, relations, an inventory, and a learning recurrent neural brain. It is free to choose among coherent possibilities, but the world validates every attempt against physical reality.
+> Neural World Simulation is a persistent artificial-life environment in which inhabitants perceive only a partial world, form memories from lived experience, choose among feasible possibilities, learn from consequences, build material and social structures, and leave a history behind.
 >
-> The simulation does not tell an inhabitant to become a farmer, builder, explorer, parent, fighter, or helper. These are possible life patterns that may become useful because of scarcity, danger, relationships, accumulated knowledge, local opportunities, and lived experience.
-
-*🇫🇷 Une présentation française détaillée est disponible plus bas : [En français](#-en-français).* 
+> The project is built for people who want to explore a difficult question: **what kinds of individual and collective behavior emerge when learning agents must survive, remember, cooperate, compete, build, communicate, and adapt inside a world that does not assign them a script?**
 
 ---
 
-## Executive summary
+## Why contribute?
 
-**Neural World Simulation** is an open-ended multi-agent artificial-life project built in Python. It combines:
+Most agent simulations choose one of two paths:
 
-- a large, persistent 2D procedural world;
-- autonomous inhabitants with bounded perception and individual neural decision systems;
-- physical resources, survival pressure, ecology, construction, social relations, memory, culture, and history;
-- a PyQt6 laboratory interface for observation, parameterization, experimentation, diagnostics, comparison, and export.
+- a compact benchmark with a narrow task and a clear reward;
+- a game-like simulation with many visible systems but mostly scripted agents.
 
-It is not designed as a conventional game with objectives imposed by a designer. It is designed as a **simulation instrument**: a contributor or researcher can create a controlled world, choose a seed and parameters, let inhabitants act, inspect why a decision occurred, compare scenarios, and export the resulting data.
+**Neural World Simulation aims at the space between them.** It is a long-running, inspectable world where learning agents are constrained by bodies, resources, geography, local information, social relationships, and physical consequences.
 
-Population is a runtime choice, not a fixed claim. A world can be launched with a handful of inhabitants for debugging and close observation, with dozens for everyday experiments, or with larger populations within the configured runtime limits and available machine performance.
+This repository is an opportunity to contribute to a project that combines:
+
+```text
+Artificial life
++ multi-agent learning
++ procedural ecology
++ social simulation
++ neural decision-making
++ explainability
++ experimental tooling
++ a real desktop laboratory interface
+```
+
+It is not a finished product pretending to be complete. It is an active research-engineering project with meaningful open problems in performance, learning, memory, social emergence, ecology, visualization, testing, reproducibility, and human-readable diagnostics.
+
+If you enjoy asking “what happens if we make this rule real?” rather than only “can we make this feature look good?”, this project is for you.
 
 ---
 
-## Autonomous decision freedom
+## What is Neural World Simulation?
 
-The central design goal is not merely to give agents many named actions. It is to give them **decision freedom within a real world**.
+Neural World Simulation is a Python-based artificial-life and multi-agent simulation platform.
 
-An inhabitant is not restricted to a fixed script such as:
+A simulation run contains:
 
-```text
-worker → harvest
-builder → build
-guard → attack
-```
+- a persistent 1,000 × 1,000 tile procedural world;
+- a configurable population of neural inhabitants, sheep, predators, resources, structures, and environmental processes;
+- agents with bodies, needs, emotions, personality, memory, skills, inventory, social relationships, and recurrent neural brains;
+- a world engine that validates every action against terrain, distance, affordances, tools, inventory, danger, and other physical constraints;
+- a PyQt6 Studio that makes the world observable, editable, repeatable, comparable, and exportable.
 
-Instead, the inhabitant receives local facts and possibilities:
-
-```text
-I am hungry.
-I am tired.
-A predator is close.
-I remember water in another area.
-A relative is nearby.
-I have wood in my inventory.
-A shelter is known.
-A resource can be harvested.
-A friend appears injured.
-A region is unfamiliar.
-```
-
-From this state, it can select a coherent response. For example, faced with hunger and danger, different inhabitants may:
-
-- flee first and search for food later;
-- eat immediately if food is available;
-- follow a trusted inhabitant toward a remembered resource;
-- seek shelter because energy is too low;
-- ask, give, take, cooperate, or compete depending on relations and personality;
-- explore when no safe known option is available;
-- return toward a known home, storage place, or group.
-
-The system therefore aims for **situated autonomy**, not arbitrary randomness. Freedom is constrained by perception, memory, body, terrain, tools, danger, inventory, social context, and physical feasibility.
-
-### The decision contract
-
-```text
-Local perception + memories + needs + emotions + personality + relations
-                                ↓
-                         neural proposal
-                                ↓
-                   feasible actions and targets
-                                ↓
-                     world validates reality
-                                ↓
-          consequence in body, inventory, world and relations
-                                ↓
-              experience, reward, memory and future learning
-```
-
-The brain can request an intention; it cannot create impossible outcomes. The world checks distance, target availability, terrain, obstruction, affordances, tools, energy, carrying capacity, inventory, social conditions, and danger before executing the consequence.
-
----
-
-## Why this project matters
-
-| Dimension | What the project provides |
-|---|---|
-| 🧠 **Individual agency** | Each inhabitant has its own recurrent neural brain, body, personality, emotions, needs, experiences, memories, habits, skills, social ties, and history. |
-| 👁️ **Bounded knowledge** | Agents use nearby perception, personal memory, clan knowledge, and confirmed shared knowledge. They do not read the full world state. |
-| ⚙️ **Validated action** | Neural intentions are proposals. The engine validates physical and social feasibility before any world consequence exists. |
-| 🌾 **Meaningful pressure** | Hunger, thirst, fatigue, weather, shelter, resources, tools, inventory capacity, danger, and distance make choices meaningful. |
-| 🏘️ **Emergent social life** | Families, clans, relations, gifts, grief, reputation, cultural facts, repeated practices, storage, construction, and institutions can develop in the same world. |
-| 🗺️ **Large territory** | A 1,000 × 1,000-tile procedural world supports regions, exploration, local knowledge, resource distribution, settlement, and future migration. |
-| 🔬 **Laboratory operation** | The PyQt6 Studio supports direct observation, controlled intervention, experiments, parameter tuning, scenario comparison, reporting, and export. |
-| 🧪 **Inspectable behavior** | The project exposes decisions, goals, memories, needs, relations, inventory, events, timelines, overlays, and reports instead of treating agents as opaque entities. |
-
----
-
-## World scale and population
-
-The map is intentionally large:
-
-```text
-1,000 × 1,000 tiles
-16,000 × 16,000 world pixels at 16 px/tile
-```
-
-This scale is not decorative. It allows inhabitants to have local knowledge, unknown regions, resource concentrations, routes, danger zones, settlement locations, and reasons to travel.
-
-Population is configurable at launch and through the application workflow:
+A run can start with a tiny population for close behavioral debugging, a standard population for observation, a large population for scaling experiments, or an empty world for controlled world-building.
 
 ```bash
-# Small observation/debugging run
+# Minimal behavior inspection
 python mainqt.py --agents 2 --sheep 2 --seed 7
 
 # Standard living-world run
 python mainqt.py --agents 60 --sheep 40 --seed 7
 
-# Larger experiment, subject to configured limits and machine performance
+# Larger experiment; practical limits depend on enabled systems and hardware
 python mainqt.py --agents 300 --sheep 120 --seed 7
 
-# Empty editable world
+# Empty world for manual setup and controlled experiments
 python mainqt.py --blank 1
 ```
 
-The engine has configurable upper limits for inhabitants, sheep, predators, rendering budgets, snapshots, and runtime parameters. The actual practical population depends on the enabled systems, visible UI panels, zoom level, resource density, neural decision frequency, and available CPU/RAM.
+The population is not fixed. Screenshot commands may use a chosen population for demonstration, but the simulation itself is configurable.
 
 ---
 
-## The inhabitant model
+## Autonomous inhabitants
 
-Every inhabitant is represented by more than a neural network.
+### Freedom is not randomness
 
-### Body and survival
+The inhabitants are designed to have **situated decision freedom**.
 
-- health, pain, body temperature, age and life stage;
-- hunger, energy, thirst, sleep, safety, belonging and esteem;
-- strength, endurance, mobility, senses and recovery;
-- inventory, carrying capacity, tools and tool durability;
-- shelter effects, starvation, thirst, fatigue and recovery.
+They are not assigned a role such as farmer, builder, guard, explorer, or healer. They do not receive a mandatory quest. They are not told what narrative to enact.
 
-### Mind and individuality
+Instead, each inhabitant has a current situation:
 
-- recurrent neural state and online learned weights;
-- cognition traits: memory, anticipation, imagination and attention;
-- personality traits: sociability, aggression, curiosity, caution, patience, empathy, impulsivity, trust, persistence, ambition, generosity and discipline;
-- emotional state: fear, joy, anger, sadness, stress, surprise, disgust and affection;
-- habits, skills, identity, values, trauma, episodic memories and autobiographical events.
+```text
+Body state
++ hunger / thirst / fatigue / safety
++ emotions and personality
++ local perception
++ remembered places
++ social relations
++ inventory and tools
++ active intentions
++ terrain and physical constraints
+```
 
-### Social existence
+From that situation, it can select among coherent possibilities.
 
-- family, parents, children, partner and group links;
-- trust, affinity, hostility, generosity, theft, violence and reputation;
-- clan membership and clan-level knowledge;
-- social interactions: following, talking, giving, taking, socializing, mourning, marking and cooperation;
-- cultural claims and emerging institutions tied to repeated practices.
+A hungry inhabitant might:
+
+- eat food that is already available;
+- move toward a remembered food source;
+- harvest a nearby resource;
+- follow a trusted inhabitant;
+- return to storage or a shelter;
+- share, request, take, avoid danger, flee, or explore;
+- make a different choice because its personality, fear, curiosity, social state, memory, or learned experience differs.
+
+The important point is that the simulation should not decide the result in advance. It offers a world of possibilities; each inhabitant chooses a feasible path through that world.
+
+### The engine contract
+
+```text
+Limited perception + memory + needs + emotion + personality + relations
+                                  ↓
+                           neural proposal
+                                  ↓
+                   candidate / intention / target selection
+                                  ↓
+              world checks physical and social feasibility
+                                  ↓
+          real consequence in world, body, inventory and relations
+                                  ↓
+                 experience, reward, memory and future learning
+```
+
+The neural brain can propose. The world decides whether the action can happen.
+
+This protects the simulation from fake intelligence:
+
+- an inhabitant cannot eat absent food;
+- it cannot harvest through an obstacle;
+- it cannot build without materials;
+- it cannot reach a place it does not know or cannot physically access;
+- it cannot receive a social benefit from an interaction that did not occur;
+- the UI cannot invent a state that is not present in the engine.
 
 ---
 
 ## Decision and learning
 
-### Neural architecture
+Each inhabitant owns an **Elman recurrent neural network** with a persistent internal context state. Brain topology is fixed at birth; learning modifies parameters throughout life.
 
-Each inhabitant owns an **Elman recurrent neural network**. Its architecture is fixed at birth; the weights learn during life.
-
-| Component | Current system |
+| Component | Current implementation direction |
 |---|---|
-| Sensory representation | 132 structured channels |
+| Perception vector | 132 structured inputs |
 | Primitive actions | 15 world-validated actions |
-| Strategy heads | 6 strategic tendencies |
+| Strategic heads | 6 higher-level strategy choices |
 | Target heads | 8 target categories |
-| Learning method | Online REINFORCE with eligibility traces |
-| Adaptation | Lived reward, age-modulated learning, habits, memory, emotions and personality |
-| Explainability | Action probabilities, selected strategy/target, goals and diagnostics available to the Studio |
+| Learning | Online REINFORCE with short eligibility traces |
+| Individuality | Personality, body, cognition, social history, habits, skills, memory, neural state |
+| Explainability | Action ranking, strategy, target, goals, state, memories and diagnostics exposed to the Studio |
 
-### Primitive actions
+### Current primitive action vocabulary
 
 ```text
 Rest · Sleep · Eat · Drink · Harvest · Drop · Build · Give · Take
 Attack · Flee · Explore · Talk · Mark · Social
 ```
 
-These are deliberately primitive. A visible behavior such as “prepare an expedition,” “return to shelter,” “help a relative,” “supply a storage site,” or “found a settlement” should be built from multiple world-validated steps rather than a magical one-shot command.
+These primitives are intentionally small. They are the building blocks of larger life patterns.
 
-### Perception and memory
-
-The 132-input representation includes body state, needs, emotions, personality, cognition, habits, skills, local perception, social context, resource memory, time, weather, inventory, tools, spatial context, and Anima-related state.
-
-A key rule is that an agent should use what it can legitimately know:
+For example, a meaningful food expedition is not a magical `GET_FOOD` command:
 
 ```text
-Nearby perception
-+ personally witnessed places
-+ social/clan knowledge
-+ verified shared facts
-≠ global map omniscience
+Remember a resource
+→ travel through the world
+→ verify the resource exists
+→ harvest or pick up
+→ eat if urgent
+→ otherwise return toward shelter, storage, or group
+→ update memory from the outcome
 ```
 
+This is one of the central contributor opportunities: turn existing primitives into robust, inspectable composed activities without replacing the world’s physical constraints.
+
 ---
 
-## The world
+## The inhabitants as complete simulation entities
 
-### Procedural terrain and climate
+Each `Being` combines several layers that are usually separate in smaller simulations.
 
-The procedural world includes:
+### Body and survival
 
-- water, shorelines, marshes, grassland, forests, rock, snow and mountains;
-- moisture and slope-aware biome placement;
-- lakes, mountain chains, passability and editable terrain;
+- health, pain, temperature, age, life stage, natural death limits;
+- hunger, energy, thirst, sleep, safety, belonging, esteem;
+- strength, endurance, mobility, senses, recovery;
+- inventory, carrying capacity, tools, tool durability, resource costs;
+- shelter bonus, weather effects, starvation, thirst, fatigue, rest and sleep recovery.
+
+### Mind and individuality
+
+- recurrent neural state and online learning;
+- cognition traits: memory, anticipation, imagination, attention;
+- personality traits: sociability, aggression, curiosity, caution, patience, empathy, impulsivity, trust, persistence, ambition, generosity, discipline;
+- emotions: fear, joy, anger, sadness, stress, surprise, disgust, affection;
+- habits, skills, identity, values, trauma, episodic memory, life history, self-esteem, reputation and causal traces.
+
+### Social life
+
+- parents, children, partner, family and clan membership;
+- trust, affinity, hostility, generosity, theft, violence and social memory;
+- following, talking, giving, taking, mourning, marking and social interaction;
+- clan knowledge and verified universal knowledge;
+- cultural claims and repeated practices that can form institutions;
+- shared storage and material cooperation.
+
+The ambition is not to claim human-level minds. The ambition is to make social and individual behavior structurally richer than a finite-state NPC loop while remaining inspectable.
+
+---
+
+## A large world with local knowledge
+
+The world is intentionally large:
+
+```text
+1,000 × 1,000 tiles
+16,000 × 16,000 world pixels at 16 px per tile
+```
+
+This scale supports a design principle that is difficult to demonstrate in tiny arenas:
+
+```text
+The world can be large.
+An individual’s knowledge remains local.
+Exploration, memory, communication, routes, settlement, and regional resources matter.
+```
+
+### Terrain and climate
+
+- procedural water, shorelines, marshes, grassland, forests, rock, snow and mountains;
+- moisture and slope-aware biome distribution;
+- editable terrain with water, land, walls, floors, carving and restoration;
 - day/night cycle, seasons, temperature, rain, wind, storms and lightning;
-- fire, smoke, regrowth, pheromones and exploration traces;
-- terrain chunks and caches for efficient rendering.
+- pheromones, exploration traces, regrowth, fire and smoke;
+- terrain chunks and caches for responsive map rendering.
 
-### Resources and ecology
+### Ecology and material pressure
 
-- food, bushes, trees, stone, gold, tools, meat, water and shelter;
-- localized food/resource sites and regrowth support;
-- sheep populations and predators;
-- tool-gated harvesting, durability and carrying limits;
-- fires that propagate through flammable contents;
-- crops, water needs, storage, resource depletion and recovery.
+- localized food/resource sites, forests, quarries, gold, tools and meat;
+- sheep and predators;
+- tool-gated harvesting, durability and carrying capacity;
+- resource depletion and regrowth direction;
+- spreading fire and flammable world contents;
+- crops, water needs, storage, building sites, structures and graves.
 
-### Construction and material world
+### Why regional ecology matters
 
-Inhabitants can interact with:
+A useful world is not one where every tile has everything.
 
-- construction sites and task-based blueprints;
-- houses, chests, granaries, workshops, wells and related structures;
-- shared storage, deposits and withdrawals;
-- crops and agricultural plots;
-- graves, mourned places, markers and territorial signals;
-- user-placed assets and editable map layers.
+The project is moving toward regions and resource sites where a place can be strategically meaningful:
+
+```text
+Forest → wood, berries, mushrooms, cover, possible danger
+Plain → settlement space, crops, routes, limited wild food
+Water → drinking, fishing opportunities, travel constraint
+Rock / mountain → stone, ore, difficult movement, scarce food
+Shelter / storage → security, rest, collective material memory
+```
+
+This creates reasons for exploration, travel, knowledge sharing, conflict, exchange, construction, and settlement.
 
 ---
 
-## 🔬 The PyQt6 Laboratory Studio
+## 🔬 PyQt6 Studio: inspect, intervene, experiment
 
 ![PyQt6 Studio — live map, agent inspector, population docks, journal with export](docs/img/interface.png)
 
-The application is a laboratory interface, not only a viewer. It is built to make the backend observable and controllable.
+Neural World Simulation is also a desktop laboratory application. The Studio is designed to expose engine reality rather than hide it behind a game interface.
 
-## Live world view
+## Live map and world tools
 
-- zoomable and tilting map;
-- terrain rendering with cache and chunk support;
-- minimap, legend, camera follow and selection;
-- inhabitants, sheep, predators, resources, construction, storage, graves and effects;
-- night, rain, lightning, fire glow and social effects;
-- edit tools for terrain, water, land, walls, floors, blocks, carving, restoration, placement and deletion.
-
-## Population panel
-
-- sortable inhabitant table;
-- name search;
-- age-stage and alive/dead filters;
-- selection and removal workflow;
-- direct route to the selected inhabitant’s diagnostic state.
-
-## Agent inspector
-
-The inspector is intended to be a truthful diagnostic view of a selected inhabitant. It can expose:
-
-- identity, age, family and clan;
-- body, cognition, personality, emotions and needs;
-- health, pain, energy, hunger, thirst and sleep;
-- skills, habits, inventory, equipped tool and durability;
-- current state, goal, target, distance, duration and blocked state;
-- memory, beliefs, known places, relations, trust and affinity;
-- identity, values, trauma, episodic memories, plans and reputation;
-- neural size, decision frequency, action ranking, strategy and target information;
-- current activity and evaluated possibilities when available.
-
-## Journal and timeline
-
-- categorized world events;
-- filters and search;
-- normalized timeline for life, family, social, danger, construction, economy, culture, weather and death;
-- JSON, CSV and TXT export;
-- readable event sentences for investigation and reporting.
-
-## Society panel
-
-- population and family state;
-- relations and group-level information;
-- storage, construction and institutions;
-- clan-oriented knowledge and collective practices.
-
-## Assets, tools and map editing
-
-- searchable asset catalog;
-- category filters and favorites;
-- asset details: role, category, affordances, size and placement constraints;
-- tool editor for custom tools;
-- map painting, placement, erase, floor, wall, terrain carving and restoration;
+- zoomable and tilting world view;
+- terrain cache, chunk rendering, minimap, legend and camera follow;
+- inhabitants, sheep, predators, resources, storage, crops, construction, graves and effects;
+- day/night, rain, lightning, fire glow and social effects;
+- tile inspection;
+- terrain editing: water, land, walls, floors, blocks, carving, restoration, erase and asset placement;
+- inhabitant, sheep and predator spawning;
+- custom tool creation and asset selection;
 - undo/redo for world edits.
 
-## Studio laboratory panels
+## Population and inspection panels
 
-| Panel | Purpose |
+### Population
+
+- searchable and sortable population table;
+- age-stage and living/dead filters;
+- direct selection from the table or the map;
+- creation and removal workflows.
+
+### Inspector
+
+The inspector is a diagnostic surface for a selected inhabitant. It can expose:
+
+- identity, age, clan, family and relationships;
+- body, cognition, personality, emotions and needs;
+- health, hunger, thirst, energy, pain, sleep and safety state;
+- skills, habits, inventory, equipped tool and durability;
+- active goal, target, distance, duration, state and blocked information;
+- personal memories, beliefs, known places and danger information;
+- social relations, trust and affinity;
+- identity, values, trauma, episodic memory, plans and reputation;
+- neural size, decision frequency, action ranking, strategy and target data;
+- evaluated action possibilities and activity data where available.
+
+### Anima
+
+The Anima view provides a higher-level view of each inhabitant’s lived state:
+
+- dominant identity;
+- values and motivations;
+- trauma and danger beliefs;
+- intentions and short plans;
+- episodic/autobiographical memory;
+- reputation and social state.
+
+## Society, journal and timeline
+
+### Society
+
+- population and family indicators;
+- social relations;
+- storage, construction and institution state;
+- collective practices and group-level information.
+
+### Journal
+
+- categorized engine events;
+- filtering, text search and sorting;
+- JSON, CSV and TXT export;
+- readable world history without inventing facts.
+
+### Timeline
+
+- normalized events across life, family, social, danger, construction, economy, culture, weather and death;
+- category and text filtering;
+- time-oriented investigation of a simulation run.
+
+## Laboratory panels
+
+| Studio panel | Purpose |
 |---|---|
-| **Parameters** | Tune population, world, simulation, Anima, ecology and performance runtime parameters |
+| **Parameters** | Edit runtime population, world, simulation, Anima, ecology and performance parameters |
 | **Scenarios** | Apply controlled presets such as calm, danger, famine, culture, trauma and social experiments |
-| **Timeline** | Filter and inspect normalized events over simulated time |
-| **Laboratory report** | Summarize population change, births, deaths, construction, harvests, health, hunger and trust |
-| **Comparison** | Compare two experimental results across metrics and differences |
-| **Overlays** | Inspect resources, danger, memory, relations, needs, Anima, culture, institutions and territories |
-| **Exports** | Generate JSON, CSV, TXT and report-oriented outputs |
+| **Laboratory report** | Build readable summaries and metrics from a run |
+| **Comparison** | Compare A/B experiment results, differences and interpretation |
+| **Timeline** | Inspect event sequences and history |
+| **Overlays** | Examine resources, danger, memory, relations, needs, Anima, culture, institutions and territories |
+| **Exports** | Produce JSON, CSV, TXT and report-friendly data |
 
-The Studio is designed so contributors can ask: **what happened, why did it happen, what did the agent know, what action was feasible, and what changed after it acted?**
+The laboratory is central to the project. A contributor should be able to ask:
+
+```text
+What did the inhabitant perceive?
+What did it remember?
+Which options were feasible?
+Why did it choose this goal?
+What happened physically?
+What changed in its body, memory, relation, inventory or world?
+Did the group benefit?
+```
 
 ---
 
-## Research and experimentation
+## Research potential
 
-Neural World Simulation supports controlled experiments, not only visual observation.
+The simulation can support experiments rather than only screenshots.
 
-Examples:
-
-| Research question | Example procedure |
+| Question | Example experiment |
 |---|---|
-| Does memory improve survival? | Same seed, same population, compare memory-enabled and memory-constrained parameters |
-| Does sharing knowledge reduce duplicated exploration? | Compare isolated inhabitants with social/clan transmission enabled |
-| Does resource clustering alter settlement behavior? | Compare clustered resource sites against more uniform distributions |
-| Does danger create avoidant culture? | Repeat danger scenarios and inspect memories, beliefs, routes and overlays |
-| Does learning matter? | Compare active REINFORCE learning against frozen neural weights |
-| Does scarcity change social behavior? | Track gifts, thefts, attacks, storage and mortality under different food levels |
-| Which conditions produce stable groups? | Compare trust, family, shelter and resource configurations |
+| Does memory improve survival? | Same seed and world, compare memory-enabled vs memory-constrained agents |
+| Does social knowledge reduce redundant exploration? | Compare local-only runs with clan/social knowledge enabled |
+| Does scarcity increase cooperation or conflict? | Adjust food and predator parameters; track gifts, thefts, attacks, storage and mortality |
+| Does resource clustering affect settlement? | Compare localized resource sites against uniform resource distributions |
+| Do traumatic events create long-term avoidance? | Run danger scenarios and inspect beliefs, routes, fear and memory overlays |
+| Does learning improve behavior? | Compare active REINFORCE learning against frozen-brain controls |
+| Does culture persist across generations? | Compare transmission and Academy settings over long runs |
+| Which world constraints produce stable groups? | Vary shelter, storage, danger, terrain and resource arrangements |
 
-The project does not claim that every outcome is automatically “emergent intelligence.” It tries to expose enough state that contributors can separate:
+The project does not claim that every result is automatically “emergent intelligence.” It is designed to make attribution possible:
 
 ```text
-world rule
+World rule
 vs
-physical feasibility
+feasibility condition
 vs
 memory
 vs
-social context
+social relation
 vs
-personality
+personality bias
 vs
-neural proposal
+neural decision
 vs
-learned result
+learning outcome
 ```
+
+That distinction is important for credible artificial-life work.
 
 ---
 
@@ -368,13 +415,13 @@ cd Neural-World-Simulation
 pip install -r requirements.txt
 ```
 
-Run a small world for close observation:
+Run a small observation world:
 
 ```bash
 python mainqt.py --agents 2 --sheep 2 --seed 7
 ```
 
-Run a standard populated world:
+Run a populated world:
 
 ```bash
 python mainqt.py --agents 60 --sheep 40 --seed 7
@@ -386,13 +433,13 @@ Run an empty editable world:
 python mainqt.py --blank 1
 ```
 
-Set initial speed:
+Set initial simulation speed:
 
 ```bash
 python mainqt.py --agents 60 --sheep 40 --seed 7 --speed 4
 ```
 
-### Headless capture
+### Headless screenshots
 
 ```bash
 python tools/screenshot.py \
@@ -409,9 +456,9 @@ python tools/screenshot.py \
   --zoom 1.1
 ```
 
-The screenshot command uses a chosen demonstration population; it does **not** define a fixed population for the project.
+The headless screenshot command uses explicitly chosen demonstration values. It does not impose a fixed project population.
 
-### Run tests
+### Tests
 
 ```bash
 python -m pytest tests -x -q
@@ -427,254 +474,239 @@ python -m compileall game uiqt tests mainqt.py
 
 ```text
 mainqt.py
-│   PyQt6 entry point: world creation, life seeding, controller and Studio.
+│   PyQt6 application entry point.
+│   Creates the world, seeds life, creates SimulationController and MainWindow.
 │
 ├── game/
 │   ├── engine.py
-│   │   Procedural world construction, resource placement, population seeding.
+│   │   Procedural world creation, ecological placement and life seeding.
 │   ├── simulation.py
-│   │   Core world loop: sensing, feasible actions, goals, movement,
-│   │   metabolism, execution, learning signals, social/ecological state.
+│   │   Core living-world contract: sensing, feasibility, goals, movement,
+│   │   actions, metabolism, rewards, social processes and world updates.
 │   ├── brain.py / brainapi.py / brainschema.py
-│   │   Elman RNN, REINFORCE, 132 inputs, action/strategy/target heads.
+│   │   Elman RNN, REINFORCE, structured 132-input schema,
+│   │   action/strategy/target heads and explanation support.
 │   ├── entities.py
-│   │   Being, Sheep, Monster, personal state, social state, ClanKnowledge.
+│   │   Being, Sheep, Monster, body/mind/social state and ClanKnowledge.
 │   ├── world.py / worldgen.py / resourcesites.py
-│   │   Grid layers, terrain, biomes, fire, crops, storage, ecological sites.
+│   │   NumPy world layers, procedural terrain, fire, crops, storage,
+│   │   construction state and localized ecological sites.
 │   ├── actioncandidate.py
-│   │   Contextual action variants from local perception and memory.
+│   │   Candidate variants derived from perception and memory.
 │   ├── affordancedefinitions.py / assetsmanager.py / assetsapi.py
-│   │   Assets, physical affordances, recipes and semantic catalog.
+│   │   Asset semantics, affordances, tools, resources and recipes.
 │   ├── construction.py / storage.py / socialmemory.py
-│   │   Buildings, material economy and social event records.
+│   │   Buildings, material storage and social records.
 │   ├── universalknowledge.py / academy.py
-│   │   Verified shared facts and learned-brain/cultural transmission support.
+│   │   Verified shared knowledge and learned-brain/cultural support.
 │   ├── lab.py / history.py
-│   │   Event recording, world history and experiment-oriented information.
+│   │   Event recording, experimental history and reporting data.
 │   ├── mapapi.py / mapcache.py
-│   │   Map abstractions, terrain cache and chunk rendering support.
-│   ├── save.py / history.py / invariants.py
-│   │   Persistence, history and consistency support.
-│   └── uicommands.py / uistate.py / uisnapshots.py /
-│       simulationcontroller.py
-│       Validated UI bridge, snapshots, commands, undo/redo and controller.
+│   │   Map transforms, terrain caches and chunk rendering support.
+│   ├── save.py / invariants.py
+│   │   Persistence and world consistency support.
+│   └── simulationcontroller.py / uicommands.py / uistate.py / uisnapshots.py
+│       Validated bridge between engine and Studio UI.
 │
 ├── uiqt/
 │   ├── mainwindow.py
-│   │   Studio shell, menus, toolbar, status, timers and docks.
+│   │   Studio shell: toolbar, menus, docks, timers, status and theme.
 │   ├── map/
-│   │   MapView, terrain chunks, minimap, effects and overlay integration.
+│   │   Map view, terrain chunks, minimap, effects and overlay integration.
 │   ├── docks/
-│   │   Inspector, population, journal, society, assets, tools and tile views.
+│   │   Inspector, population, journal, society, tile, tools and assets panels.
 │   ├── studio/
-│   │   Parameters, scenarios, timeline, laboratory, comparison and overlays.
+│   │   Parameters, scenarios, timeline, laboratory, reports, comparison,
+│   │   export and overlays.
 │   ├── dialogs/
-│   │   Save/load, inhabitant creation and tool editor.
+│   │   Save/load, inhabitant creation and custom tool editor.
 │   └── models/ / assetcache.py / qtimage.py
-│       Qt models, image conversion and cached visual assets.
+│       Qt data models, thumbnail/pixmap caches and image conversion.
 │
 ├── assets/
-│   Asset packs, sprites, portraits, terrain, tools and fallbacks.
+│   Visual packs, terrain, sprites, portraits, tools and fallbacks.
 ├── tests/
-│   Behavior, activity, terrain, save/load, overlay, UI and soak coverage.
+│   Behavior, activity, assets, terrain, save/load, overlays, UI and soak tests.
 ├── tools/
-│   Screenshot and project-documentation tooling.
+│   Headless screenshot and documentation tooling.
 └── docs/img/
     README images: hero.png and interface.png.
 ```
 
 ---
 
-## Performance model
+## Performance and scaling
 
-The project aims to preserve a large world and rich agents without representing every detail as a Python object at every frame.
+The project deliberately keeps a large world and rich agent state. Performance work therefore focuses on removing repeated work rather than deleting systems.
 
-Current design directions include:
+Current foundations include:
 
-- NumPy arrays for world layers;
-- spatial resource indexing;
+- NumPy arrays for terrain and world layers;
+- local resource indexing;
 - entity spatial buckets;
-- terrain cache and 64 × 64 chunks;
-- visible-region rendering and agent render budgets;
-- snapshot-driven UI panels;
-- bounded histories and event streams;
-- headless operation for long experiments.
+- terrain image cache and 64 × 64 chunks;
+- visible-region rendering;
+- rendering budgets for broad map views;
+- snapshot-driven Studio panels;
+- bounded event and memory structures;
+- headless execution for longer experiments.
 
-Performance remains an important contributor area. Good optimizations preserve capabilities while removing duplicate work: unnecessary scans, duplicate candidates, repeated snapshots, hidden-dock refreshes, uncached terrain rebuilds, and excessive per-frame object construction.
+High-impact contribution opportunities include:
+
+- profiling the simulation, brain, perception, UI and render pipeline;
+- improving cache invalidation;
+- reducing duplicate snapshot/model refreshes;
+- vectorizing safe hot paths;
+- improving local spatial queries;
+- preserving full information while adapting visual level of detail to zoom;
+- designing reproducible long-run benchmarks.
+
+The rule is simple:
+
+```text
+Do not make the simulation smaller to make it faster.
+Make it stop doing the same work twice.
+```
 
 ---
 
-## Roadmap
+## Open contribution areas
 
-### Agent capabilities
+### Agent autonomy and cognition
 
-- [ ] Verified spatial memory with confidence, decay and source provenance
-- [ ] Regional exploration driven by needs, danger and familiarity
-- [ ] Persistent composed activities: food expeditions, return-to-shelter, transport and helping behavior
-- [ ] More social knowledge transfer and bounded cultural learning
-- [ ] Causal experience traces linking actions, outcomes and later preferences
-- [ ] Richer diagnostics for why an agent selected or rejected a possibility
+- verified spatial memory with confidence, decay, source provenance and local revalidation;
+- regional exploration driven by need, familiarity, danger and curiosity;
+- composed activities: food expeditions, return-to-shelter, transport, helping and supply behavior;
+- stronger social knowledge transfer without omniscience;
+- causal experiences connecting actions to outcomes;
+- improved action-candidate generation and explainability;
+- social attention, graph neural networks or carefully benchmarked alternatives.
 
-### Ecology and society
+### Ecology and world simulation
 
-- [ ] More structured resource regions, depletion and regrowth
-- [ ] Fishing, hunting and richer animal behavior
-- [ ] Expanded agriculture, transport and production chains
-- [ ] Routes, migration, multi-settlement life and exchange
-- [ ] Stronger climate/disaster scenarios
+- richer regional resource distribution, depletion and regrowth;
+- fishing, hunting and improved animal behavior;
+- agriculture, production chains and material transformation;
+- routes, settlements, migration and exchange;
+- weather, climate and disaster experiments;
+- new assets that include real affordances and physical consequences.
 
-### Research and performance
+### Studio and visualization
 
-- [ ] Profiling view for simulation, brain, perception, UI and rendering cost
-- [ ] Vectorized tick paths and optional Numba experiments
-- [ ] Gymnasium-compatible `NeuralWorldEnv` wrapper for SB3 / CleanRL
-- [ ] Deterministic replay from seed plus command/event log
-- [ ] Expanded parameter sweeps and experiment reports
-- [ ] PPO / actor-critic benchmark against the current REINFORCE baseline
+- better decision, memory and causal overlays;
+- readable experiment reports;
+- population and social-network visualization;
+- timeline investigation tools;
+- stronger asset browser and map-editing workflows;
+- accessibility, keyboard navigation and English UI coverage.
 
-### Studio and community
+### Research infrastructure
 
-- [ ] English/French localization improvements
-- [ ] More explanation overlays and decision visualizations
-- [ ] Browser observation/dashboard experiments
-- [ ] Better contributor documentation for actions, assets, affordances and scenarios
-- [ ] More visual assets and biome presentation work
+- deterministic replay from seed and command/event log;
+- Gymnasium-compatible environment wrapper;
+- parameter sweeps and experiment orchestration;
+- baseline comparisons: frozen learning, REINFORCE, PPO/actor-critic;
+- result datasets, reproducible notebooks and benchmark scenarios;
+- long-run reliability and performance profiling.
 
 ---
 
 ## Contributing
 
-Contributors are welcome from artificial life, complex systems, multi-agent RL, simulation engineering, procedural generation, NumPy performance, PyQt6, testing, visualization, pixel art, documentation, and translation.
+Contributors are welcome from artificial life, complex systems, multi-agent RL, simulation engineering, procedural generation, NumPy optimization, PyQt6, visualization, testing, pixel art, documentation, and scientific computing.
 
-### Workflow
+You do not need to understand every system before contributing. The repository contains opportunities at different levels:
 
-```bash
-# Fork the repository
-# Create a branch: feat/my-feature or fix/my-bug
-python -m pytest tests -x -q
-# Open a focused pull request
-```
+| Contributor interest | Useful starting point |
+|---|---|
+| New to the project | Improve a label, help text, export sentence, scenario description or translation |
+| Python / tests | Add a targeted regression test for an existing behavior |
+| Procedural generation | Tune biome rules, resource-site placement or terrain readability |
+| AI / ALife | Improve a bounded perception, memory, candidate or composed-activity mechanism |
+| Performance | Profile a hot path, avoid duplicate work, improve cache invalidation |
+| PyQt6 | Improve inspector readability, tables, filters, docking, keyboard navigation or report views |
+| Artist / asset integrator | Add categorized assets, sprite mappings, visual states or fallbacks |
+| Researcher | Add an experiment scenario, metric, comparison, report or reproducible benchmark |
 
 ### Contribution principles
 
-1. Keep pull requests small and focused.
-2. Preserve the engine contract: the brain proposes, the world validates, consequences are real, the UI displays real engine data.
-3. Do not give inhabitants omniscient information.
-4. Do not add global scans to per-tick logic.
-5. Use existing spatial indexes and caches before creating another layer.
-6. Add or update a regression test when behavior changes.
-7. Keep simulation and UI concerns separated.
-8. Do not remove features to gain performance; remove redundant work instead.
+1. Keep pull requests focused and reviewable.
+2. Preserve the engine contract:
+
+   ```text
+   Brain proposes.
+   World validates.
+   Consequences are real.
+   UI displays engine data.
+   ```
+
+3. Do not give agents information they could not physically perceive, remember, or receive.
+4. Do not add global map scans or population-squared work to the per-tick path.
+5. Reuse existing spatial indexes, world caches and UI snapshots before introducing new infrastructure.
+6. Preserve save compatibility whenever practical.
+7. Add a regression test for changed behavior whenever practical.
+8. Do not remove a feature to improve performance; remove redundant computation instead.
 
 ### Good first issues
 
-| Area | Contribution ideas |
-|---|---|
-| Ecology | Tune a biome, add a small resource-site rule, improve regrowth behavior |
-| Assets | Add a semantic asset mapping, improve sprite fallback or add an affordance |
-| Construction | Add a blueprint with clear materials and world effects |
-| Diagnostics | Improve truthful explanation, event wording, overlays or inspector display |
-| Tests | Add a regression test for a behavior chain or save compatibility |
-| Studio | Improve report wording, exports, parameter descriptions or scenario controls |
-| Performance | Profile a hot path, improve cache invalidation, avoid duplicate UI refreshes |
-| Translation | Translate a dock, help text, scenario or documentation section |
+- Add a construction blueprint with real material requirements and an observable world consequence.
+- Improve a biome/resource-site rule while preserving deterministic seeds.
+- Add a truthful inspector field or readable timeline sentence.
+- Add a test for an existing behavior chain.
+- Improve a Studio export or laboratory interpretation sentence.
+- Add an asset classification rule, fallback sprite or affordance definition.
+- Improve a cache or refresh path without changing behavior.
+- Translate a UI area or improve contributor documentation.
 
-### Systems requiring discussion first
+### Discuss first
 
-Please open an issue or discussion before large changes to:
+Open an issue or discussion before major changes to:
 
-- neural architecture, input schema or learning algorithm;
-- save format and compatibility;
+- `brain.py`, `brainschema.py`, neural dimensions or learning algorithm;
+- save format, migration or deterministic replay;
 - global tick scheduling;
 - spatial indexes and cache invalidation;
-- action feasibility/world validation;
-- deterministic behavior and replay;
-- population/reproduction rules;
-- changes that could give agents information they could not perceive or learn.
+- core action feasibility/world validation;
+- population/reproduction systems;
+- systems that could accidentally create omniscient agents.
 
 ---
 
-## Example: adding a real capability
+## Adding a capability correctly
 
-A world interaction is complete only when all of these exist:
+A new label is not a new capability. A real capability needs a complete world contract:
 
 ```text
-Target or asset
-→ semantic affordance
+Target / asset
+→ affordance
 → feasibility requirements
 → perception or memory path
 → candidate / intention
-→ world execution
-→ physical consequence
-→ diagnostic / event / regression coverage
+→ execution
+→ real consequence
+→ journal / diagnostic / test
 ```
 
 For example, adding a harvestable plant should answer:
 
-- Can an agent physically perceive or remember it?
-- Which terrain, distance, tool, energy or season constraints apply?
-- Which world object changes after harvesting?
-- What is added to inventory or changed in needs?
+- How does an inhabitant physically perceive or remember it?
+- Which tool, distance, energy, terrain or season constraints apply?
+- What world object changes after harvesting?
+- What enters inventory or affects needs?
 - How can the attempt fail?
-- Which consequence should appear in the journal and inspector?
+- Which event and diagnostic state should be observable afterward?
 
-This approach protects the project from “fake actions”: labels that appear in the UI but have no real world consequence.
+This is how contributors help the project grow without creating “fake actions” that appear in the UI but do not affect the simulation.
 
 ---
 
-## 🇫🇷 En français
+## Development status
 
-### Présentation
+The project already contains a substantial living-world foundation, Studio interface, diagnostics, save/load support, scenarios, exports, and regression coverage. It is still experimental and actively evolving.
 
-**Neural World Simulation** est un laboratoire de vie artificielle et de simulation multi-agents. Il propose un monde persistant dans lequel chaque habitant possède un corps, des besoins, des émotions, une personnalité, des souvenirs, des relations, un inventaire, des compétences et un cerveau neuronal récurrent qui apprend pendant sa vie.
+A green test suite means a known contract has remained intact. It does not prove that every behavior is intelligent, scientifically validated, or fully optimized.
 
-Le projet n’impose pas de métiers tels que fermier, constructeur, explorateur ou gardien. Les habitants sont libres de choisir des possibilités cohérentes avec leur état et leur environnement : se reposer, chercher une ressource, fuir, explorer, construire, donner, suivre, parler, protéger un proche ou retourner vers un abri.
-
-Cette liberté n’est pas une liberté magique. Chaque décision reste limitée par ce que l’habitant perçoit, ce qu’il a mémorisé, son énergie, ses besoins, les relations sociales, le terrain, les outils, l’inventaire et les règles physiques du monde.
-
-### Contrat du moteur
-
-```text
-Perception locale + mémoire + besoins + émotions + personnalité
-→ proposition du cerveau
-→ vérification de faisabilité par le monde
-→ conséquence réelle
-→ expérience, mémoire et apprentissage
-```
-
-Le cerveau propose une intention. Le monde décide si l’action est réellement possible. Ainsi, aucun habitant ne peut récolter une ressource absente, traverser un obstacle sans capacité, construire sans matériaux ou connaître une région qu’il n’a jamais perçue ou apprise.
-
-### Carte, population et liberté d’expérimentation
-
-La carte fait **1 000 × 1 000 tuiles**. Elle peut être utilisée avec une petite population pour observer précisément les décisions, avec une population standard pour faire vivre un monde, ou avec une population plus grande selon les limites de runtime et les performances de la machine.
-
-Le projet n’affirme pas qu’il contient toujours 140 habitants : ce nombre peut être utilisé pour une capture ou une démonstration. L’utilisateur choisit son scénario et sa population de départ.
-
-### Studio laboratoire PyQt6
-
-Le Studio sert à observer et expérimenter :
-
-- carte avec zoom, inclinaison, mini-carte, suivi et effets ;
-- liste de population et sélection d’habitants ;
-- inspecteur : corps, cognition, personnalité, émotions, besoins, mémoire, relations, inventaire, outils, intentions et cerveau ;
-- panneaux Anima, société, journal, chronologie et laboratoire ;
-- overlays : ressources, danger, mémoire, relations, besoins, Anima, culture, institutions et territoires ;
-- paramètres runtime, scénarios, comparaisons A/B, rapports et exports ;
-- outils pour créer habitants, moutons, monstres, assets, outils et terrain ;
-- pause, step, vitesse, sauvegarde, chargement, undo/redo.
-
-### Contributions
-
-Les contributions sont bienvenues pour la vie artificielle, le ML multi-agent, la performance NumPy, PyQt6, la génération procédurale, les tests, les assets, les visualisations, la documentation et la traduction.
-
-La règle fondamentale à préserver est :
-
-```text
-Le cerveau propose.
-Le monde vérifie.
-Les conséquences sont réelles.
-L’interface affiche les vraies données du moteur.
-```
+That honesty is intentional. The project welcomes contributors who want to help turn ambitious systems into measurable, reproducible, inspectable artificial-life experiments.
 
 ---
 
@@ -688,4 +720,4 @@ L’interface affiche les vraies données du moteur.
 
 Apache-2.0 — see [LICENSE](LICENSE).
 
-Asset packs under `assets/` retain their original authors’ licenses and attribution requirements. Consult the license files bundled with CraftPix, Kenney, KayKit, Tiny Swords, and other included asset sources before redistribution.
+Asset packs in `assets/` retain their original licenses and attribution requirements. Consult bundled license files for CraftPix, Kenney, KayKit, Tiny Swords, and other included sources before redistribution.
