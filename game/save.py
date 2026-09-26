@@ -247,6 +247,31 @@ def save_game(sim, cam=None, slot=0, ui_state=None):
             for (tx, ty), cp in w.crop_plots.items()
         },
         "items": [(it.x, it.y, it.aid, it.kind, it.life) for it in w.items],
+        # --- sites de ressources persistants (Phase 3) ---
+        # Le cache `_tiles` n'est pas sauvegardé : il se recalcule à la
+        # première demande (ResourceSite.tiles()).
+        "resource_sites": [
+            {
+                "id": int(site.id),
+                "kind": str(site.kind),
+                "tx": int(site.tx),
+                "ty": int(site.ty),
+                "radius": int(site.radius),
+                "capacity": float(site.capacity),
+                "remaining": float(site.remaining),
+                "regrowth_per_tick": float(site.regrowth_per_tick),
+                "biome": site.biome,
+                "region": tuple(int(v) for v in site.region),
+                "visible_cap": int(site.visible_cap),
+                "last_update_tick": int(site.last_update_tick),
+            }
+            for site in sorted(
+                getattr(w, "resource_sites", {}).values(),
+                key=lambda s: int(s.id))
+        ],
+        "next_resource_site_id": int(getattr(w, "next_resource_site_id", 1)),
+        # --- mode laboratoire (monde vide) ---
+        "blank_world": bool(getattr(sim, "blank_world", False)),
         "w_tick": w.tick,
         "g": w.g,
         # --- worldgen ---
@@ -458,6 +483,34 @@ def load_game(am, slot=0):
         from .world import Item
         w.items.append(Item(ikind, iaid, ix, iy, life=ilife))
 
+    # --- sites de ressources : reconstitués à partir de l'enregistrement
+    # uniquement (aucun générateur appelé au chargement). Le helper
+    # add_resource_site reconstruit sites_by_region. Anciennes sauvegardes
+    # sans le champ -> monde cohérent sans site. ---
+    from .resourcesites import ResourceSite, add_resource_site
+    w.resource_sites = {}
+    w.sites_by_region = {}
+    for raw_site in data.get("resource_sites", []):
+        site = ResourceSite(
+            id=int(raw_site["id"]),
+            kind=str(raw_site["kind"]),
+            tx=int(raw_site["tx"]),
+            ty=int(raw_site["ty"]),
+            radius=int(raw_site["radius"]),
+            capacity=float(raw_site["capacity"]),
+            remaining=float(raw_site["remaining"]),
+            regrowth_per_tick=float(raw_site["regrowth_per_tick"]),
+            biome=raw_site["biome"],
+            region=tuple(int(v) for v in raw_site["region"]),
+            visible_cap=int(raw_site.get("visible_cap", 18)),
+            last_update_tick=int(raw_site.get("last_update_tick", 0)),
+        )
+        add_resource_site(w, site)
+    w.next_resource_site_id = max(
+        int(data.get("next_resource_site_id", 1)),
+        max(w.resource_sites, default=0) + 1,
+    )
+
     # --- worldgen ---
     if data.get("has_gen", False):
         from .worldgen import WorldGen
@@ -479,6 +532,8 @@ def load_game(am, slot=0):
 
     # --- reconstruire sim ---
     sim = Sim(w, am, seed=int(data.get("seed", 0)))
+    # Mode laboratoire : flag restauré (anciennes sauvegardes -> False).
+    sim.blank_world = bool(data.get("blank_world", False))
     sim.next_eid = data["next_eid"]
     sim.paused = data["paused"]
     sim.speed = data["speed"]
@@ -599,6 +654,30 @@ def load_game(am, slot=0):
 
 
 # ------------------------------------------------------------------ serialisation
+def _serialize_activity(activity):
+    """Trace informative d'activité (primitives sûres, jamais restaurée).
+
+    ``target_ref``/``data`` ne sortent jamais : seuls les champs simples
+    qui laissent l'annulation au chargement explicite.
+    """
+    if activity is None:
+        return None
+    try:
+        def _opt_int(v):
+            return int(v) if v is not None else None
+        return {
+            "kind": str(getattr(activity, "kind", "")),
+            "stage": str(getattr(activity, "stage", "")),
+            "target_tx": _opt_int(getattr(activity, "target_tx", None)),
+            "target_ty": _opt_int(getattr(activity, "target_ty", None)),
+            "target_eid": _opt_int(getattr(activity, "target_eid", None)),
+            "started_tick": int(getattr(activity, "started_tick", 0)),
+            "reason": str(getattr(activity, "reason", "")),
+        }
+    except (TypeError, ValueError):
+        return None
+
+
 def _serialize_agent(a):
     return {
         "eid": a.eid, "name": a.name, "gen": a.gen, "color": a.color,
@@ -641,6 +720,22 @@ def _serialize_agent(a):
         "brain_b2_targ": a.brain._b2_targ.copy(),
         # memory
         "seen": {k: list(v) for k, v in a.seen.items()},
+        # Mémoires de lieux/régions : clés tuple conservées telles quelles
+        # (pickle, pas de JSON) et valeurs dict simples.
+        "place_memories": {
+            key: dict(value)
+            for key, value in getattr(a, "place_memories", {}).items()
+            if isinstance(value, dict)
+        },
+        "region_memory": {
+            key: dict(value)
+            for key, value in getattr(a, "region_memory", {}).items()
+            if isinstance(value, dict)
+        },
+        # Activité en cours : enregistrée à titre INFORMATIF uniquement,
+        # primitives sûres (jamais target_ref/data). Elle n'est pas
+        # restaurée : `_deserialize_agent` l'annule avec un motif explicite.
+        "activity": _serialize_activity(a.activity),
         "belief_places": dict(a.belief_places),
         "belief_beings": dict(a.belief_beings),
         "rel": dict(a.rel),
@@ -757,6 +852,40 @@ def _deserialize_agent(d):
     a.parent_pere_id = d.get("parent_pere_id"); a.parent_mere_id = d.get("parent_mere_id")
     a.children = d.get("children", [])
     a.seen = d.get("seen", {c: [] for c in ("food","wood","stone","water","shelter","agent")})
+    # Mémoires de lieux/régions : clés tuple reconstituées par pickle, pas de
+    # conversion tuple <-> chaîne. Même plafond qu'en direct (40 entrées,
+    # éviction de la moins confiante) pour ne pas créer un état hors bornes.
+    a.place_memories = {
+        key: dict(value)
+        for key, value in d.get("place_memories", {}).items()
+        if isinstance(value, dict)
+    }
+    while len(a.place_memories) > 40:
+        worst = min(a.place_memories.items(),
+                    key=lambda kv: float(kv[1].get("confidence", 0.0)))
+        del a.place_memories[worst[0]]
+        _count_anomaly("agent.place_memories (>40)")
+    a.region_memory = {
+        key: dict(value)
+        for key, value in d.get("region_memory", {}).items()
+        if isinstance(value, dict)
+    }
+    # Règle explicite : l'activité en cours n'est JAMAIS restaurée (cible et
+    # références métier potentiellement périmées après le saut de ticks).
+    # Annulation propre avec motif explicite, sans fabriquer de résultat de
+    # réussite : la trace informative éventuellement enregistrée est lue mais
+    # aucun ActivityState n'est reconstruit.
+    a.activity = None
+    if isinstance(d.get("activity"), dict):
+        try:
+            kind = str(d["activity"].get("kind", "") or "")
+        except (TypeError, AttributeError):
+            kind = ""
+        a.activity_cancel_reason = (
+            f"activité « {kind} » annulée au chargement" if kind
+            else "activité annulée au chargement")
+    else:
+        a.activity_cancel_reason = ""
     a.belief_places = d.get("belief_places", {})
     a.belief_beings = d.get("belief_beings", {})
     a.rel = d.get("rel", {})

@@ -236,6 +236,11 @@ class MapView(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMinimumSize(400, 300)
 
+        #: Compteur de peintures RÉELLEMENT achevées (base du FPS carte).
+        #: Incrémenté en fin de paintEvent seulement si le rendu est allé à
+        #: terme ; utilisé par MainWindow pour mesurer les FPS.
+        self.rendered_frames = 0
+
     # ------------------------------------------------------------------
     # Caméra
     # ------------------------------------------------------------------
@@ -318,6 +323,11 @@ class MapView(QWidget):
     # ------------------------------------------------------------------
 
     def paintEvent(self, event):
+        # Mesure du rendu RÉEL (map_view) : le temps est ajouté à
+        # sim.perf("render") et les frames ne sont comptées que si la
+        # peinture a réellement abouti.
+        started = time.perf_counter()
+        completed = False
         painter = QPainter(self)
         # Désactiver l'antialiasing pour le terrain/sprites pixel-art (plus net, plus rapide)
         # Garder l'antialiasing uniquement pour le texte/legend si nécessaire
@@ -362,8 +372,16 @@ class MapView(QWidget):
                 self.ensure_minimap_qimage()
                 self.draw_minimap(painter)
 
+            completed = True
         finally:
             painter.end()
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            perf = getattr(getattr(self.controller, "sim", None), "perf", None)
+            if perf is not None:
+                perf.add("render", elapsed_ms)
+            # UNE peinture réellement terminée = une frame pour le FPS.
+            if completed:
+                self.rendered_frames += 1
 
     def draw_cached_terrain(self, painter: QPainter):
         if self.terrain_qimage is None:

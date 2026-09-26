@@ -216,7 +216,19 @@ def _decision_trace_snapshot(sim, agent) -> dict:
         "belonging": _f(5),
         "esteem": _f(6),
     }
-    need_name = max(values, key=values.get)
+    need_key = max(values, key=values.get)
+    need_pressure = max(0.0, min(1.0, float(values[need_key])))
+    # Libellé du dépôt (source unique NEED_DEFS) ; la clé reste exposée.
+    need_name = need_key
+    try:
+        from .config import NEED_DEFS
+        _label_index = {"hunger": 0, "energy_deficit": 1, "thirst": 2,
+                        "sleep": 3, "safety": 4, "belonging": 5, "esteem": 6}
+        _idx = _label_index.get(need_key, -1)
+        if 0 <= _idx < len(NEED_DEFS):
+            need_name = str(NEED_DEFS[_idx])
+    except Exception:
+        pass
     try:
         emotions = list(getattr(agent, "emotions", []) or [])
     except Exception:
@@ -238,22 +250,24 @@ def _decision_trace_snapshot(sim, agent) -> dict:
         emo_name, emo_val = "", 0.0
     cands = [dict(r) for r in (getattr(agent, "decision_trace", []) or [])[:8]]
     selected = next((dict(r) for r in cands if r.get("state") == "selected"), None)
-    reason = ""
-    if selected is not None:
-        reason = "meilleur score parmi les faisables"
-    last_res = getattr(agent, "last_activity_result", None) or {}
-    failure_reason = str(last_res.get("reason", "")) if isinstance(last_res, dict) else ""
-    failure_tick = tick if failure_reason else -1
+    # Vérités enregistrées par le moteur au moment du choix / de l'échec
+    # (aucune déduction depuis un candidat ou depuis failed_targets).
+    reason = str(getattr(agent, "last_selection_reason", ""))
+    reason_tick = int(getattr(agent, "last_selection_tick", -1))
+    failure_reason = str(getattr(agent, "last_failure_reason", ""))
+    failure_tick = int(getattr(agent, "last_failure_tick", -1))
     return {
         "tick": tick,
         "dominant_need": {"name": str(need_name),
-                          "value": float(values[need_name])},
+                          "key": str(need_key),
+                          "value": need_pressure},
         "dominant_emotion": {"name": str(emo_name), "value": float(emo_val)},
         "candidates": cands,
         "selected": selected,
-        "reason": str(reason),
-        "failure_reason": str(failure_reason),
-        "failure_tick": int(failure_tick),
+        "reason": reason,
+        "reason_tick": reason_tick,
+        "failure_reason": failure_reason,
+        "failure_tick": failure_tick,
     }
 
 

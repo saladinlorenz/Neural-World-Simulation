@@ -258,8 +258,16 @@ class Sim:
             return "greeting"
         return None
 
-    def apply_communication(self, speaker: Being, listener: Being, topic: str) -> bool:
-        """Applique l'effet de la communication selon le sujet (plan §3.7)."""
+    def apply_communication(self, speaker: Being, listener: Being,
+                            topic: str) -> dict | None:
+        """Applique l'effet de la communication selon le sujet (plan §3.7).
+
+        Retourne le payload RÉELLEMENT transmis (primitives seulement) après
+        succès, ou ``None`` si l'effet n'a pas été appliqué. Le payload vient
+        de l'effet lui-même : aucune mémoire n'est relue une deuxième fois
+        après modification, et un échec ne peut jamais être présenté comme un
+        message reçu.
+        """
         if topic == "food_location":
             mem = self.best_shareable_memory(speaker, "food")
             if mem:
@@ -278,7 +286,7 @@ class Sim:
             return self.receive_follow_request(listener, speaker.eid, speaker.activity)
         elif topic == "greeting":
             return self.apply_greeting(speaker, listener)
-        return False
+        return None
 
     def best_shareable_memory(self, agent: Being, category: str) -> tuple[int, int, float] | None:
         """Meilleur souvenir partageable pour une catégorie (plan §5.7).
@@ -330,6 +338,9 @@ class Sim:
             return rows[0]
         mem = agent.recall(category, agent.tx, agent.ty)
         if mem and mem[2] < 100:
+            # Souvenir ancien (seen) : ni source ni date de vérification
+            # connues. On ne fabrique ni « observation directe » ni tick de
+            # vérification courant — la confiance reste neutre (0.50).
             return {
                 "category": category,
                 "tx": int(mem[0]),
@@ -337,8 +348,8 @@ class Sim:
                 "confidence": 0.50,
                 "estimated_amount": 0.50,
                 "estimated_danger": 0.0,
-                "last_verified_tick": int(self.w.tick),
-                "source": "direct",
+                "last_verified_tick": None,
+                "source": "legacy_memory",
             }
         return None
 
@@ -350,8 +361,12 @@ class Sim:
         return (m.tx, m.ty, 0.8)
 
     def receive_shared_place(self, listener: Being, mem: tuple[int, int, float],
-                             category: str, from_eid: int) -> bool:
-        """Reçoit un lieu partagé (plan §6.1) : confiance réduite, source sociale."""
+                             category: str, from_eid: int) -> dict | None:
+        """Reçoit un lieu partagé (plan §6.1) : confiance réduite, source sociale.
+
+        Retourne le payload RÉELLEMENT transmis (confiance réellement
+        reçue + provenance) ou ``None`` si la transmission échoue.
+        """
         tx, ty, conf = mem
         try:
             trust = listener.anima_social_score(from_eid)
@@ -363,11 +378,12 @@ class Sim:
             float(conf) * KNOWLEDGE_SHARE_FACTOR * (0.50 + 0.50 * trust01),
         )
         if received_conf < 0.2:
-            return False
+            return None
         # Compat seen + mémoire typée sociale (quantité perçue à -20%).
         listener.remember(category, tx, ty)
         amount = 0.5
         danger = 0.0
+        origin_source = ""
         try:
             _d = self._shareable_memory_dict(
                 self._by_eid(from_eid), category) if hasattr(self, "_by_eid") else None
@@ -376,6 +392,9 @@ class Sim:
         if isinstance(_d, dict):
             amount = float(_d.get("estimated_amount", 0.5))
             danger = float(_d.get("estimated_danger", 0.0))
+            # Provenance d'origine : métadonnée facultative, sans lui donner
+            # le statut d'observation locale (la mémoire reçue reste sociale).
+            origin_source = str(_d.get("source", ""))
         try:
             listener.remember_place(
                 category, tx, ty, self.w.tick,
@@ -394,16 +413,29 @@ class Sim:
         self.lab.event(self.w.tick, "knowledge_shared",
                        from_eid=from_eid, to_eid=listener.eid,
                        category=category, tx=tx, ty=ty, confidence=received_conf)
-        return True
+        # Payload réellement reçu : confiance effective (après réduction)
+        # et provenance — jamais une donnée relue après modification.
+        return {
+            "category": str(category),
+            "tx": int(tx),
+            "ty": int(ty),
+            "confidence_received": float(received_conf),
+            "source": "social",
+            "origin_source": origin_source,
+            "from_eid": int(from_eid),
+        }
 
     def receive_danger_warning(self, listener: Being, mem: tuple[int, int, float],
-                               from_eid: int) -> bool:
-        """Reçoit un avertissement de danger (plan §6.2) : croyance réelle + prudence."""
+                               from_eid: int) -> dict | None:
+        """Reçoit un avertissement de danger (plan §6.2) : croyance réelle + prudence.
+
+        Retourne le payload transmis (niveau réellement appliqué) ou ``None``.
+        """
         tx, ty, conf = mem
         trust = listener.trust(from_eid)
         effective_conf = conf * KNOWLEDGE_SHARE_FACTOR * max(0.3, 0.5 + trust * 0.5)
         if effective_conf < 0.2:
-            return False
+            return None
         level = max(0.0, min(1.0, float(effective_conf) * 0.65 + 0.20))
         cx, cy = int(tx) // 8, int(ty) // 8
         prev = float(listener.belief_places.get((cx, cy), 0.0))
@@ -418,14 +450,28 @@ class Sim:
         self.lab.event(self.w.tick, "danger_warning_received",
                        from_eid=from_eid, to_eid=listener.eid,
                        tx=tx, ty=ty, confidence=effective_conf)
-        return True
+        return {
+            "kind": "danger_warning",
+            "tx": int(tx),
+            "ty": int(ty),
+            "level": float(level),
+            "confidence_received": float(effective_conf),
+            "source": "social",
+            "from_eid": int(from_eid),
+        }
 
-    def receive_help_request(self, listener: Being, speaker) -> bool:
-        """Reçoit une demande d'aide (plan §6.3) : signal social réel, pas de mission auto."""
+    def receive_help_request(self, listener: Being,
+                             speaker) -> dict | None:
+        """Reçoit une demande d'aide (plan §6.3) : signal social réel, pas de mission auto.
+
+        Retourne le payload transmis (les données réelles de la demande) ou
+        ``None``. N'écrit jamais ``listener.lastheard`` : le message canonique
+        est publié par ``do_talk`` après succès.
+        """
         from_eid = speaker.eid if hasattr(speaker, "eid") else int(speaker)
         trust = listener.trust(from_eid)
         if trust < -0.2:
-            return False
+            return None
         if hasattr(speaker, "hunger"):
             request = {
                 "kind": "need_help",
@@ -438,7 +484,8 @@ class Sim:
                 "danger": float(speaker.emotions[0]),
                 "tick": int(self.w.tick),
             }
-            listener.lastheard = dict(request)
+            # Pas d'écriture de listener.lastheard ici : le message canonique
+            # est publié une seule fois par do_talk(), après succès.
             try:
                 listener.observed_actions.append({
                     "action": "need_help",
@@ -447,13 +494,19 @@ class Sim:
                 })
             except Exception:
                 pass
+        else:
+            request = {
+                "kind": "need_help",
+                "requester_eid": int(from_eid),
+                "tick": int(self.w.tick),
+            }
         listener.emotions[5] = min(1.0, listener.emotions[5] + 0.1)  # surprise
         listener.emotions[7] = min(1.0, listener.emotions[7] + 0.05)  # affection
         self.lab.event(self.w.tick, "help_request_received",
                        from_eid=from_eid, to_eid=listener.eid, trust=trust)
-        return True
+        return dict(request)
 
-    def apply_greeting(self, speaker: Being, listener: Being) -> bool:
+    def apply_greeting(self, speaker: Being, listener: Being) -> dict:
         """Salutation faible (plan §6.4) : le cooldown évite le farm relationnel."""
         self.adjust_social_interaction(speaker, listener, trust=0.01, affection=0.02)
         try:
@@ -461,21 +514,27 @@ class Sim:
             listener.emotions[1] = min(1.0, listener.emotions[1] + 0.02)
         except Exception:
             pass
-        return True
+        # Sujet sans cible : payload minimal (jamais d'objet métier brut).
+        return {"kind": "greeting"}
 
     def receive_follow_request(self, listener: Being, from_eid: int,
-                               activity: ActivityState | None) -> bool:
-        """Reçoit une demande de suivre."""
+                               activity: ActivityState | None) -> dict | None:
+        """Reçoit une demande de suivre. Payload transmis ou ``None``."""
         trust = listener.trust(from_eid)
         if trust < 0.1:
-            return False
+            return None
         if activity and activity.target_tx is not None and activity.target_ty is not None:
             listener.remember("agent", activity.target_tx, activity.target_ty)
             self.lab.event(self.w.tick, "follow_request_received",
                            from_eid=from_eid, to_eid=listener.eid,
                            target_tx=activity.target_tx, target_ty=activity.target_ty)
-            return True
-        return False
+            return {
+                "kind": "follow_request",
+                "target_tx": int(activity.target_tx),
+                "target_ty": int(activity.target_ty),
+                "from_eid": int(from_eid),
+            }
+        return None
 
     def adjust_social_interaction(self, a: Being, b: Being,
                                    trust: float = 0.0, affection: float = 0.0) -> None:
@@ -509,8 +568,8 @@ class Sim:
             except Exception:
                 pass
             return False
-        success = self.apply_communication(speaker, listener, topic)
-        if not success:
+        payload = self.apply_communication(speaker, listener, topic)
+        if payload is None:
             self.record_activity_failure(speaker, "talk",
                                          "communication_has_no_real_payload")
             try:
@@ -523,6 +582,9 @@ class Sim:
         speaker.energy = max(0.0, float(speaker.energy) - TALK_ENERGY_COST)
         speaker.talk_cd[listener.eid] = self.w.tick
         listener.talk_cd[speaker.eid] = self.w.tick
+        # UN seul événement canonique, construit à partir du payload
+        # réellement transmis (renvoyé par apply_communication) : les deux
+        # côtés publient exactement la même chose, après succès.
         event = {
             "kind": "talk",
             "topic": str(topic),
@@ -530,38 +592,12 @@ class Sim:
             "speaker_name": str(speaker.name),
             "listener_eid": int(listener.eid),
             "listener_name": str(listener.name),
+            "payload": dict(payload),
             "tick": int(self.w.tick),
+            "result": "received",
             "language_source": "semantic",
             "token": None,
         }
-        # Payload structuré par sujet
-        if topic == "food_location":
-            mem = self.best_shareable_memory(speaker, "food")
-            if mem:
-                event["payload"] = {
-                    "category": "food",
-                    "tx": int(mem["tx"]),
-                    "ty": int(mem["ty"]),
-                    "confidence_sent": float(mem.get("confidence", 0.5)),
-                }
-        elif topic == "water_location":
-            mem = self.best_shareable_memory(speaker, "water")
-            if mem:
-                event["payload"] = {
-                    "category": "water",
-                    "tx": int(mem["tx"]),
-                    "ty": int(mem["ty"]),
-                    "confidence_sent": float(mem.get("confidence", 0.5)),
-                }
-        elif topic == "danger_warning":
-            mem = self.best_shareable_danger(speaker)
-            if mem:
-                event["payload"] = {
-                    "kind": "danger_warning",
-                    "tx": int(mem[0]),
-                    "ty": int(mem[1]),
-                    "level": 0.8,
-                }
         event["template"] = MESSAGE_TEMPLATES.get(
             topic, "{topic}").format(
                 direction=relative_direction(speaker,
@@ -569,9 +605,7 @@ class Sim:
                     event.get("payload", {}).get("ty", speaker.ty))
                 if topic in MESSAGE_TEMPLATES else topic)
         speaker.lastsaid = dict(event)
-        # need_help écrase déjà lastheard avec la requête ; sinon trace talk.
-        if topic != "need_help":
-            listener.lastheard = dict(event)
+        listener.lastheard = dict(event)
         self.emit_sound(speaker.x, speaker.y, "voice", 0.6)
         self.effects.append({"kind": "talk", "x": speaker.x, "y": speaker.y,
                              "t0": self.w.tick, "ttl": 20})
@@ -589,9 +623,19 @@ class Sim:
         return True
 
     def record_activity_failure(self, agent: Being, activity: str, reason: str) -> None:
-        """Enregistre un échec d'activité pour apprentissage."""
+        """Enregistre un échec d'activité pour apprentissage.
+
+        Point central d'enregistrement d'échec : la vérité « dernier échec »
+        est écrite ici, au moment où il se produit (et non déduite au rendu
+        depuis ``failed_targets``). N'efface jamais le dernier choix.
+        """
         self.metrics[f"activity_fail_{activity}"] += 1
         self.activity_reasons[f"{activity}:{reason}"] += 1
+        try:
+            agent.last_failure_reason = str(reason)
+            agent.last_failure_tick = int(self.w.tick)
+        except AttributeError:
+            pass
         self._reward(agent, -0.02)
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -617,11 +661,21 @@ class Sim:
         return act
 
     def fail_activity(self, agent: Being, reason: str) -> None:
-        """Termine l'activité en échec (plan §5)."""
+        """Termine l'activité en échec (plan §5).
+
+        Point central d'échec des activités : la vérité « dernier échec » y
+        est écrite au moment où il se produit (n'efface pas le dernier
+        choix de sélection).
+        """
         if agent.activity:
             agent.activity.failure_reason = reason
             self.record_activity_outcome(agent, agent.activity.kind, "failed", -0.1)
             agent.last_activity_result = {"kind": agent.activity.kind, "outcome": "failed", "reason": reason}
+            try:
+                agent.last_failure_reason = str(reason)
+                agent.last_failure_tick = int(self.w.tick)
+            except AttributeError:
+                pass
             agent.activity = None
             agent.goal = None
 
@@ -2484,11 +2538,12 @@ class Sim:
                 reason = "aucune action faisable — repli Repos"
             else:
                 reason = f"« {init_name} » non faisable — repli sur la meilleure alternative"
+            score = float(p[act]) if 0 <= act < len(p) else 0.0
             a.last_decision = {
                 "tick": int(self.w.tick),
                 "act": int(act),
                 "act_name": act_name,
-                "prob": float(p[act]) if 0 <= act < len(p) else 0.0,
+                "prob": score,
                 "initial_act": int(initial_act),
                 "initial_act_name": init_name,
                 "initial_prob": (float(p[initial_act])
@@ -2497,6 +2552,10 @@ class Sim:
                 "feasible": feasible_names[:8],
                 "reason": reason,
             }
+            # Vérité de sélection : enregistrée ici, au moment précis du
+            # choix moteur (et non au rendu). Score réel du candidat retenu.
+            a.last_selection_tick = int(self.w.tick)
+            a.last_selection_reason = f"{reason} — score {score:.3f}"
         except Exception:
             self.metrics["unhandled_action_errors"] += 1
             a.last_decision = None
@@ -2711,6 +2770,13 @@ class Sim:
         count += 1
         cooldown = min(1800, 180 * count)
         a.failed_targets[key] = (count, self.w.tick + cooldown)
+        # Vérité « dernier échec » au moment de l'échec (n'efface pas le
+        # dernier choix de sélection).
+        try:
+            a.last_failure_reason = str(reason)
+            a.last_failure_tick = int(self.w.tick)
+        except AttributeError:
+            pass
         a.goal = None
         a.stuck = 0
         a.emotions[3] = min(1.0, a.emotions[3] + 0.04)

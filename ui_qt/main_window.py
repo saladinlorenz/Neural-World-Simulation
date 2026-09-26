@@ -606,14 +606,27 @@ class MainWindow(QMainWindow):
         self._timer.timeout.connect(self._tick)
         self._timer.start(max(1, 1000 // FPS))
         self._tick_count = 0
+        # Bases des cadences RÉELLES : FPS = peintures achevées par la carte,
+        # TPS = ticks du monde écoulés. Fenêtre glissante fondée sur
+        # perf_counter (pas sur le timer de l'UI).
+        self._reset_rate_counters()
+
+    def _reset_rate_counters(self):
+        """Remet à zéro les bases de mesure FPS/TPS (nouveau Sim, chargement)."""
+        from time import perf_counter
+        self._rate_sim = self.controller.sim
+        self.rate_started = perf_counter()
+        self.rate_last_world_tick = int(
+            getattr(self._rate_sim.w, "tick", 0))
+        self.rate_last_rendered_frames = int(
+            getattr(self._map, "rendered_frames", 0))
+        self.actual_fps = 0.0
+        self.actual_tps = 0.0
 
     def _tick(self):
         import time
 
         frame_started = time.perf_counter()
-        now = frame_started
-        dt = now - getattr(self, "_last_tick_at", now)
-        self._last_tick_at = now
 
         sim = self.controller.sim
         self._tick_count += 1
@@ -662,11 +675,11 @@ class MainWindow(QMainWindow):
 
         ui_ms = (time.perf_counter() - ui_started) * 1000.0
         total_ms = (time.perf_counter() - frame_started) * 1000.0
-        render_ms = max(0.0, total_ms - sim_ms - ui_ms)
 
-        # Add UI and render to perfmetrics for status bar display
+        # RENDER ms : mesuré DIRECTEMENT par MapView.paintEvent (aucune
+        # déduction : total - sim - ui compterait BRAIN deux fois et
+        # ignorerait le rendu réellement peint).
         sim.perf.add("ui", ui_ms)
-        sim.perf.add("render", render_ms)
 
         self.last_perf = {
             "sim_ms": sim_ms,
@@ -674,11 +687,6 @@ class MainWindow(QMainWindow):
             "total_ms": total_ms,
             "steps": steps,
         }
-
-        # Indicateur FPS / TPS (moyennes glissantes)
-        if dt > 0:
-            self._fps_ema = 0.8 * getattr(self, "_fps_ema", 0.0) + 0.2 / dt
-            self._tps_ema = 0.8 * getattr(self, "_tps_ema", 0.0) + 0.2 * steps / dt
 
         # Mettre a jour la barre d'etat (4x par seconde suffit)
         if self._tick_count % 4 == 0:
@@ -727,6 +735,29 @@ class MainWindow(QMainWindow):
         if self._tick_count % snap_every == 0 and self._lab_dock.isVisible():
             self._lab_dock.refresh()
 
+    def _refresh_rate_counters(self):
+        """Fenêtre glissante ≥ 0,25 s : FPS carte et TPS simulation réels.
+
+        FPS = peintures ``paintEvent`` effectivement achevées (comptées par
+        MapView) ; TPS = delta des ticks du monde. Ce n'est PAS le timer de
+        l'UI : une pause donne 0 TPS et les vitesses élevées n'affichent que
+        les ticks réellement effectués.
+        """
+        from time import perf_counter
+        now = perf_counter()
+        elapsed = now - self.rate_started
+        if elapsed < 0.25:
+            return
+        frames_now = int(getattr(self._map, "rendered_frames", 0))
+        ticks_now = int(self.controller.sim.w.tick)
+        frames = frames_now - self.rate_last_rendered_frames
+        ticks = ticks_now - self.rate_last_world_tick
+        self.actual_fps = max(0, frames) / elapsed
+        self.actual_tps = max(0, ticks) / elapsed
+        self.rate_last_rendered_frames = frames_now
+        self.rate_last_world_tick = ticks_now
+        self.rate_started = now
+
     def _refresh_status(self):
         """Barre d'etat en blocs : horloge, saison, population, vitesse,
         etat, tuile survolée, performance, graine, scenario (Lot H)."""
@@ -750,20 +781,30 @@ class MainWindow(QMainWindow):
             self._tile_pill.setText("⌖ %d,%d" % (hover[0], hover[1]))
         else:
             self._tile_pill.setText("⌖ —")
+        # Cadences RÉELLES : FPS = peintures achevées par la carte,
+        # TPS = ticks du monde effectivement effectués (la pause donne 0).
+        # Un Sim remplacé (chargement, nouveau monde) réinitialise les bases
+        # pour éviter un TPS négatif ou artificiellement énorme.
+        if getattr(self, "_rate_sim", None) is not sim:
+            self._reset_rate_counters()
+        self._refresh_rate_counters()
+
         perf = getattr(self, "last_perf", {})
         pm = getattr(sim, "perf", None)
         sim_ms = pm.average("sim") if pm else perf.get("sim_ms", 0.0)
         brain_ms = pm.average("brain") if pm else 0.0
-        ui_ms = perf.get("ui_ms", 0.0)
-        render_ms = max(0.0, perf.get("total_ms", 0.0) - sim_ms - ui_ms)
+        # UI et RENDER lus aux sections qu'ils mesurent réellement
+        # (render vient de MapView.paintEvent, pas d'une déduction).
+        ui_ms = pm.average("ui") if pm else perf.get("ui_ms", 0.0)
+        render_ms = pm.average("render") if pm else 0.0
         perf_line = "SIM %.1fms · BRAIN %.1fms · UI %.1fms · RENDER %.1fms" % (
             sim_ms, brain_ms, ui_ms, render_ms)
         total_ms = sim_ms + ui_ms + render_ms
         over_budget = total_ms > TICK_BUDGET_MS
         self._performance_pill.setText(
-            "%.0f FPS · %.1f TPS · %s" % (
-                getattr(self, "_fps_ema", 0.0),
-                getattr(self, "_tps_ema", 0.0),
+            "%.0f FPS carte · %.1f TPS sim · %s" % (
+                getattr(self, "actual_fps", 0.0),
+                getattr(self, "actual_tps", 0.0),
                 perf_line,
             ))
         if over_budget:
@@ -772,10 +813,14 @@ class MainWindow(QMainWindow):
             self._performance_pill.set_pill_color("#91A0B2")  # default gray
 
         self._seed_label.setText("graine %s" % getattr(sim, "seed", "?"))
-        # Indicateur LAB WORLD pour mode laboratoire
-        is_blank = getattr(sim, "blank_world", False)
-        if is_blank:
-            lab_text = "LAB WORLD — manual setup — paused"
+        # Indicateur LAB WORLD : état réel (mode labo + pause effective),
+        # sinon le scénario actif de la fenêtre.
+        if bool(getattr(sim, "blank_world", False)):
+            lab_text = (
+                "LAB WORLD — manual setup — paused"
+                if bool(sim.paused)
+                else "LAB WORLD — running"
+            )
         else:
             lab_text = getattr(self, "_active_scenario", "manual")
         if self._scenario_label.text() != lab_text:

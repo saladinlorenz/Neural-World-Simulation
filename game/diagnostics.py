@@ -318,21 +318,48 @@ def world_snapshot(sim) -> dict[str, Any]:
 def deliberation_snapshot(agent, tick=-1) -> dict[str, Any] | None:
     """Snapshot de la dernière délibération de l'agent.
 
-    Construit le résumé « pensée sélectionnée » à partir des champs
-    déjà présents sur l'instance Being : needs, emotions, decision_trace,
-    goal, failed_targets, activity, local_context.
+    Construit le résumé « pensée sélectionnée » à partir de champs déjà
+    présents sur l'instance ``Being`` : pressions de besoins, émotion,
+    candidats évalués, et les vérités enregistrées par le moteur au moment
+    du choix (``last_selection_*``) et de l'échec (``last_failure_*``).
 
-    L'UI ne recalcule jamais les candidats ; elle lit ce dictionnaire.
+    L'UI ne recalcule jamais les candidats ni les raisons ; elle lit ce
+    dictionnaire.
     """
     if agent is None or not getattr(agent, "alive", False):
         return None
 
-    # Besoin dominant (indice du besoin le plus élevé)
+    # Pression dominante : mêmes sources que les besoins affichés ailleurs,
+    # l'énergie traitée en DÉFICIT (1 - énergie) puisqu'une énergie basse est
+    # la pression réelle. Le libellé reste celui du dépôt (NEED_DEFS) pour ne
+    # pas changer le contrat de l'UI ; la clé et la pression sont exposées à
+    # côté (l'UI qui attend une chaîne continue de fonctionner).
     needs_arr = getattr(agent, "needs", None)
-    dominant_need = ""
-    if needs_arr is not None and len(needs_arr) >= 7:
-        idx = int(max(range(7), key=lambda i: float(needs_arr[i])))
-        dominant_need = NEED_DEFS[idx] if idx < len(NEED_DEFS) else f"#{idx}"
+
+    def _need_at(i: int) -> float:
+        try:
+            if needs_arr is None or len(needs_arr) <= i:
+                return 0.0
+            return float(needs_arr[i])
+        except (TypeError, ValueError):
+            return 0.0
+
+    pressures = {
+        "hunger": clamp01(getattr(agent, "hunger", 0.0)),
+        "energy_deficit": clamp01(1.0 - float(getattr(agent, "energy", 0.0))),
+        "thirst": _need_at(2),
+        "sleep": _need_at(3),
+        "safety": _need_at(4),
+        "belonging": _need_at(5),
+        "esteem": _need_at(6),
+    }
+    need_key = max(pressures, key=pressures.get)
+    need_pressure = max(0.0, min(1.0, pressures[need_key]))
+    _label_index = {"hunger": 0, "energy_deficit": 1, "thirst": 2, "sleep": 3,
+                    "safety": 4, "belonging": 5, "esteem": 6}
+    _idx = _label_index.get(need_key, -1)
+    dominant_need = (NEED_DEFS[_idx] if 0 <= _idx < len(NEED_DEFS)
+                     else str(need_key))
 
     # Émotion dominante
     emotions_arr = getattr(agent, "emotions", None)
@@ -360,35 +387,28 @@ def deliberation_snapshot(agent, tick=-1) -> dict[str, Any] | None:
             }
             break
 
-    # Raison du choix (du candidat sélectionné)
-    reason = ""
-    if selected:
-        # La raison est None pour le candidat selected, regarder les autres
-        for c in top_candidates:
-            if c.get("state") == "feasible" and c.get("reason"):
-                reason = c["reason"]
-                break
-        if not reason:
-            reason = "meilleur score parmi les faisables"
+    # Raison du choix : vérité enregistrée par le moteur au moment du choix
+    # (plus aucune déduction depuis un candidat « feasible »).
+    reason = str(getattr(agent, "last_selection_reason", ""))
+    reason_tick = int(getattr(agent, "last_selection_tick", -1))
 
-    # Dernier échec (failed_targets)
-    failure_reason = ""
-    failed = getattr(agent, "failed_targets", {}) or {}
-    if failed:
-        # Prendre le plus récent (plus grand until_tick)
-        latest = max(failed.items(), key=lambda kv: kv[1][1] if isinstance(kv[1], tuple) else 0)
-        key, (count, until_tick) = latest
-        act, tx, ty = key
-        failure_reason = f"{act} vers ({tx},{ty}) : bloqué {count}x jusqu'au tick {until_tick}"
+    # Dernier échec : vérité enregistrée au moment de l'échec (plus aucune
+    # recherche du point de ``failed_targets`` qui expire le plus tard).
+    failure_reason = str(getattr(agent, "last_failure_reason", ""))
+    failure_tick = int(getattr(agent, "last_failure_tick", -1))
 
     return {
         "tick": int(tick),
         "dominant_need": dominant_need,
+        "dominant_need_key": str(need_key),
+        "dominant_need_pressure": float(need_pressure),
         "dominant_emotion": dominant_emotion,
         "candidates": top_candidates,
         "selected": selected,
         "reason": reason,
+        "reason_tick": reason_tick,
         "failure_reason": failure_reason,
+        "failure_tick": failure_tick,
     }
 
 
@@ -408,9 +428,38 @@ def activity_snapshot(agent) -> dict[str, Any] | None:
             "stuck": int(getattr(agent, "stuck", 0)),
         }
 
-    # Si activity est un objet avec attributs, le convertir
-    if hasattr(activity, "__dict__"):
-        return dict(activity.__dict__)
+    # Si activity est un objet, sérialisation PAR LISTE BLANCHE : jamais
+    # ``__dict__``, jamais ``target_ref``/``data`` (objets métier bruts).
+    # Seuls des champs sûrs et primitifs sortent.
+    if hasattr(activity, "kind"):
+        def _opt_int(value):
+            return int(value) if value is not None else None
+        try:
+            return {
+                "kind": str(getattr(activity, "kind", "")),
+                "stage": str(getattr(activity, "stage", "")),
+                "target_tx": _opt_int(getattr(activity, "target_tx", None)),
+                "target_ty": _opt_int(getattr(activity, "target_ty", None)),
+                "target_eid": _opt_int(getattr(activity, "target_eid", None)),
+                "started_tick": int(getattr(activity, "started_tick", 0)),
+                "last_stage_tick": int(getattr(activity, "last_stage_tick", 0)),
+                "reason": str(getattr(activity, "reason", "")),
+                "failure_reason": str(getattr(activity, "failure_reason", "")),
+            }
+        except (TypeError, ValueError):
+            return {"kind": str(getattr(activity, "kind", "")),
+                    "stage": str(getattr(activity, "stage", ""))}
     if isinstance(activity, dict):
-        return dict(activity)
+        # Dictionnaire déjà simple : on ne garde que les clés de la liste
+        # blanche, et on ne laisse passer que des primitives.
+        allowed = ("kind", "stage", "target_tx", "target_ty", "target_eid",
+                   "started_tick", "last_stage_tick", "reason",
+                   "failure_reason")
+        out = {}
+        for k in allowed:
+            if k in activity:
+                v = activity[k]
+                out[k] = (v if isinstance(v, (str, int, float, bool))
+                          or v is None else str(v))
+        return out
     return {"state": str(activity)}

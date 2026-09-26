@@ -257,6 +257,12 @@ class Being:
         # Décision réellelement retenue par le moteur (_decide) : action,
         # probabilité, alternatives et raison du choix. Transitoire aussi.
         self.last_decision = None
+        # Vérité enregistrée AU MOMENT du choix et de l'échec (jamais
+        # déduite au rendu). Transitoires, non sérialisées.
+        self.last_selection_reason = ""
+        self.last_selection_tick = -1
+        self.last_failure_reason = ""
+        self.last_failure_tick = -1
         self.observed_actions = deque(maxlen=32)     # actions observees chez autrui
         self.context = {
             "food_density": 0.0,
@@ -284,6 +290,8 @@ class Being:
         self.region_memory = {}
         self.activity_experiences = deque(maxlen=48)
         self.activity = None
+        # Motif explicite d'annulation d'activité au chargement (save.py).
+        self.activity_cancel_reason = ""
         self.last_activity_result = None
         # Dernière communication envoyée / reçue, bornée et inspectable.
         # Transitoire (non sérialisé) : dicts simples {kind, topic, ...}.
