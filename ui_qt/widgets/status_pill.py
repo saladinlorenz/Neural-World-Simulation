@@ -1,12 +1,6 @@
 """StatusPill — badge court de la barre d'état (Lot H)."""
 from PyQt6.QtWidgets import QLabel
 
-#: Style commun a toutes les pills (palette Neural Lab).
-PILL_BASE = (
-    "background: #19222D; border: 1px solid #2A394A; "
-    "border-radius: 8px; padding: 3px 7px;"
-)
-
 
 class StatusPill(QLabel):
     """Bloc court de la barre d'état : texte court + couleur d'accent."""
@@ -26,5 +20,15 @@ class StatusPill(QLabel):
     def pill_color(self):
         return self._pill_color
 
+    def refresh_theme(self):
+        """Repeint le badge selon le theme actif (appele par apply_theme)."""
+        self._apply_style()
+
     def _apply_style(self):
-        self.setStyleSheet(f"{PILL_BASE} color: {self._pill_color};")
+        from ui_qt.theme.theme import panel_palette
+
+        c = panel_palette("card")
+        self.setStyleSheet(
+            f"background: {c['bg']}; border: 1px solid {c['border']}; "
+            f"border-radius: 8px; padding: 3px 7px; color: {self._pill_color};"
+        )

@@ -254,6 +254,9 @@ class Being:
         # Trace de diagnostic (Phase 1) : candidats évalués à la dernière
         # délibération. Transitoire, jamais sérialisé (save.py liste blanche).
         self.decision_trace = []
+        # Décision réellelement retenue par le moteur (_decide) : action,
+        # probabilité, alternatives et raison du choix. Transitoire aussi.
+        self.last_decision = None
         self.observed_actions = deque(maxlen=32)     # actions observees chez autrui
         self.context = {
             "food_density": 0.0,
@@ -281,6 +284,11 @@ class Being:
         self.region_memory = {}
         self.activity_experiences = deque(maxlen=48)
         self.activity = None
+        self.last_activity_result = None
+        # Dernière communication envoyée / reçue, bornée et inspectable.
+        # Transitoire (non sérialisé) : dicts simples {kind, topic, ...}.
+        self.lastheard = None
+        self.lastsaid = None
         # ---- Mariage / reproduction / filiation
         self.married = False
         self.partner_id = None            # eid du conjoint
@@ -414,6 +422,30 @@ class Being:
         """Un souvenir inaccessible devient une fausse croyance : on l'efface."""
         self.seen[cat] = [(sx, sy, f) for sx, sy, f in self.seen[cat]
                           if not (sx == x and sy == y)]
+
+    def remember_place(self, category, tx, ty, tick, confidence=0.5,
+                       estimated_amount=0.5, estimated_danger=0.0,
+                       source="direct"):
+        """Mémorise un lieu typé, borné et inspectable (plan §2-3).
+
+        ``place_memories`` : clé ``(category, tx, ty)`` -> dict simple.
+        Plafond ~40 entrées : on évince le moins confiant au-delà.
+        """
+        key = (str(category), int(tx), int(ty))
+        self.place_memories[key] = {
+            "category": str(category),
+            "tx": int(tx),
+            "ty": int(ty),
+            "confidence": max(0.0, min(1.0, float(confidence))),
+            "estimated_amount": float(estimated_amount),
+            "estimated_danger": float(estimated_danger),
+            "last_verified_tick": int(tick),
+            "source": str(source),
+        }
+        if len(self.place_memories) > 40:
+            worst = min(self.place_memories.items(),
+                        key=lambda kv: float(kv[1].get("confidence", 0.0)))
+            del self.place_memories[worst[0]]
 
     def remember_event(self, kind, data=None):
         self.episodes.append((self.born_tick, kind, data))

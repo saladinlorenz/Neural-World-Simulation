@@ -95,10 +95,22 @@ TAB_MODES = {
         ("carve", "Sculpter"), ("restore", "Restaurer"),
         ("inspect", "Examiner"),
     ],
-    "etre":     [("agent", "Etre"), ("inspect", "Examiner")],
+    "etre":     [("agent", "Etre"), ("sheep", "Mouton"),
+                 ("monster", "Monstre"), ("inspect", "Examiner")],
     "habitants": [("agent", "Creer"), ("inspect", "Examiner")],
     "societe":  [],
     "journal":  [],
+}
+
+#: Libelles affiches des onglets (UI Qt). Le mot « decor » est banni des
+#: libelles : le groupe s'appelle « Ressources naturelles ».
+TAB_TITLES = {
+    "decor":     "Ressources naturelles",
+    "etre":      "Etres",
+    "habitants": "Habitants",
+    "creator":   "Createur",
+    "societe":   "Societe",
+    "journal":   "Journal",
 }
 
 TAB_HINTS = {

@@ -826,19 +826,32 @@ class AssetManager:
         return int(rng.choice(pool_ids))
 
     def skin_states(self, color, cls):
+        """Skins d'un habitant, avec repli garanti : un corps est toujours rendu.
+
+        Le catalogue ne contient que 6 combinaisons (couleur, classe) et
+        AUCUN skin « pawn ». Le repli historique ne cherchait que ``pawn``,
+        obtenait donc ``[]`` : l'habitant était dessiné sans corps sur la
+        carte (seul le disque de sélection restait visible).
+        """
         out = {}
         for st in ("idle", "run", "attack", "work", "heal", "build"):
             ids = self.skins.get((color, cls, st))
             if ids:
                 out[st] = ids
         if not out.get("idle"):
-            pawn_ids = self.skins.get((color, "pawn", "idle"))
-            if not pawn_ids:
-                for c in CLAN_COLORS:
-                    pawn_ids = self.skins.get((c, "pawn", "idle"))
-                    if pawn_ids:
-                        break
-            out["idle"] = pawn_ids or []
+            # Même classe, autre couleur (ex. blue/archer -> yellow/archer).
+            for (_c, key, st), ids in self.skins.items():
+                if st == "idle" and key == cls and ids:
+                    out["idle"] = ids
+                    break
+        if not out.get("idle"):
+            # N'importe quel corps disponible : mieux vaut un skin approximatif
+            # qu'un habitant invisible.
+            for (_c, _k, st), ids in self.skins.items():
+                if st == "idle" and ids:
+                    out["idle"] = ids
+                    break
+        out.setdefault("idle", [])
         out.setdefault("run", out["idle"])
         return out
 

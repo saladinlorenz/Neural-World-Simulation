@@ -103,15 +103,20 @@ def selected_agent_snapshot(sim, ui_state=None,
         return None
 
     # Délibération (pensée sélectionnée visible) — toujours incluse
-    deliberation = deliberation_snapshot(agent)
+    tick = int(getattr(getattr(sim, "w", None), "tick", -1))
+    deliberation = deliberation_snapshot(agent, tick=tick)
     if deliberation:
         snap["deliberation"] = deliberation
 
     # Contexte local (perception immédiate) — lu sur agent.context
-    # qui est mis à jour par Sim._perceive à chaque tick.
+    # qui est mis à jour par Sim._perceive à chaque tick. Conversion
+    # défensive : aucun NumPy / objet moteur ne doit atteindre Qt.
     local_ctx = getattr(agent, "context", {}) or {}
     if local_ctx:
-        snap["local_context"] = dict(local_ctx)
+        snap["local_context"] = {
+            str(k): float(v) for k, v in dict(local_ctx).items()
+            if isinstance(v, (int, float)) and v == v
+        }
 
     if include_activity:
         # Bloc activité enrichi (Phase 3)
@@ -126,7 +131,179 @@ def selected_agent_snapshot(sim, ui_state=None,
             dict(row) for row in (getattr(agent, "decision_trace", []) or [])
         ]
 
+        # Trace riche inspecteur (plan §3) : besoin/émotion dominants,
+        # candidats bornés à 8, sélection, raison, échec. Aucune recompute
+        # côté UI : tout vient de l'agent + snapshot déjà simple.
+        snap["decision_trace"] = _decision_trace_snapshot(sim, agent)
+        snap["relevant_memories"] = _compact_relevant_memories(agent, limit=8)
+        snap["last_heard"] = _plain_dict(getattr(agent, "lastheard", None))
+        snap["last_said"] = _plain_dict(getattr(agent, "lastsaid", None))
+        snap["last_activity_result"] = _plain_dict(
+            getattr(agent, "last_activity_result", None))
+
+        # Décision réelle retenue par _decide (action, probabilités,
+        # raisons) — la source de vérité pour « choix » et « raison ».
+        snap["last_decision"] = _plain_nested(getattr(agent, "last_decision", None))
+
     return snap
+
+
+def _plain_dict(value) -> dict:
+    """Copie défensive d'un dict simple (JSON-sérializable)."""
+    if not isinstance(value, dict):
+        return {}
+    out = {}
+    for key, val in value.items():
+        if isinstance(val, (str, int, float, bool)) or val is None:
+            out[str(key)] = val
+        else:
+            try:
+                out[str(key)] = str(val)
+            except Exception:
+                continue
+    return out
+
+
+def _plain_nested(value, depth: int = 0):
+    """Copie défensive d'une structure simple (dict/list imbriqués).
+
+    Comme ``_plain_dict`` mais accepte les listes et dicts imbriqués jusqu'à
+    ``depth`` niveaux — pour ``last_decision`` (top[], feasible[]).
+    """
+    if depth > 3:
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _plain_nested(v, depth + 1)
+                for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain_nested(v, depth + 1) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        if isinstance(value, float) and value != value:
+            return 0.0
+        return value
+    try:
+        return str(value)
+    except Exception:
+        return None
+
+
+def _decision_trace_snapshot(sim, agent) -> dict:
+    """Trace moteur bornée pour l'inspecteur (plan §2-3)."""
+    tick = int(getattr(getattr(sim, "w", None), "tick", -1))
+    try:
+        hunger = float(agent.hunger)
+    except Exception:
+        hunger = 0.0
+    try:
+        energy = float(agent.energy)
+    except Exception:
+        energy = 0.0
+    try:
+        needs = list(getattr(agent, "needs", []) or [])
+    except Exception:
+        needs = []
+    def _f(i, default=0.0):
+        try:
+            return float(needs[i])
+        except Exception:
+            return float(default)
+    values = {
+        "hunger": hunger,
+        "energy_deficit": 1.0 - energy,
+        "thirst": _f(2),
+        "sleep": _f(3),
+        "safety": _f(4),
+        "belonging": _f(5),
+        "esteem": _f(6),
+    }
+    need_name = max(values, key=values.get)
+    try:
+        emotions = list(getattr(agent, "emotions", []) or [])
+    except Exception:
+        emotions = []
+    if emotions:
+        try:
+            idx = max(range(len(emotions)), key=lambda i: float(emotions[i]))
+            emo_name = str(idx)
+            emo_val = float(emotions[idx])
+            try:
+                from .config import EMOTION_DEFS
+                if 0 <= idx < len(EMOTION_DEFS):
+                    emo_name = str(EMOTION_DEFS[idx])
+            except Exception:
+                pass
+        except Exception:
+            emo_name, emo_val = "", 0.0
+    else:
+        emo_name, emo_val = "", 0.0
+    cands = [dict(r) for r in (getattr(agent, "decision_trace", []) or [])[:8]]
+    selected = next((dict(r) for r in cands if r.get("state") == "selected"), None)
+    reason = ""
+    if selected is not None:
+        reason = "meilleur score parmi les faisables"
+    last_res = getattr(agent, "last_activity_result", None) or {}
+    failure_reason = str(last_res.get("reason", "")) if isinstance(last_res, dict) else ""
+    failure_tick = tick if failure_reason else -1
+    return {
+        "tick": tick,
+        "dominant_need": {"name": str(need_name),
+                          "value": float(values[need_name])},
+        "dominant_emotion": {"name": str(emo_name), "value": float(emo_val)},
+        "candidates": cands,
+        "selected": selected,
+        "reason": str(reason),
+        "failure_reason": str(failure_reason),
+        "failure_tick": int(failure_tick),
+    }
+
+
+def _compact_relevant_memories(agent, limit: int = 8) -> list[dict]:
+    """Mémoires de lieux les plus pertinentes, bornées (plan §3.3)."""
+    rows = []
+    try:
+        places = getattr(agent, "place_memories", {}) or {}
+    except Exception:
+        places = {}
+    for mem in places.values():
+        if not isinstance(mem, dict):
+            continue
+        try:
+            rows.append({
+                "category": str(mem.get("category", "")),
+                "tx": int(mem.get("tx", 0)),
+                "ty": int(mem.get("ty", 0)),
+                "confidence": float(mem.get("confidence", 0.0)),
+                "estimated_amount": float(mem.get("estimated_amount", 0.0)),
+                "estimated_danger": float(mem.get("estimated_danger", 0.0)),
+                "last_verified_tick": int(mem.get("last_verified_tick", -1)),
+                "source": str(mem.get("source", "")),
+            })
+        except Exception:
+            continue
+    if not rows:
+        # Repli seen (ancien format) : force -> confidence.
+        try:
+            seen = getattr(agent, "seen", {}) or {}
+        except Exception:
+            seen = {}
+        for cat, entries in seen.items():
+            for entry in list(entries or [])[:4]:
+                try:
+                    x, y, f = entry
+                    rows.append({
+                        "category": str(cat),
+                        "tx": int(x), "ty": int(y),
+                        "confidence": float(f),
+                        "estimated_amount": 0.5,
+                        "estimated_danger": 0.0,
+                        "last_verified_tick": -1,
+                        "source": "direct",
+                    })
+                except Exception:
+                    continue
+    rows.sort(key=lambda r: (r["confidence"] + 0.25 * r["estimated_amount"]
+                             - 0.20 * r["estimated_danger"]), reverse=True)
+    return rows[:int(limit)]
 
 
 # ══════════════════════════════════════════════════════════════════════

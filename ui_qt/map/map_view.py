@@ -1201,13 +1201,20 @@ class MapView(QWidget):
     # ------------------------------------------------------------------
 
     def draw_legend(self, painter: QPainter):
+        from ui_qt.theme.theme import panel_palette
+
         font = QFont(self.font())
         font.setPointSize(9)
         painter.setFont(font)
         rect = QRectF(16, self.height() - 170, 200, 150)
 
-        painter.setPen(QPen(QColor(0, 0, 0, 160), 1))
-        painter.setBrush(QBrush(QColor(20, 20, 30, 190)))
+        # Fond/texte du thème actif : en thème clair, la boîte sombre
+        # codée en dur restait un bloc illisible sur la carte.
+        c = panel_palette("panel")
+        bg = QColor(c["bg"])
+        bg.setAlpha(235)
+        painter.setPen(QPen(QColor(c["border"]), 1))
+        painter.setBrush(QBrush(bg))
         painter.drawRoundedRect(rect, 8, 8)
 
         rows = [
@@ -1232,7 +1239,7 @@ class MapView(QWidget):
                 painter.drawRect(box)
             else:
                 painter.drawPixmap(box, pixmap, QRectF(pixmap.rect()))
-            painter.setPen(QPen(QColor(230, 230, 230), 1))
+            painter.setPen(QPen(QColor(c["text"]), 1))
             painter.drawText(QPointF(rect.left() + 36, y + 2), label)
             y += 17
 
@@ -1253,7 +1260,7 @@ class MapView(QWidget):
             table = next(iter(kinds.values()), {}) if kinds else {}
             aid = int(next(iter(table.values()))) if table else -1
         else:
-            ids = am.skin_states("blue", "pawn").get("idle") or []
+            ids = am.skin_states("blue", "knight").get("idle") or []
             aid = int(ids[0]) if ids else -1
         if aid < 0 or aid >= len(am.assets):
             return None
@@ -1379,22 +1386,27 @@ class MapView(QWidget):
                     # « Etre » pose un seul habitant par validation du dialogue :
                     # sans ce retour, les clics suivants spawnaient des
                     # habitants aléatoires sans prévenir.
-                    self.controller.execute(
-                        {"kind": "set_mode", "mode": "inspect"})
+                    self._back_to_inspect()
 
         elif mode == "sheep":
-            self._run({
+            result = self._run({
                 "kind": "spawn_sheep",
                 "x": wx,
                 "y": wy,
             }, invalidate=False)
+            if result.get("ok"):
+                # Un clic = un mouton : le mode restait actif et chaque clic
+                # suivant ajoutait une bête sans prévenir.
+                self._back_to_inspect()
 
         elif mode == "monster":
             cmd = {"kind": "spawn_monster", "x": wx, "y": wy}
             monster_kind = getattr(self.controller.ui_state, "monster_kind", "")
             if monster_kind:
                 cmd["monster_kind"] = monster_kind
-            self._run(cmd, invalidate=False)
+            result = self._run(cmd, invalidate=False)
+            if result.get("ok"):
+                self._back_to_inspect()
 
         else:
             self._stroke_group += 1
@@ -1402,6 +1414,13 @@ class MapView(QWidget):
             self.apply_tool(tx, ty, group=self._stroke_group)
 
         self.update()
+
+    def _back_to_inspect(self):
+        """Revenir à « Examiner » et refléter l'état dans le dock Outils."""
+        self.controller.execute({"kind": "set_mode", "mode": "inspect"})
+        dock = getattr(self.window(), "_tools_dock", None)
+        if dock is not None and hasattr(dock, "refresh"):
+            dock.refresh()
 
     def select_nearest_agent(self, wx, wy):
         best = None

@@ -315,7 +315,7 @@ def world_snapshot(sim) -> dict[str, Any]:
     }
 
 
-def deliberation_snapshot(agent) -> dict[str, Any] | None:
+def deliberation_snapshot(agent, tick=-1) -> dict[str, Any] | None:
     """Snapshot de la dernière délibération de l'agent.
 
     Construit le résumé « pensée sélectionnée » à partir des champs
@@ -382,7 +382,7 @@ def deliberation_snapshot(agent) -> dict[str, Any] | None:
         failure_reason = f"{act} vers ({tx},{ty}) : bloqué {count}x jusqu'au tick {until_tick}"
 
     return {
-        "tick": int(getattr(agent, "age", 0)),  # utiliser age comme proxy de tick agent
+        "tick": int(tick),
         "dominant_need": dominant_need,
         "dominant_emotion": dominant_emotion,
         "candidates": top_candidates,

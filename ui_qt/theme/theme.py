@@ -106,6 +106,28 @@ def set_theme_name(name):
     s.setValue("theme", name)
 
 
+def panel_palette(kind="card"):
+    """Couleurs des panneaux à fond propre (StatCard, EmptyState, StatusPill).
+
+    Ces widgets peignent leur fond eux-mêmes : figés sur la palette sombre
+    « Neural Lab », ils formaient des blocs sombres illisibles en thème
+    clair. ``kind`` : « card » (cartes/badges) ou « panel » (vue d'état vide).
+    """
+    dark = {
+        "card": {"bg": "#19222D", "border": "#2A394A", "text": "#E7EDF5",
+                 "muted": "#91A0B2", "track": "#0E141C"},
+        "panel": {"bg": "#121922", "border": "#1D2835", "text": "#E7EDF5",
+                  "muted": "#91A0B2", "track": "#0E141C"},
+    }
+    light = {
+        "card": {"bg": "#FFFFFF", "border": "#D5DBE3", "text": "#1F2A37",
+                 "muted": "#5B6675", "track": "#E9EDF2"},
+        "panel": {"bg": "#F7F9FC", "border": "#D5DBE3", "text": "#1F2A37",
+                  "muted": "#5B6675", "track": "#E9EDF2"},
+    }
+    return (light if get_theme_name() == "clair" else dark)[kind]
+
+
 def get_theme_background():
     """Couleur de fond d'une fenetre de premier plan sans parent.
 
@@ -943,3 +965,13 @@ def apply_theme(app, theme_name=None):
         app_qt.setPalette(palette)
         app_qt.setFont(font)
         app_qt.setStyleSheet(sheet)
+        # Widgets à couleurs propres (StatCard, EmptyState, StatusPill) :
+        # leurs styles sont écrits en dur, hors feuille globale, il faut
+        # donc les repeindre à chaque changement de thème.
+        for widget in app_qt.allWidgets():
+            refresh = getattr(widget, "refresh_theme", None)
+            if callable(refresh):
+                try:
+                    refresh()
+                except Exception as exc:  # un widget défaillant ne bloque pas
+                    print("[THEME] refresh_theme echoue:", exc)

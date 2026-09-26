@@ -1,8 +1,8 @@
 """StatCard — carte visuelle titre + valeur + barre (Lot F).
 
 Palette Neural Lab : fond ``#19222D``, bord ``#2A394A``,
-texte ``#E7EDF5``, barre sombre ``#0E141C``. Les couleurs sont
-explicites pour rester lisibles en theme sombre comme en theme clair.
+texte ``#E7EDF5``, barre sombre ``#0E141C`` ; en thème clair ces couleurs
+sont remplacées par celles de ``panel_palette`` (appliqué par ``refresh_theme``).
 """
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QLabel, QProgressBar, QVBoxLayout
@@ -16,13 +16,6 @@ class StatCard(QFrame):
         self.setObjectName("statCard")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._color = color
-        self.setStyleSheet(
-            "QFrame#statCard {"
-            "background: #19222D;"
-            "border: 1px solid #2A394A;"
-            "border-radius: 8px;"
-            "}"
-        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 7, 8, 7)
@@ -30,30 +23,45 @@ class StatCard(QFrame):
 
         self.title = QLabel(title)
         self.title.setWordWrap(True)
-        self.title.setStyleSheet(
-            f"color: {color}; font-weight: 600; font-size: 11px;"
-            "background: transparent;"
-        )
 
         self.value = QLabel("—")
-        self.value.setStyleSheet(
-            "font-size: 16px; font-weight: 600; color: #E7EDF5;"
-            "background: transparent;"
-        )
 
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
         self.bar.setTextVisible(False)
         self.bar.setFixedHeight(5)
-        self.bar.setStyleSheet(
-            "QProgressBar { background: #0E141C; border: none;"
-            " border-radius: 2px; }"
-            f"QProgressBar::chunk {{ background: {color}; border-radius: 2px; }}"
-        )
 
         layout.addWidget(self.title)
         layout.addWidget(self.value)
         layout.addWidget(self.bar)
+        self.refresh_theme()
+
+    def refresh_theme(self):
+        """Repeint la carte selon le theme actif (appele par apply_theme)."""
+        from ui_qt.theme.theme import panel_palette
+
+        c = panel_palette("card")
+        self.setStyleSheet(
+            "QFrame#statCard {"
+            f"background: {c['bg']};"
+            f"border: 1px solid {c['border']};"
+            "border-radius: 8px;"
+            "}"
+        )
+        self.title.setStyleSheet(
+            f"color: {self._color}; font-weight: 600; font-size: 11px;"
+            "background: transparent;"
+        )
+        self.value.setStyleSheet(
+            f"font-size: 16px; font-weight: 600; color: {c['text']};"
+            "background: transparent;"
+        )
+        self.bar.setStyleSheet(
+            f"QProgressBar {{ background: {c['track']}; border: none;"
+            " border-radius: 2px; }"
+            f"QProgressBar::chunk {{ background: {self._color}; "
+            "border-radius: 2px; }"
+        )
 
     def set_title(self, title):
         """Change le titre (libelle colore) de la carte."""

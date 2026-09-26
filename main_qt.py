@@ -23,6 +23,9 @@ def main():
     ap.add_argument("--agents", type=int, default=60,
                     help="nombre d'habitants au depart (0 = monde sans vie)")
     ap.add_argument("--sheep", type=int, default=40)
+    ap.add_argument("--fresh", action="store_true",
+                    help="ignore la sauvegarde automatique (slot 98) et "
+                         "construit un monde neuf")
     args = ap.parse_args()
 
     print("[BOOT] creation QApplication")
@@ -44,29 +47,53 @@ def main():
     _set_asset_manager(am)
     print("[BOOT] decouverte assets terminee")
 
-    # Construire le monde
-    print("[BOOT] construction du monde")
-    if args.blank:
-        world, sim = build_world_blank(am, args.seed)
-    else:
-        world, sim = build_world(am, args.seed, procedural=bool(args.procedural),
-                                 start_paused=False)
-        seed_life(world, sim, sim.rng, n_agents=args.agents, n_sheep=args.sheep)
-    sim.speed = args.speed
-    print("[BOOT] monde construit", world.g, "x", world.g,
-          "habitants:", len(sim.agents), "moutons:", len(sim.sheep))
+    # Reprendre la session précédente : la sauvegarde automatique (slot 98)
+    # est écrite à la fermeture de la fenêtre. Un monde neuf n'est construit
+    # que si aucune session n'existe, si elle est illisible, ou avec --fresh.
+    sim = cam = None
+    if not args.fresh:
+        from game.save import AUTOSAVE_SLOT, load_game
+        try:
+            sim, cam = load_game(am, slot=AUTOSAVE_SLOT)
+        except Exception as exc:  # sauvegarde corrompue / version inconnue
+            print("[BOOT] sauvegarde auto illisible :", exc)
+            sim = cam = None
+        if sim is not None:
+            print("[BOOT] session precedente restauree (habitants:",
+                  len(sim.agents), ", moutons:", len(sim.sheep), ")")
 
-    from game.camera import Camera
-    cam = Camera()
-    import numpy as np
-    _ys, _xs = np.nonzero(world.land)
-    if len(_xs):
-        from game.config import TILE
-        cam.center_on(float(_xs.mean()) * TILE, float(_ys.mean()) * TILE)
+    if sim is None:
+        # Construire le monde
+        print("[BOOT] construction du monde")
+        if args.blank:
+            world, sim = build_world_blank(am, args.seed)
+        else:
+            world, sim = build_world(am, args.seed,
+                                     procedural=bool(args.procedural),
+                                     start_paused=False)
+            seed_life(world, sim, sim.rng, n_agents=args.agents,
+                      n_sheep=args.sheep)
+        print("[BOOT] monde construit", world.g, "x", world.g,
+              "habitants:", len(sim.agents), "moutons:", len(sim.sheep))
+
+        from game.camera import Camera
+        cam = Camera()
+        import numpy as np
+        _ys, _xs = np.nonzero(world.land)
+        if len(_xs):
+            from game.config import TILE
+            cam.center_on(float(_xs.mean()) * TILE, float(_ys.mean()) * TILE)
+
+    sim.speed = args.speed
 
     # Créer le controller
     print("[BOOT] controller cree")
     controller = SimulationController(sim, cam)
+    # La commande "load" applique l'état UI chargé ; un chargement direct
+    # au démarrage doit faire de même (mode actif, cœurs sélectionnés, ...).
+    _loaded_ui = getattr(sim, "loaded_ui_state", None)
+    if _loaded_ui:
+        controller.ui_state.apply_dict(_loaded_ui)
 
     # Créer la fenêtre
     print("[BOOT] creation MainWindow")

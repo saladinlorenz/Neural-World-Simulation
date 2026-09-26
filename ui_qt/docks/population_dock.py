@@ -112,7 +112,9 @@ class PopulationDock(QDockWidget):
             "QPushButton { background-color: #c0392b; color: white; "
             "padding: 4px 12px; border: none; border-radius: 3px; }"
             "QPushButton:hover { background-color: #e74c3c; }"
-            "QPushButton:disabled { background-color: #7f8c8d; color: #bdc3c7; }"
+            # Désactivé : fond clair + texte sombre (contraste ~5:1), au lieu
+            # de #7f8c8d/#bdc3c7 (~2:1) qui rendait « Supprimer » illisible.
+            "QPushButton:disabled { background-color: #bdc3c7; color: #34495e; }"
         )
         self._remove_btn.clicked.connect(self._on_remove)
         layout.addWidget(self._remove_btn)

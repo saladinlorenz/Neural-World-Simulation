@@ -13,6 +13,7 @@ adulte -> ancien), s'allie, fonde une famille, transmet (culture), et meurt
 en laissant une reputation.
 """
 import math
+import time
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -54,9 +55,26 @@ MAT_AIDS = {"bois": "item_wood", "pierre": "stone_res", "or": "gold_pile"}
 # ── Part A: TALK VOLONTAIRE constants ──────────────────────────────
 TALK_DISTANCE = 3
 TALK_COOLDOWN = 180
-
-# ── Part B: ActivityState infrastructure ───────────────────────────
+TALK_ENERGY_COST = 0.002
 KNOWLEDGE_SHARE_FACTOR = 0.65
+MAX_SHARED_MEMORY_CONFIDENCE = 0.75
+
+# ── Part F: Message templates (deterministic, English) ─────
+MESSAGE_TEMPLATES = {
+    "food_location": "I found food to the {direction}.",
+    "water_location": "Water is {direction} of here.",
+    "danger_warning": "Danger is {direction} of here.",
+    "need_help": "I need help.",
+    "follow_request": "Follow me.",
+    "greeting": "Hello.",
+}
+
+
+def relative_direction(speaker, tx, ty):
+    dx, dy = int(tx) - speaker.tx, int(ty) - speaker.ty
+    if abs(dx) >= abs(dy):
+        return "east" if dx > 0 else "west"
+    return "south" if dy > 0 else "north"
 
 
 @dataclass
@@ -194,44 +212,49 @@ class Sim:
     # PART A: TALK VOLONTAIRE (plan §3)
     # ═══════════════════════════════════════════════════════════════════════
     def can_talk(self, speaker: Being, listener: Being) -> tuple[bool, str]:
-        """Vérifie si speaker peut parler à listener (plan §3.3)."""
+        """Vérifie si speaker peut parler à listener (plan §5.4).
+
+        Boucle locale uniquement : appel public utilisé par les candidats
+        TALK (``nearagents`` déjà borné). Raisons stables, traduites en UI.
+        """
+        if speaker is None or listener is None:
+            return False, "missing_agent"
         if not speaker.alive or not listener.alive:
-            return False, "mort"
+            return False, "dead_agent"
         if speaker.eid == listener.eid:
-            return False, "meme_agent"
+            return False, "self_target"
         dist = max(abs(speaker.tx - listener.tx), abs(speaker.ty - listener.ty))
         if dist > TALK_DISTANCE:
-            return False, "trop_loin"
-        last_talk = speaker.talk_cd.get(listener.eid, -999)
+            return False, "too_far"
+        last_talk = speaker.talk_cd.get(listener.eid, -10000)
         if self.w.tick - last_talk < TALK_COOLDOWN:
-            return False, "cooldown"
-        if speaker.energy < 0.04:
-            return False, "energie_faible"
+            return False, "communication_cooldown"
+        if float(speaker.energy) <= TALK_ENERGY_COST:
+            return False, "not_enough_energy"
         return True, ""
 
     def choose_talk_topic(self, speaker: Being, listener: Being) -> str | None:
         """Choisit un sujet de conversation selon le contexte (plan §3.5)."""
-        # 1. listener a faim et speaker connait de la nourriture
-        if listener.hunger > 0.65:
-            mem = speaker.recall("food", speaker.tx, speaker.ty)
-            if mem and mem[2] < 100:  # confiance suffisante
+        # 1. listener a faim et speaker connait réellement de la nourriture
+        if float(listener.hunger) > 0.65:
+            if self.best_shareable_memory(speaker, "food") is not None:
                 return "food_location"
-        # 2. listener a soif et speaker connait de l'eau
-        if listener.needs[2] > 0.65:
-            mem = speaker.recall("water", speaker.tx, speaker.ty)
-            if mem and mem[2] < 100:
+        # 2. listener a soif et speaker connait réellement de l'eau
+        if float(listener.needs[2]) > 0.65:
+            if self.best_shareable_memory(speaker, "water") is not None:
                 return "water_location"
         # 3. danger proche
         if speaker._near_monsters:
             return "danger_warning"
-        # 4. listener en détresse
-        if listener.health < 0.4 or listener.hunger > 0.8:
+        # 4. listener en détresse réelle (faim, blessure, soif)
+        if (float(listener.health) < 0.45 or float(listener.hunger) > 0.82
+                or float(listener.needs[2]) > 0.82):
             return "need_help"
         # 5. speaker en expédition -> follow_request
         if speaker.activity and speaker.activity.kind in {"food_expedition", "explore_region"}:
             return "follow_request"
-        # 6. personnalité extravertie -> greeting
-        if speaker.personality[0] > 0.65:
+        # 6. interaction légère : sociable et pas effrayé -> greeting
+        if float(speaker.personality[0]) > 0.65 and float(speaker.emotions[0]) < 0.55:
             return "greeting"
         return None
 
@@ -250,19 +273,73 @@ class Sim:
             if mem:
                 return self.receive_danger_warning(listener, mem, speaker.eid)
         elif topic == "need_help":
-            return self.receive_help_request(listener, speaker.eid)
+            return self.receive_help_request(listener, speaker)
         elif topic == "follow_request":
             return self.receive_follow_request(listener, speaker.eid, speaker.activity)
         elif topic == "greeting":
-            self.adjust_social_interaction(speaker, listener, trust=0.01, affection=0.02)
-            return True
+            return self.apply_greeting(speaker, listener)
         return False
 
     def best_shareable_memory(self, agent: Being, category: str) -> tuple[int, int, float] | None:
-        """Meilleur souvenir partageable pour une catégorie."""
+        """Meilleur souvenir partageable pour une catégorie (plan §5.7).
+
+        Préfère ``place_memories`` (confiance >= 0.35), repli sur ``recall``
+        pour compatibilité. Retour tuple ``(tx, ty, confidence)`` ; le dict
+        complet reste lisible via ``place_memories`` pour le partage.
+        """
+        rows = []
+        for mem in getattr(agent, "place_memories", {}).values():
+            if not isinstance(mem, dict):
+                continue
+            if mem.get("category") != category:
+                continue
+            if float(mem.get("confidence", 0.0)) < 0.35:
+                continue
+            rows.append(mem)
+        if rows:
+            rows.sort(key=lambda m: (
+                float(m.get("confidence", 0.0))
+                + 0.25 * float(m.get("estimated_amount", 0.0))
+                - 0.25 * float(m.get("estimated_danger", 0.0))
+            ), reverse=True)
+            best = rows[0]
+            return (int(best["tx"]), int(best["ty"]),
+                    float(best.get("confidence", 0.5)))
         mem = agent.recall(category, agent.tx, agent.ty)
         if mem and mem[2] < 100:
             return mem
+        return None
+
+    def _shareable_memory_dict(self, agent: Being, category: str) -> dict | None:
+        """Dict complet du meilleur souvenir partageable (pour le partage)."""
+        rows = []
+        for mem in getattr(agent, "place_memories", {}).values():
+            if not isinstance(mem, dict):
+                continue
+            if mem.get("category") != category:
+                continue
+            if float(mem.get("confidence", 0.0)) < 0.35:
+                continue
+            rows.append(mem)
+        if rows:
+            rows.sort(key=lambda m: (
+                float(m.get("confidence", 0.0))
+                + 0.25 * float(m.get("estimated_amount", 0.0))
+                - 0.25 * float(m.get("estimated_danger", 0.0))
+            ), reverse=True)
+            return rows[0]
+        mem = agent.recall(category, agent.tx, agent.ty)
+        if mem and mem[2] < 100:
+            return {
+                "category": category,
+                "tx": int(mem[0]),
+                "ty": int(mem[1]),
+                "confidence": 0.50,
+                "estimated_amount": 0.50,
+                "estimated_danger": 0.0,
+                "last_verified_tick": int(self.w.tick),
+                "source": "direct",
+            }
         return None
 
     def best_shareable_danger(self, agent: Being) -> tuple[int, int, float] | None:
@@ -274,43 +351,116 @@ class Sim:
 
     def receive_shared_place(self, listener: Being, mem: tuple[int, int, float],
                              category: str, from_eid: int) -> bool:
-        """Reçoit un lieu partagé (plan §3.7)."""
+        """Reçoit un lieu partagé (plan §6.1) : confiance réduite, source sociale."""
         tx, ty, conf = mem
-        trust = listener.trust(from_eid)
-        effective_conf = conf * KNOWLEDGE_SHARE_FACTOR * max(0.3, 0.5 + trust * 0.5)
-        if effective_conf < 0.2:
+        try:
+            trust = listener.anima_social_score(from_eid)
+        except Exception:
+            trust = listener.trust(from_eid)
+        trust01 = max(0.0, min(1.0, 0.5 + 0.5 * float(trust)))
+        received_conf = min(
+            MAX_SHARED_MEMORY_CONFIDENCE,
+            float(conf) * KNOWLEDGE_SHARE_FACTOR * (0.50 + 0.50 * trust01),
+        )
+        if received_conf < 0.2:
             return False
+        # Compat seen + mémoire typée sociale (quantité perçue à -20%).
         listener.remember(category, tx, ty)
+        amount = 0.5
+        danger = 0.0
+        try:
+            _d = self._shareable_memory_dict(
+                self._by_eid(from_eid), category) if hasattr(self, "_by_eid") else None
+        except Exception:
+            _d = None
+        if isinstance(_d, dict):
+            amount = float(_d.get("estimated_amount", 0.5))
+            danger = float(_d.get("estimated_danger", 0.0))
+        try:
+            listener.remember_place(
+                category, tx, ty, self.w.tick,
+                confidence=received_conf,
+                estimated_amount=amount * 0.80,
+                estimated_danger=danger,
+                source="social",
+            )
+        except Exception:
+            pass
+        try:
+            self.adjust_social_interaction(
+                self._by_eid(from_eid), listener, trust=0.01, affection=0.01)
+        except Exception:
+            pass
         self.lab.event(self.w.tick, "knowledge_shared",
                        from_eid=from_eid, to_eid=listener.eid,
-                       category=category, tx=tx, ty=ty, confidence=effective_conf)
+                       category=category, tx=tx, ty=ty, confidence=received_conf)
         return True
 
     def receive_danger_warning(self, listener: Being, mem: tuple[int, int, float],
                                from_eid: int) -> bool:
-        """Reçoit un avertissement de danger."""
+        """Reçoit un avertissement de danger (plan §6.2) : croyance réelle + prudence."""
         tx, ty, conf = mem
         trust = listener.trust(from_eid)
         effective_conf = conf * KNOWLEDGE_SHARE_FACTOR * max(0.3, 0.5 + trust * 0.5)
         if effective_conf < 0.2:
             return False
-        listener.belief_places[(tx // 8, ty // 8)] = min(
-            1.0, listener.belief_places.get((tx // 8, ty // 8), 0.0) + effective_conf)
+        level = max(0.0, min(1.0, float(effective_conf) * 0.65 + 0.20))
+        cx, cy = int(tx) // 8, int(ty) // 8
+        prev = float(listener.belief_places.get((cx, cy), 0.0))
+        listener.belief_places[(cx, cy)] = max(prev, level)
         listener.emotions[0] = min(1.0, listener.emotions[0] + 0.15)
+        try:
+            listener.anima_update_social_belief(
+                from_eid, int(self.w.tick),
+                reliability_delta=0.01, confidence_delta=0.02)
+        except Exception:
+            pass
         self.lab.event(self.w.tick, "danger_warning_received",
                        from_eid=from_eid, to_eid=listener.eid,
                        tx=tx, ty=ty, confidence=effective_conf)
         return True
 
-    def receive_help_request(self, listener: Being, from_eid: int) -> bool:
-        """Reçoit une demande d'aide."""
+    def receive_help_request(self, listener: Being, speaker) -> bool:
+        """Reçoit une demande d'aide (plan §6.3) : signal social réel, pas de mission auto."""
+        from_eid = speaker.eid if hasattr(speaker, "eid") else int(speaker)
         trust = listener.trust(from_eid)
         if trust < -0.2:
             return False
+        if hasattr(speaker, "hunger"):
+            request = {
+                "kind": "need_help",
+                "requester_eid": int(from_eid),
+                "tx": int(speaker.tx),
+                "ty": int(speaker.ty),
+                "hunger": float(speaker.hunger),
+                "thirst": float(speaker.needs[2]),
+                "health": float(speaker.health),
+                "danger": float(speaker.emotions[0]),
+                "tick": int(self.w.tick),
+            }
+            listener.lastheard = dict(request)
+            try:
+                listener.observed_actions.append({
+                    "action": "need_help",
+                    "reward": 0.0,
+                    "tick": int(self.w.tick),
+                })
+            except Exception:
+                pass
         listener.emotions[5] = min(1.0, listener.emotions[5] + 0.1)  # surprise
         listener.emotions[7] = min(1.0, listener.emotions[7] + 0.05)  # affection
         self.lab.event(self.w.tick, "help_request_received",
                        from_eid=from_eid, to_eid=listener.eid, trust=trust)
+        return True
+
+    def apply_greeting(self, speaker: Being, listener: Being) -> bool:
+        """Salutation faible (plan §6.4) : le cooldown évite le farm relationnel."""
+        self.adjust_social_interaction(speaker, listener, trust=0.01, affection=0.02)
+        try:
+            speaker.emotions[1] = min(1.0, speaker.emotions[1] + 0.03)
+            listener.emotions[1] = min(1.0, listener.emotions[1] + 0.02)
+        except Exception:
+            pass
         return True
 
     def receive_follow_request(self, listener: Being, from_eid: int,
@@ -338,26 +488,105 @@ class Sim:
         r2[1] = min(1.0, r2[1] + affection)
 
     def do_talk(self, speaker: Being, listener: Being) -> bool:
-        """Exécute l'action TALK (plan §3.6)."""
+        """Exécute l'action TALK (plan §5.8) : volontaire, bornée, journalisée."""
         ok, reason = self.can_talk(speaker, listener)
         if not ok:
             self.record_activity_failure(speaker, "talk", reason)
+            try:
+                speaker.last_activity_result = {
+                    "kind": "talk", "outcome": "failed", "reason": str(reason)}
+            except Exception:
+                pass
             return False
-        topic = self.choose_talk_topic(speaker, listener) or "greeting"
+        topic = self.choose_talk_topic(speaker, listener)
+        if topic is None:
+            self.record_activity_failure(speaker, "talk",
+                                         "communication_has_no_real_payload")
+            try:
+                speaker.last_activity_result = {
+                    "kind": "talk", "outcome": "failed",
+                    "reason": "communication_has_no_real_payload"}
+            except Exception:
+                pass
+            return False
         success = self.apply_communication(speaker, listener, topic)
-        if success:
-            speaker.talk_cd[listener.eid] = self.w.tick
-            listener.talk_cd[speaker.eid] = self.w.tick
-            self.emit_sound(speaker.x, speaker.y, "voice", 0.6)
-            self.effects.append({"kind": "talk", "x": speaker.x, "y": speaker.y,
-                                 "t0": self.w.tick, "ttl": 20})
-            speaker.state = "talk"
-            self.stats["talks"] += 1
-            self.journal.append((self.w.tick, f"{speaker.name} parle à {listener.name} : {topic}",
-                                 (148, 188, 228), "social", 1))
-            speaker.skills[3] = min(1.0, speaker.skills[3] + 0.01)
-            self._reward(speaker, 0.05)
-        return success
+        if not success:
+            self.record_activity_failure(speaker, "talk",
+                                         "communication_has_no_real_payload")
+            try:
+                speaker.last_activity_result = {
+                    "kind": "talk", "outcome": "failed",
+                    "reason": "communication_has_no_real_payload"}
+            except Exception:
+                pass
+            return False
+        speaker.energy = max(0.0, float(speaker.energy) - TALK_ENERGY_COST)
+        speaker.talk_cd[listener.eid] = self.w.tick
+        listener.talk_cd[speaker.eid] = self.w.tick
+        event = {
+            "kind": "talk",
+            "topic": str(topic),
+            "speaker_eid": int(speaker.eid),
+            "speaker_name": str(speaker.name),
+            "listener_eid": int(listener.eid),
+            "listener_name": str(listener.name),
+            "tick": int(self.w.tick),
+            "language_source": "semantic",
+            "token": None,
+        }
+        # Payload structuré par sujet
+        if topic == "food_location":
+            mem = self.best_shareable_memory(speaker, "food")
+            if mem:
+                event["payload"] = {
+                    "category": "food",
+                    "tx": int(mem["tx"]),
+                    "ty": int(mem["ty"]),
+                    "confidence_sent": float(mem.get("confidence", 0.5)),
+                }
+        elif topic == "water_location":
+            mem = self.best_shareable_memory(speaker, "water")
+            if mem:
+                event["payload"] = {
+                    "category": "water",
+                    "tx": int(mem["tx"]),
+                    "ty": int(mem["ty"]),
+                    "confidence_sent": float(mem.get("confidence", 0.5)),
+                }
+        elif topic == "danger_warning":
+            mem = self.best_shareable_danger(speaker)
+            if mem:
+                event["payload"] = {
+                    "kind": "danger_warning",
+                    "tx": int(mem[0]),
+                    "ty": int(mem[1]),
+                    "level": 0.8,
+                }
+        event["template"] = MESSAGE_TEMPLATES.get(
+            topic, "{topic}").format(
+                direction=relative_direction(speaker,
+                    event.get("payload", {}).get("tx", speaker.tx),
+                    event.get("payload", {}).get("ty", speaker.ty))
+                if topic in MESSAGE_TEMPLATES else topic)
+        speaker.lastsaid = dict(event)
+        # need_help écrase déjà lastheard avec la requête ; sinon trace talk.
+        if topic != "need_help":
+            listener.lastheard = dict(event)
+        self.emit_sound(speaker.x, speaker.y, "voice", 0.6)
+        self.effects.append({"kind": "talk", "x": speaker.x, "y": speaker.y,
+                             "t0": self.w.tick, "ttl": 20})
+        speaker.state = "talk"
+        self.stats["talks"] += 1
+        self.log(f"{speaker.name} parle à {listener.name} : {topic}.",
+                 (196, 100, 162), "social")
+        try:
+            self.social_memory.record(listener.eid, speaker.eid, "help", 0.05,
+                                      int(self.w.tick))
+        except Exception:
+            pass
+        speaker.skills[3] = min(1.0, speaker.skills[3] + 0.01)
+        self._reward(speaker, 0.05)
+        return True
 
     def record_activity_failure(self, agent: Being, activity: str, reason: str) -> None:
         """Enregistre un échec d'activité pour apprentissage."""
@@ -445,11 +674,50 @@ class Sim:
             agent.anima_add_identity("survivor", 0.02)
 
     def best_memory_for(self, agent: Being, category: str) -> dict | None:
-        """Meilleur souvenir pour une catégorie avec métadonnées."""
-        mem = agent.recall(category, agent.tx, agent.ty)
-        if mem:
-            return {"tx": mem[0], "ty": mem[1], "confidence": max(0.0, 1.0 - mem[2] / 100.0)}
-        return None
+        """Meilleur souvenir pour une catégorie avec métadonnées.
+
+        Les DEUX sources sont consultées et classées sur la même échelle :
+        ``place_memories`` (lieux perçus/partagés, confiance >= 0.35) et
+        ``agent.seen`` via ``recall``. Un score unique = confiance moins une
+        pénalité de distance (0 à 1 tuile/100), borné à [0, 1] :
+
+        * le plus proche et le plus confiant gagne (un souvenir lointain
+          n'écrase plus un souvenir devenu fiable à côté de soi) ;
+        * la valeur retournée reste comparable aux seuils des appelants
+          (0.35 / 0.3) : au-delà de ~55 tuiles le score passe sous le seuil,
+          ce qui conservait l'ancien garde-fou « pas d'expédition vers un
+          lieu trop loin ».
+        """
+        def _scored(tx, ty, conf):
+            d = max(abs(int(tx) - agent.tx), abs(int(ty) - agent.ty))
+            s = float(conf) - min(1.0, d / 100.0)
+            return max(0.0, min(1.0, s))
+
+        best, best_s = None, -1e9
+
+        for mem in getattr(agent, "place_memories", {}).values():
+            if not isinstance(mem, dict):
+                continue
+            if mem.get("category") != category:
+                continue
+            conf = float(mem.get("confidence", 0.0))
+            if conf < 0.35:
+                continue
+            s = _scored(mem.get("tx", agent.tx), mem.get("ty", agent.ty), conf)
+            if s > best_s:
+                best_s = s
+                best = {"tx": int(mem["tx"]), "ty": int(mem["ty"]),
+                        "confidence": s}
+
+        for (x, y, f) in getattr(agent, "seen", {}).get(category, ()):
+            if float(f) < 0.18:
+                continue
+            s = _scored(x, y, float(f))
+            if s > best_s:
+                best_s = s
+                best = {"tx": int(x), "ty": int(y), "confidence": s}
+
+        return best
 
     # ── water_search helpers ────────────────────────────────────────
     def verify_water_access(self, agent: Being, memory: dict) -> bool:
@@ -625,54 +893,61 @@ class Sim:
 
         act.last_stage_tick = self.w.tick
 
-        if act.stage == "travel":
-            # Aller vers la cible
-            tx, ty = act.target_tx, act.target_ty
-            if tx is not None and ty is not None:
-                self.set_goal_to_tile(agent, EXPLORE, tx, ty)
-                dist = max(abs(agent.tx - tx), abs(agent.ty - ty))
-                if dist <= 3:
-                    act.stage = "verify"
-                    act.data["memory"] = {"tx": tx, "ty": ty, "confidence": 0.5}
+        while True:
+            if act.stage == "travel":
+                tx, ty = act.target_tx, act.target_ty
+                if tx is not None and ty is not None:
+                    self.set_goal_to_tile(agent, EXPLORE, tx, ty)
+                    dist = max(abs(agent.tx - tx), abs(agent.ty - ty))
+                    if dist <= 3:
+                        act.stage = "verify"
+                        act.data["memory"] = {"tx": tx, "ty": ty, "confidence": 0.5}
+                        continue
+                break
 
-        elif act.stage == "verify":
-            mem = act.data.get("memory", {"tx": act.target_tx, "ty": act.target_ty})
-            if not self.verify_food_memory(agent, mem):
-                self.fail_activity(agent, "food_memory_invalid")
-                return True
-            act.stage = "harvest"
+            elif act.stage == "verify":
+                mem = act.data.get("memory", {"tx": act.target_tx, "ty": act.target_ty})
+                if not self.verify_food_memory(agent, mem):
+                    self.fail_activity(agent, "food_memory_invalid")
+                    return True
+                act.stage = "harvest"
+                continue
 
-        elif act.stage == "harvest":
-            if self.try_harvest_or_pickup_near(agent):
-                act.stage = "consume_or_return"
-            else:
+            elif act.stage == "harvest":
+                if self.try_harvest_or_pickup_near(agent):
+                    act.stage = "consume_or_return"
+                    continue
                 self.fail_activity(agent, "harvest_failed")
                 return True
 
-        elif act.stage == "consume_or_return":
-            if agent.hunger >= 0.86:
-                if self.try_eat_inventory_food(agent):
-                    self.finish_activity(agent, "ate_on_site", 0.3)
-                    return True
-            act.stage = "return"
+            elif act.stage == "consume_or_return":
+                if agent.hunger >= 0.86:
+                    if self.try_eat_inventory_food(agent):
+                        self.finish_activity(agent, "ate_on_site", 0.3)
+                        return True
+                act.stage = "return"
+                continue
 
-        elif act.stage == "return":
-            ret = self.choose_return_target(agent)
-            if ret:
-                tx, ty, kind = ret
-                self.set_goal_to_tile(agent, EXPLORE, tx, ty)
-                act.data["return_kind"] = kind
-                act.stage = "store_or_share"
-            else:
+            elif act.stage == "return":
+                ret = self.choose_return_target(agent)
+                if ret:
+                    tx, ty, kind = ret
+                    self.set_goal_to_tile(agent, EXPLORE, tx, ty)
+                    act.data["return_kind"] = kind
+                    act.stage = "store_or_share"
+                    continue
                 self.fail_activity(agent, "no_return_target")
                 return True
 
-        elif act.stage == "store_or_share":
-            self.store_or_share_food(agent)
-            self.finish_activity(agent, "food_returned", 0.35)
-            return True
+            elif act.stage == "store_or_share":
+                self.store_or_share_food(agent)
+                self.finish_activity(agent, "food_returned", 0.35)
+                return True
 
-        return True  # activité gérée ce tick
+            else:
+                break
+
+        return True
 
     # ── water_search activity ──────────────────────────────────────
     def maybe_start_water_search(self, agent: Being) -> bool:
@@ -711,9 +986,6 @@ class Sim:
             return True
 
         act.last_stage_tick = self.w.tick
-
-        # États bloquants qui nécessitent d'attendre le tick suivant
-        blocking_stages = {"travel", "drink"}
 
         while True:
             if act.stage == "choose":
@@ -854,7 +1126,7 @@ class Sim:
             return False
 
         interrupt = self.should_interrupt_activity(agent, act)
-        if interrupt:
+        if interrupt and interrupt != "soif_critique":
             self.fail_activity(agent, interrupt)
             return True
 
@@ -899,6 +1171,137 @@ class Sim:
             else:
                 break
 
+        return True
+
+    # ── explore_region activity ──────────────────────────────
+    REGION_SIZE = 64
+
+    def maybe_start_explore_region(self, agent: Being) -> bool:
+        """Tente de démarrer l'exploration d'une région."""
+        if agent.activity is not None:
+            return False
+        if agent.child:
+            return False
+        urgency = (agent.hunger > 0.55 or agent.needs[2] > 0.55
+                   or agent.personality[2] > 0.55)
+        if not urgency:
+            return False
+        target = self.choose_exploration_region(agent)
+        if not target:
+            return False
+        tx, ty = target
+        self.start_activity(
+            agent, kind="explore_region", stage="travel",
+            target_tx=tx, target_ty=ty, reason="explore_unknown_region",
+        )
+        self.activity_reasons["explore_region:started"] += 1
+        return True
+
+    def choose_exploration_region(self, agent: Being):
+        """Choisit une région peu familière et atteignable."""
+        rx, ry = (agent.tx // self.REGION_SIZE,
+                   agent.ty // self.REGION_SIZE)
+        candidates = []
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nrx, nry = rx + dx, ry + dy
+                memory = agent.region_memory.get((nrx, nry), {})
+                familiarity = float(memory.get("familiarity", 0.0))
+                danger = float(memory.get("danger", 0.0))
+                resources = set(memory.get("resources", []))
+                tx = min(max(nrx * self.REGION_SIZE + self.REGION_SIZE // 2, 2),
+                         self.w.g - 3)
+                ty = min(max(nry * self.REGION_SIZE + self.REGION_SIZE // 2, 2),
+                         self.w.g - 3)
+                if not self.w.land[ty, tx] or self.w.blocked[ty, tx]:
+                    continue
+                score = 0.55 * (1.0 - familiarity) - 0.45 * danger
+                if agent.hunger > 0.55 and "food" in resources:
+                    score += 0.25
+                if agent.needs[2] > 0.55 and "water" in resources:
+                    score += 0.20
+                if agent.personality[2] > 0.55:
+                    score += 0.15 * (1.0 - familiarity)
+                if agent.personality[3] > 0.55:
+                    score -= 0.15 * danger
+                candidates.append((score, tx, ty))
+        if not candidates:
+            return None
+        best = max(candidates, key=lambda row: row[0])
+        tx, ty = best[1], best[2]
+        if not self.w.land[ty, tx] or self.w.blocked[ty, tx]:
+            for ddx, ddy in ((0, -1), (1, 0), (0, 1), (-1, 0),
+                             (1, 1), (-1, 1), (1, -1), (-1, -1)):
+                nx, ny = tx + ddx, ty + ddy
+                if 0 <= nx < self.w.g and 0 <= ny < self.w.g:
+                    if self.w.land[ny, nx] and not self.w.blocked[ny, nx]:
+                        return (nx, ny)
+            return None
+        return (tx, ty)
+
+    def step_explore_region(self, agent: Being) -> bool:
+        """explore_region : travel → observe → record → return."""
+        act = agent.activity
+        if act is None or act.kind != "explore_region":
+            return False
+        interrupt = self.should_interrupt_activity(agent, act)
+        if interrupt:
+            self.fail_activity(agent, interrupt)
+            return True
+        act.last_stage_tick = self.w.tick
+        tx, ty = act.target_tx, act.target_ty
+        if tx is None or ty is None:
+            self.fail_activity(agent, "no_target")
+            return True
+        while True:
+            if act.stage == "travel":
+                self.set_goal_to_tile(agent, EXPLORE, tx, ty)
+                dist = max(abs(agent.tx - tx), abs(agent.ty - ty))
+                if dist <= 3:
+                    act.stage = "observe"
+                    continue
+                break
+            elif act.stage == "observe":
+                rx, ry = (tx // self.REGION_SIZE, ty // self.REGION_SIZE)
+                agent.region_memory[(rx, ry)] = {
+                    "familiarity": 0.5, "danger": 0.0,
+                    "resources": [], "last_seen_tick": self.w.tick,
+                }
+                for dy2 in (-1, 0, 1):
+                    for dx2 in (-1, 0, 1):
+                        nx, ny = tx + dx2, ty + dy2
+                        if 0 <= nx < self.w.g and 0 <= ny < self.w.g:
+                            aid = self.w.content_at(nx, ny)
+                            if aid >= 0:
+                                asset = self.am.assets[aid]
+                                rm = agent.region_memory[(rx, ry)]["resources"]
+                                if asset.edible > 0 and "food" not in rm:
+                                    rm.append("food")
+                                elif hasattr(asset, 'harvest') and asset.harvest:
+                                    mat = asset.harvest.get("material", "")
+                                    if mat == "bois" and "wood" not in rm:
+                                        rm.append("wood")
+                act.stage = "record_discovery"
+                continue
+            elif act.stage == "record_discovery":
+                agent.remember_place("explore", tx, ty, self.w.tick,
+                                     confidence=0.4, source="direct")
+                act.stage = "return"
+                continue
+            elif act.stage == "return":
+                ret = self.choose_return_target(agent)
+                if ret:
+                    rtx, rty, kind = ret
+                    self.set_goal_to_tile(agent, EXPLORE, rtx, rty)
+                    act.data["return_kind"] = kind
+                    act.stage = "done"
+                else:
+                    self.finish_activity(agent, "explored", 0.1)
+                    return True
+            else:
+                break
         return True
 
     def deposit_appropriate_items(self, agent: Being, storage) -> None:
@@ -959,7 +1362,11 @@ class Sim:
                   n_hid=n_hid, body=body, cog=cog, emotions=emotions, needs=needs,
                   sex=sex)
         a.col_idx = self._colidx(color)
-        if parents is None:
+        # Sans parents = arrivée autonome (dialogue « Créer », seed_life) :
+        # l'adulte démarre à l'âge adulte. Le défaut de spawn_agent est ()
+        # (tuple vide), pas None : tester `parents is None` laissait tout
+        # habitant créé par l'UI à 0 an.
+        if not parents:
             a.age = DEFAULT_SPAWN_AGE_TICKS
         else:
             a.age = 0
@@ -1249,113 +1656,114 @@ class Sim:
     # ------------------------------------------------------------------ step
     def step(self):
         w = self.w
-        self.clock.step()
-        w.step(self.am, self.clock)
-        # feu : systeme physique pur (combustible + vent - pluie)
-        burned = w.step_fire(
-            self.am, self.clock.wind, self.clock.rain, self.am.flammable,
-            spread=float(self.runtime.get("fire_spread_scale", 1.0)))
-        if burned and w.tick % 30 == 0:
-            self.stats["fires"] += 1
-        if self.clock.lightning():
-            self.clock.lightning_tick = w.tick
-            for _ in range(3):
-                tx, ty = int(self.rng.integers(GRID)), int(self.rng.integers(GRID))
-                if w.land[ty, tx] and w.content_at(tx, ty) >= 0:
-                    w.ignite(tx, ty)
-                    self.log("La foudre a allumé un feu.", (218, 138, 58), "weather")
-                    break
-        self._bucket()
-        for a in self.agents:
-            if a.alive:
-                with self.perf.measure("perception"):
-                    self._perceive(a)
-                # Phase 2: décision staggerée selon la fréquence de l'agent
-                if self.agent_should_think(a):
-                    self._agent(a)
-                else:
-                    # L'agent ne pense pas ce tick, mais continue son but courant
-                    if a.goal is not None:
-                        self._execute(a)
-                # Lot C : decroissance trauma + identite (tous les 100 ticks)
-                if w.tick % 100 == 0:
-                    a.anima_decay_identity()
-                    n_near = len([o for o in self.agents
-                                  if o.alive and o.eid != a.eid
-                                  and abs(o.tx - a.tx) + abs(o.ty - a.ty) < 8])
-                    safety = 1.0 if a.needs[4] > 0.6 else 0.35
-                    a.anima_decay_trauma(safety=safety, support=n_near / 4.0)
-                # Lot F : reputation (tous les 120 ticks)
-                if w.tick % 120 == 0:
-                    self.update_reputation(a)
-        for s in self.sheep:
-            if s.alive:
-                self._sheep(s)
-        for m in self.monsters:
-            if m.alive:
-                self._monster(m)
-        self._forget_dead_agents()
-        self.sheep = [s for s in self.sheep if s.alive]
-        self.monsters = [m for m in self.monsters if m.alive]
-        # nettoyage grid_bucket : entités mortes
-        for dead_eid in [eid for eid, cell in list(self._entity_cells.items())
-                         if not any(a.eid == eid for a in self.agents)
-                         and not any(s.eid == eid for s in self.sheep)
-                         and not any(m.eid == eid for m in self.monsters)]:
-            cell = self._entity_cells.pop(dead_eid, None)
-            if cell is not None:
-                bucket = self.grid_bucket.get(cell)
-                if bucket:
-                    self.grid_bucket[cell] = [e for e in bucket if getattr(e, "eid", None) != dead_eid]
-                    if not self.grid_bucket[cell]:
-                        del self.grid_bucket[cell]
-        self.effects = [e for e in self.effects if w.tick - e["t0"] < e["ttl"]]
-        # odeurs des objets
-        if w.tick % 20 == 0:
-            for it in w.items:
-                if it.kind == "food":
-                    w.smell[int(it.y // TILE), int(it.x // TILE)] = min(1.0,
-                        w.smell[int(it.y // TILE), int(it.x // TILE)] + 0.2)
-        if w.tick % 240 == 0:
+        with self.perf.measure("sim"):
+            self.clock.step()
+            w.step(self.am, self.clock)
+            # feu : systeme physique pur (combustible + vent - pluie)
+            burned = w.step_fire(
+                self.am, self.clock.wind, self.clock.rain, self.am.flammable,
+                spread=float(self.runtime.get("fire_spread_scale", 1.0)))
+            if burned and w.tick % 30 == 0:
+                self.stats["fires"] += 1
+            if self.clock.lightning():
+                self.clock.lightning_tick = w.tick
+                for _ in range(3):
+                    tx, ty = int(self.rng.integers(GRID)), int(self.rng.integers(GRID))
+                    if w.land[ty, tx] and w.content_at(tx, ty) >= 0:
+                        w.ignite(tx, ty)
+                        self.log("La foudre a allumé un feu.", (218, 138, 58), "weather")
+                        break
+            self._bucket()
             for a in self.agents:
-                for c in a.seen:
-                    decay = 0.995 + 0.004 * a.cog[0]
-                    a.seen[c] = [(x, y, f * decay) for x, y, f in a.seen[c] if f > 0.16]
-        recent = sum(1 for t in self._recent_attacks if w.tick - t < 300)
-        if recent >= 14 and w.tick - self._last_war_log > 900:
-            self._last_war_log = w.tick
-            self.log("Des habitants s'entredéchirent pour les ressources !", (228, 98, 98), "combat")
-        if w.tick % 60 == 0:
-            self.pop_hist.append(len(self.agents))
-        if w.tick % 900 == 0:
-            self._analyze_society()
-        if w.tick % 300 == 0:
-            self.universal_knowledge.sync_from_world(self.w, self.am, self.w.tick)
-        if w.tick % 3600 == 0:
-            self.social_memory.decay(self.w.tick)
-        if w.tick % 1800 == 0:
-            for a in self.agents:
-                if a.alive and not a.child:
-                    accepted = self.academy.consider(a, self.w.tick)
-                    if accepted:
-                        self.log(f"Nouveau champion : {a.name} ({a.age_years:.1f} ans)",
-                                 (88, 148, 228), "world")
-        if w.tick % DAY_TICKS == 0:
-            self.lab.snapshot(self)
-        if __debug__ and w.tick % 600 == 0:
-            from .invariants import validate_simulation
-            for error in validate_simulation(self):
-                self.log(f"INVARIANT: {error}", (214, 84, 84), "world")
-        # Lot E : décroissance des institutions (gate runtime).
-        if w.tick % 600 == 0 and self.runtime.get("institutions_enabled", True):
-            self.clan_knowledge.decay_institutions(w.tick)
-        if w.tick % 1800 == 0:
-            for a in self.agents:
-                expired = [k for k, (_, until) in a.failed_targets.items() if w.tick > until]
-                for k in expired:
-                    del a.failed_targets[k]
-        if w.tick % 60 == 0:
-            self._grow_crops()
+                if a.alive:
+                    with self.perf.measure("perception"):
+                        self._perceive(a)
+                    # Phase 2: décision staggerée selon la fréquence de l'agent
+                    if self.agent_should_think(a):
+                        with self.perf.measure("decision"):
+                            self._agent(a)
+                    else:
+                        # L'agent ne pense pas ce tick, mais continue son but courant
+                        if a.goal is not None:
+                            with self.perf.measure("execution"):
+                                self._execute(a)
+                    # Lot C : decroissance trauma + identite (tous les 100 ticks)
+                    if w.tick % 100 == 0:
+                        a.anima_decay_identity()
+                        n_near = len([o for o in self.agents
+                                      if o.alive and o.eid != a.eid
+                                      and abs(o.tx - a.tx) + abs(o.ty - a.ty) < 8])
+                        safety = 1.0 if a.needs[4] > 0.6 else 0.35
+                        a.anima_decay_trauma(safety=safety, support=n_near / 4.0)
+                    # Lot F : reputation (tous les 120 ticks)
+                    if w.tick % 120 == 0:
+                        self.update_reputation(a)
+            for s in self.sheep:
+                if s.alive:
+                    self._sheep(s)
+            for m in self.monsters:
+                if m.alive:
+                    self._monster(m)
+            self._forget_dead_agents()
+            self.sheep = [s for s in self.sheep if s.alive]
+            self.monsters = [m for m in self.monsters if m.alive]
+            # nettoyage grid_bucket : entites mortes
+            for dead_eid in [eid for eid, cell in list(self._entity_cells.items())
+                             if not any(a.eid == eid for a in self.agents)
+                             and not any(s.eid == eid for s in self.sheep)
+                             and not any(m.eid == eid for m in self.monsters)]:
+                cell = self._entity_cells.pop(dead_eid, None)
+                if cell is not None:
+                    bucket = self.grid_bucket.get(cell)
+                    if bucket:
+                        self.grid_bucket[cell] = [e for e in bucket if getattr(e, "eid", None) != dead_eid]
+                        if not self.grid_bucket[cell]:
+                            del self.grid_bucket[cell]
+            self.effects = [e for e in self.effects if w.tick - e["t0"] < e["ttl"]]
+            # odeurs des objets
+            if w.tick % 20 == 0:
+                for it in w.items:
+                    if it.kind == "food":
+                        w.smell[int(it.y // TILE), int(it.x // TILE)] = min(1.0,
+                            w.smell[int(it.y // TILE), int(it.x // TILE)] + 0.2)
+            if w.tick % 240 == 0:
+                for a in self.agents:
+                    for c in a.seen:
+                        decay = 0.995 + 0.004 * a.cog[0]
+                        a.seen[c] = [(x, y, f * decay) for x, y, f in a.seen[c] if f > 0.16]
+            recent = sum(1 for t in self._recent_attacks if w.tick - t < 300)
+            if recent >= 14 and w.tick - self._last_war_log > 900:
+                self._last_war_log = w.tick
+                self.log("Des habitants s'entredéchirent pour les ressources !", (228, 98, 98), "combat")
+            if w.tick % 60 == 0:
+                self.pop_hist.append(len(self.agents))
+            if w.tick % 900 == 0:
+                self._analyze_society()
+            if w.tick % 3600 == 0:
+                self.social_memory.decay(self.w.tick)
+            if w.tick % 1800 == 0:
+                for a in self.agents:
+                    if a.alive and not a.child:
+                        accepted = self.academy.consider(a, self.w.tick)
+                        if accepted:
+                            self.log(f"Nouveau champion : {a.name} ({a.age_years:.1f} ans)",
+                                     (88, 148, 228), "world")
+            if w.tick % DAY_TICKS == 0:
+                self.lab.snapshot(self)
+            if __debug__ and w.tick % 600 == 0:
+                from .invariants import validate_simulation
+                for error in validate_simulation(self):
+                    self.log(f"INVARIANT: {error}", (214, 84, 84), "world")
+            # Lot E : décroissance des institutions (gate runtime).
+            if w.tick % 600 == 0 and self.runtime.get("institutions_enabled", True):
+                self.clan_knowledge.decay_institutions(w.tick)
+            if w.tick % 1800 == 0:
+                for a in self.agents:
+                    expired = [k for k, (_, until) in a.failed_targets.items() if w.tick > until]
+                    for k in expired:
+                        del a.failed_targets[k]
+            if w.tick % 60 == 0:
+                self._grow_crops()
 
     def _grow_crops(self):
         w = self.w
@@ -1499,22 +1907,35 @@ class Sim:
             if aid < 0:
                 if w.water[y, x]:
                     a.remember("water", x, y)
+                    a.remember_place("water", x, y, self.w.tick,
+                                       confidence=0.7, source="direct")
                 continue
             asd = self.am.assets[aid]
             if asd.edible > 0:
                 a.remember("food", x, y)
+                a.remember_place("food", x, y, self.w.tick,
+                                   confidence=0.75,
+                                   estimated_amount=0.6,
+                                   estimated_danger=0.1,
+                                   source="direct")
                 self.clan_knowledge.share_place("food", x, y, a.eid, w.tick)
             elif asd.harvest:
                 m = asd.harvest["material"]
                 cat = {"bois": "wood", "pierre": "stone",
                         "or": "stone"}.get(m, "wood")
                 a.remember(cat, x, y)
+                a.remember_place(cat, x, y, self.w.tick,
+                                   confidence=0.7, source="direct")
                 self.clan_knowledge.share_place(cat, x, y, a.eid, w.tick)
             elif asd.tool:
                 a.remember("wood", x, y)
+                a.remember_place("wood", x, y, self.w.tick,
+                                   confidence=0.6, source="direct")
                 self.clan_knowledge.share_place("wood", x, y, a.eid, w.tick)
             elif asd.shelter:
                 a.remember("shelter", x, y)
+                a.remember_place("shelter", x, y, self.w.tick,
+                                   confidence=0.65, source="direct")
                 self.clan_knowledge.share_place("shelter", x, y, a.eid, w.tick)
 
         # ====== VISION COURTE PORTÉE : Moore neighborhood (actions physiques) ======
@@ -1542,6 +1963,16 @@ class Sim:
         # mémoriser agents vus en longue portée aussi
         for e in near_agents:
             a.remember("agent", e.tx, e.ty)
+
+        # Mémoire régionale : mise à jour de la région actuelle
+        rx, ry = int(tx // 64), int(ty // 64)
+        a.region_memory[(rx, ry)] = {
+            "familiarity": min(1.0, float(a.region_memory.get((rx, ry), {}).get("familiarity", 0.0)) + 0.05),
+            "danger": max(float(a.region_memory.get((rx, ry), {}).get("danger", 0.0)),
+                         float(a.belief_places.get((rx, ry), 0.0))),
+            "resources": list(set(a.region_memory.get((rx, ry), {}).get("resources", []))),
+            "last_seen_tick": self.w.tick,
+        }
 
         # sons percus
         for (sx, sy, kind, inten, st) in self.sounds:
@@ -1945,8 +2376,11 @@ class Sim:
             a.emotions[0] > 0.35
             and (bool(a._near_agents) or bool(a._near_sheep) or bool(a._near_monsters))
         )
-        f[TALK] = bool(a._near_agents) and \
-            self.w.tick - a.talk_cd.get(a._near_agents[0].eid, -999) > 240
+        f[TALK] = any(
+            self.can_talk(a, _o)[0]
+            and self.choose_talk_topic(a, _o) is not None
+            for _o in (a._near_agents or ())
+        )
         f[SOCIAL] = bool(a.recall("agent", a.tx, a.ty)) or bool(a._near_agents)
         return f
 
@@ -1956,24 +2390,38 @@ class Sim:
             # Perception invalide : pas de délibération, repli REST ce tick.
             self.metrics["invalid_perceptions"] += 1
             a.goal = None
+            a.last_decision = {
+                "tick": int(self.w.tick), "act": None, "act_name": "—",
+                "prob": 0.0, "initial_act": None, "initial_act_name": None,
+                "top": [], "feasible": [],
+                "reason": "perception invalide — pas de délibération",
+            }
             return
         bias = self._bias(a)
         temperature = 0.5 + 0.9 * a.personality[6] + 0.4 * a.emotions[4]
         try:
-            act, probs = a.brain.think(
-                x, temperature, bias,
-                curiosity=a.personality[2],
-                caution=a.personality[3],
-            )
+            with self.perf.measure("brain"):
+                act, probs = a.brain.think(
+                    x, temperature, bias,
+                    curiosity=a.personality[2],
+                    caution=a.personality[3],
+                )
         except ValueError:
             self.metrics["invalid_perceptions"] += 1
             self.log(f"Perception invalide pour {a.name} : repli REST.",
                      (232, 136, 112))
             a.goal = None
+            a.last_decision = {
+                "tick": int(self.w.tick), "act": None, "act_name": "—",
+                "prob": 0.0, "initial_act": None, "initial_act_name": None,
+                "top": [], "feasible": [],
+                "reason": "cerveau a rejeté la perception — repli Repos",
+            }
             return
         finally:
             self._count_numeric_recoveries()
         f = self._feasible(a)
+        initial_act = int(act)
         if not f[act]:
             order = np.argsort(-probs)
             for cand in order:
@@ -1982,6 +2430,7 @@ class Sim:
                     break
             else:
                 act = REST
+        self._record_last_decision(a, probs, f, initial_act, int(act))
         a.habits *= 0.992
         a.habits[act] = min(1.0, a.habits[act] + 0.02)
         # Lot M : comptage actions
@@ -2003,6 +2452,54 @@ class Sim:
         n = take_numeric_recoveries()
         if n:
             self.metrics["numeric_recoveries"] += n
+
+    def _record_last_decision(self, a: Being, probs, feasible,
+                              initial_act: int, act: int):
+        """Trace l'action réellement retenue par le moteur (inspecteur).
+
+        Observation pure : lit le vecteur de probabilités du cerveau et le
+        masque de faisabilité, sans modifier le but, le cerveau ou l'état
+        de l'agent. Toute erreur est avalée : le diagnostic ne casse jamais
+        la délibération.
+        """
+        try:
+            from .brain_api import ACTION_NAMES_EXP
+            names = ACTION_NAMES_EXP
+            p = np.asarray(probs, dtype=float)
+            order = np.argsort(-p)
+            top = [{
+                "act": int(i),
+                "name": str(names.get(int(i), f"Action {int(i)}")),
+                "prob": float(p[i]),
+                "feasible": bool(feasible[i]),
+            } for i in order[:8]]
+            feasible_names = [str(names.get(int(i), f"Action {int(i)}"))
+                              for i in range(len(feasible)) if feasible[i]]
+            init_name = str(names.get(initial_act,
+                                      f"Action {initial_act}"))
+            act_name = str(names.get(act, f"Action {act}"))
+            if act == initial_act:
+                reason = "choix direct du cerveau (action faisable)"
+            elif act == REST:
+                reason = "aucune action faisable — repli Repos"
+            else:
+                reason = f"« {init_name} » non faisable — repli sur la meilleure alternative"
+            a.last_decision = {
+                "tick": int(self.w.tick),
+                "act": int(act),
+                "act_name": act_name,
+                "prob": float(p[act]) if 0 <= act < len(p) else 0.0,
+                "initial_act": int(initial_act),
+                "initial_act_name": init_name,
+                "initial_prob": (float(p[initial_act])
+                                 if 0 <= initial_act < len(p) else 0.0),
+                "top": top,
+                "feasible": feasible_names[:8],
+                "reason": reason,
+            }
+        except Exception:
+            self.metrics["unhandled_action_errors"] += 1
+            a.last_decision = None
 
     def _capture_decision_trace(self, a: Being):
         """Enregistre les candidats réellement évalués pour l'inspecteur.
@@ -2324,6 +2821,13 @@ class Sim:
         a.goal_t += 1
         a.pain = max(0.0, a.pain - 0.0004)
 
+        # Phase 2: candidats pour l'inspecteur (Phase 1 diagnostic).
+        # Capturés AVANT le dispatch d'activité : les branches à retour
+        # anticipé (activité en cours, priorités 1-4) sautent l'appel plus
+        # bas, et la trace resterait vide pour tout agent occupé.
+        if self._should_generate_candidates(a):
+            self._capture_decision_trace(a)
+
         # PART B: ActivityState - vérifier activité en cours
         if a.activity is not None:
             handled = False
@@ -2333,6 +2837,8 @@ class Sim:
                 handled = self.step_water_search(a)
             elif a.activity.kind == "return_home":
                 handled = self.step_return_home(a)
+            elif a.activity.kind == "explore_region":
+                handled = self.step_explore_region(a)
             if handled:
                 # L'activité a géré ce tick, on saute la décision normale
                 self._metabolize(a)
@@ -2377,6 +2883,16 @@ class Sim:
             a.prev_wellbeing = after
             return
 
+        # Priorité 4: explore_region
+        if self.maybe_start_explore_region(a):
+            self._metabolize(a)
+            after = self._wellbeing(a)
+            delta = after - getattr(a, 'prev_wellbeing', after)
+            if abs(delta) > 0.001:
+                self._reward(a, 0.08 * delta)
+            a.prev_wellbeing = after
+            return
+
         # VOLONTE : le but persiste (engagement). On ne re-delibere que si :
         # but fini/expiré/bloque, urgence viscerale, ou mollesse (petit cerveau
         # en veille). Un grand cerveau stratege va au bout de sa tache.
@@ -2399,9 +2915,7 @@ class Sim:
             a.anima["plan"] = dict(a._cached_plans[0]) if a._cached_plans else None
             a._cached_plans_tick = self.w.tick
 
-        # Phase 2: candidats pour l'inspecteur (Phase 1 diagnostic)
-        if self._should_generate_candidates(a):
-            self._capture_decision_trace(a)
+        # Phase 2: candidats pour l'inspecteur : capturés en tête d'_agent.
 
         if g is None or expired or a.stuck > 20 + 50 * a.personality[8]:
             self._decide(a)

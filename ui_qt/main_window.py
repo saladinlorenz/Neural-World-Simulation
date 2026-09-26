@@ -587,6 +587,7 @@ class MainWindow(QMainWindow):
         self._map.invalidate_all_caches()
         self._active_scenario = "manual"
         self._refresh_all_docks()
+        self._autosave()
         self._status.showMessage("Nouveau monde (%s, graine %d)" % (mode, seed), 4000)
 
     def _refresh_all_docks(self):
@@ -661,6 +662,11 @@ class MainWindow(QMainWindow):
 
         ui_ms = (time.perf_counter() - ui_started) * 1000.0
         total_ms = (time.perf_counter() - frame_started) * 1000.0
+        render_ms = max(0.0, total_ms - sim_ms - ui_ms)
+
+        # Add UI and render to perfmetrics for status bar display
+        sim.perf.add("ui", ui_ms)
+        sim.perf.add("render", render_ms)
 
         self.last_perf = {
             "sim_ms": sim_ms,
@@ -745,21 +751,14 @@ class MainWindow(QMainWindow):
         else:
             self._tile_pill.setText("⌖ —")
         perf = getattr(self, "last_perf", {})
-        sections = getattr(self, "last_perf_sections", {})
-
-        # Build compact perf line: percept=Xms think=Yms exec=Zms total=Tms
-        # Only show sections that exist (use .get with defaults)
-        parts = []
-        for key in ("perception", "decision", "execution"):
-            if key in sections:
-                parts.append("%s=%.1fms" % (key[:4], sections[key].get("avg_ms", 0.0)))
-        total_ms = sections.get("_total", {}).get("avg_ms", perf.get("sim_ms", 0.0))
-        if parts:
-            perf_line = "%s total=%.1fms" % (" ".join(parts), total_ms)
-        else:
-            perf_line = "S:%.1fms" % perf.get("sim_ms", 0.0)
-
-        # Budget indicator: warning color if total tick time > threshold
+        pm = getattr(sim, "perf", None)
+        sim_ms = pm.average("sim") if pm else perf.get("sim_ms", 0.0)
+        brain_ms = pm.average("brain") if pm else 0.0
+        ui_ms = perf.get("ui_ms", 0.0)
+        render_ms = max(0.0, perf.get("total_ms", 0.0) - sim_ms - ui_ms)
+        perf_line = "SIM %.1fms · BRAIN %.1fms · UI %.1fms · RENDER %.1fms" % (
+            sim_ms, brain_ms, ui_ms, render_ms)
+        total_ms = sim_ms + ui_ms + render_ms
         over_budget = total_ms > TICK_BUDGET_MS
         self._performance_pill.setText(
             "%.0f FPS · %.1f TPS · %s" % (
@@ -962,6 +961,28 @@ class MainWindow(QMainWindow):
             return
         super().keyPressEvent(event)
 
+    def _autosave(self):
+        """Écrit la session courante dans le slot 98 : main_qt.py la relit
+        au lancement, on retrouve donc le monde exact de la session précédente."""
+        if not self.isVisible():
+            # Fenêtre jamais affichée = test unitaire : évite d'écrire ~60 Mo
+            # à chaque win.close() des suites de tests.
+            return False
+        from game.save import AUTOSAVE_SLOT, save_game
+        try:
+            save_game(self.controller.sim, self.controller.camera,
+                      slot=AUTOSAVE_SLOT,
+                      ui_state=self.controller.ui_state.snapshot_dict())
+            return True
+        except Exception as exc:
+            print("[AUTOSAVE] echec :", exc)
+            return False
+
     def closeEvent(self, event):
-        self._save_settings()
+        if self.isVisible():
+            # Fenêtre jamais affichée = test unitaire : ne pas écraser la
+            # géométrie/répartition réelle des docks, ni écrire ~60 Mo
+            # d'autosave, à chaque win.close() des suites de tests.
+            self._save_settings()
+            self._autosave()
         super().closeEvent(event)

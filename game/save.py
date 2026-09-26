@@ -26,6 +26,10 @@ from .config import SAVE_DIR, GRID, TILE, AGE_MAX_NATURAL_DEATH_TICKS
 #: Version courante des sauvegardes (Lot Save v3).
 SAVE_VERSION = 3
 
+#: Slot réservé à la sauvegarde automatique de session : écrit à la fermeture
+#: de la fenêtre, relu au lancement pour retrouver le monde précédent.
+AUTOSAVE_SLOT = 98
+
 
 def _slot_path(slot=0):
     os.makedirs(SAVE_DIR, exist_ok=True)

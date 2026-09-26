@@ -34,7 +34,8 @@ class InspectorDock(QDockWidget):
 
     #: Libellés français du diagnostic de décision (Phase 1). Clés = valeurs
     #: brutes de la trace moteur ; l'UI ne fait que traduire, jamais recalculer.
-    POSS_VERB = {"pickup": "Ramasser", "sit": "S'asseoir", "follow": "Suivre"}
+    POSS_VERB = {"pickup": "Ramasser", "sit": "S'asseoir", "follow": "Suivre",
+                 "talk": "Parler"}
     POSS_TARGET = {"item": "objet", "spot": "lieu",
                    "agent": "habitant", "terrain": "terrain"}
     POSS_STATE = {"selected": "choisi", "feasible": "faisable",
@@ -45,6 +46,8 @@ class InspectorDock(QDockWidget):
         super().__init__("Inspecteur", parent)
         self.controller = controller
         self._anima_model = AnimaModel()
+        # Cache UI-only : évite de reconstruire la grille à l'identique.
+        self._decision_revision = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -220,6 +223,23 @@ class InspectorDock(QDockWidget):
             act_layout.addWidget(act_lbl)
         self._layout.addWidget(self._activity_group)
 
+        # === Decision Trace (section compacte : 10 éléments moteur) ===
+        self._dtrace_group = QGroupBox("Decision Trace")
+        self._dtrace_group.setStyleSheet(
+            f"QGroupBox {{ font-weight: bold; color: {_hex(C_COG)}; }}"
+        )
+        dt_layout = QVBoxLayout(self._dtrace_group)
+        dt_layout.setContentsMargins(8, 16, 8, 8)
+        dt_layout.setSpacing(1)
+        self._dtrace_labels = []
+        for _ in range(10):
+            lbl = QLabel("")
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet("font-size: 11px;")
+            dt_layout.addWidget(lbl)
+            self._dtrace_labels.append(lbl)
+        self._layout.addWidget(self._dtrace_group)
+
         # === Possibilités évaluées (Phase 1 : diagnostic de décision) ===
         # Lecture seule de la trace capturée par le moteur : l'UI ne recalcule
         # jamais les candidats et ne balaie jamais le monde.
@@ -275,6 +295,36 @@ class InspectorDock(QDockWidget):
         self._local_context_label.setStyleSheet("font-size: 11px;")
         lc_layout.addWidget(self._local_context_label)
         self._layout.addWidget(self._local_context_group)
+
+        # === Mémoire lieux pertinents (place_memories, borné à 8) ===
+        self._places_group = QGroupBox("Lieux mémorisés")
+        self._places_group.setStyleSheet(
+            f"QGroupBox {{ font-weight: bold; color: {_hex(C_MEM)}; }}"
+        )
+        places_layout = QVBoxLayout(self._places_group)
+        places_layout.setContentsMargins(8, 16, 8, 8)
+        places_layout.setSpacing(2)
+        self._places_label = QLabel("")
+        self._places_label.setWordWrap(True)
+        self._places_label.setStyleSheet("font-size: 11px;")
+        places_layout.addWidget(self._places_label)
+        self._layout.addWidget(self._places_group)
+
+        # === Communication (dernier envoi / réception, moteur seul) ===
+        self._comm_group = QGroupBox("Communication")
+        self._comm_group.setStyleSheet(
+            f"QGroupBox {{ font-weight: bold; color: {_hex(C_PERSO)}; }}"
+        )
+        comm_layout = QVBoxLayout(self._comm_group)
+        comm_layout.setContentsMargins(8, 16, 8, 8)
+        comm_layout.setSpacing(2)
+        self._comm_said_label = QLabel("")
+        self._comm_heard_label = QLabel("")
+        for lbl in (self._comm_said_label, self._comm_heard_label):
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet("font-size: 11px;")
+            comm_layout.addWidget(lbl)
+        self._layout.addWidget(self._comm_group)
 
         # === Goal ===
         self._goal_label = QLabel("")
@@ -416,6 +466,9 @@ class InspectorDock(QDockWidget):
             self._possibilities_group.setVisible(False)
             self._clear_grid(self._possibilities_grid)
             self._possibilities_empty.setVisible(False)
+            self._dtrace_group.setVisible(False)
+            for lbl in self._dtrace_labels:
+                lbl.setText("")
             self._deliberation_group.setVisible(False)
             self._delib_need_label.setText("")
             self._delib_emotion_label.setText("")
@@ -424,6 +477,12 @@ class InspectorDock(QDockWidget):
             self._delib_failure_label.setText("")
             self._local_context_group.setVisible(False)
             self._local_context_label.setText("")
+            self._places_group.setVisible(False)
+            self._places_label.setText("")
+            self._comm_group.setVisible(False)
+            self._comm_said_label.setText("")
+            self._comm_heard_label.setText("")
+            self._decision_revision = None
             return
 
         # Lot E : contenu affiché ; Lot F.1 : cartes rafraîchies en premier.
@@ -692,15 +751,38 @@ class InspectorDock(QDockWidget):
         self._activity_group.setVisible(True)
 
         # === Délibération (pensée sélectionnée visible) ===
+        # Pression avec valeurs : decision_trace riche si présent, sinon
+        # le résumé deliberation historique. L'UI traduit, jamais recalcule.
         deliberation = snap.get("deliberation", {}) or {}
-        if deliberation:
+        decision_trace = snap.get("decision_trace", {}) or {}
+        need_name = deliberation.get("dominant_need", "—")
+        need_val = None
+        emo_name = deliberation.get("dominant_emotion", "—")
+        emo_val = None
+        if isinstance(decision_trace.get("dominant_need"), dict):
+            need_name = decision_trace["dominant_need"].get("name", need_name)
+            need_val = decision_trace["dominant_need"].get("value")
+        if isinstance(decision_trace.get("dominant_emotion"), dict):
+            emo_name = decision_trace["dominant_emotion"].get("name", emo_name)
+            emo_val = decision_trace["dominant_emotion"].get("value")
+        if deliberation or decision_trace:
             self._deliberation_group.setVisible(True)
-            self._delib_need_label.setText(
-                f"<b>Besoin dominant :</b> {deliberation.get('dominant_need', '—')}"
-            )
-            self._delib_emotion_label.setText(
-                f"<b>Émotion dominante :</b> {deliberation.get('dominant_emotion', '—')}"
-            )
+            if isinstance(need_val, (int, float)):
+                self._delib_need_label.setText(
+                    f"<b>Besoin dominant :</b> {need_name} {need_val:.0%}"
+                )
+            else:
+                self._delib_need_label.setText(
+                    f"<b>Besoin dominant :</b> {need_name}"
+                )
+            if isinstance(emo_val, (int, float)):
+                self._delib_emotion_label.setText(
+                    f"<b>Émotion dominante :</b> {emo_name} {emo_val:.0%}"
+                )
+            else:
+                self._delib_emotion_label.setText(
+                    f"<b>Émotion dominante :</b> {emo_name}"
+                )
             selected = deliberation.get("selected")
             if selected:
                 verb = selected.get("verb", "—")
@@ -722,7 +804,8 @@ class InspectorDock(QDockWidget):
             self._delib_reason_label.setText(
                 f"<b>Raison :</b> {reason}" if reason else "<b>Raison :</b> —"
             )
-            failure = deliberation.get("failure_reason", "")
+            failure = (decision_trace.get("failure_reason", "")
+                         or deliberation.get("failure_reason", ""))
             self._delib_failure_label.setText(
                 f"<b>Échec :</b> {failure}" if failure else "<b>Échec :</b> aucun"
             )
@@ -745,8 +828,52 @@ class InspectorDock(QDockWidget):
         else:
             self._local_context_group.setVisible(False)
 
+        # === Decision Trace (consolidation compacte des 10 éléments) ===
+        self._fill_decision_trace(snap)
+
         # === Possibilités évaluées (trace réelle, aucune recomputation) ===
-        self._fill_possibilities(snap.get("possibilities", []) or [])
+        # Refresh intelligent : on ne reconstruit la grille que si la
+        # révision décision a changé (eid, tick, échec, activité, comm).
+        revision = self._decision_revision_of(snap)
+        if revision != self._decision_revision:
+            self._decision_revision = revision
+            self._fill_possibilities(snap)
+
+        # === Lieux mémorisés pertinents (bornés à 8, moteur seul) ===
+        places = snap.get("relevant_memories", []) or []
+        if places:
+            lines = []
+            for row in places[:8]:
+                lines.append(
+                    f"  {row.get('category', '?')} à "
+                    f"({row.get('tx', '?')},{row.get('ty', '?')}) · "
+                    f"conf {float(row.get('confidence', 0.0)):.0%} · "
+                    f"danger {float(row.get('estimated_danger', 0.0)):.0%} · "
+                    f"{row.get('source', '')}"
+                )
+            self._places_label.setText("\n".join(lines))
+            self._places_group.setVisible(True)
+        else:
+            self._places_group.setVisible(False)
+            self._places_label.setText("")
+
+        # === Communication (dernier envoi / réception) ===
+        said = snap.get("last_said", {}) or {}
+        heard = snap.get("last_heard", {}) or {}
+        if said or heard:
+            self._comm_group.setVisible(True)
+            self._comm_said_label.setText(
+                f"Envoyé : {self._format_comm(said)}" if said
+                else "Envoyé : —"
+            )
+            self._comm_heard_label.setText(
+                f"Reçu : {self._format_comm(heard)}" if heard
+                else "Reçu : —"
+            )
+        else:
+            self._comm_group.setVisible(False)
+            self._comm_said_label.setText("")
+            self._comm_heard_label.setText("")
 
         # Goal (action + destination + expiration)
         goal = snap.get("goal", {})
@@ -807,15 +934,274 @@ class InspectorDock(QDockWidget):
             if widget is not None:
                 widget.deleteLater()
 
-    def _fill_possibilities(self, rows):
-        """Affiche la trace de décision : Action | Cible | Distance | Risque |
-        Score | État. ``rows`` provient du snapshot (déjà évalué par le
-        moteur) ; cette méthode ne fait que le mettre en forme.
+    @staticmethod
+    def _decision_revision_of(snap: dict) -> tuple:
+        """Révision UI-only : identique => on ne reconstruit pas la grille."""
+        trace = snap.get("decision_trace", {}) or {}
+        activity = snap.get("activity", {}) or {}
+        possibilities = snap.get("possibilities", []) or []
+        sel = next((r for r in possibilities
+                    if r.get("state") == "selected"), None) or {}
+        return (
+            snap.get("eid"),
+            trace.get("tick"),
+            trace.get("failure_tick"),
+            trace.get("failure_reason"),
+            sel.get("verb"), sel.get("target_kind"), sel.get("target_id"),
+            round(float(sel.get("score", 0.0)), 4) if sel else None,
+            len(possibilities),
+            activity.get("state"), activity.get("goal_action"),
+            activity.get("stuck"),
+            (snap.get("last_heard", {}) or {}).get("tick"),
+            (snap.get("last_said", {}) or {}).get("tick"),
+            (snap.get("last_decision", {}) or {}).get("tick"),
+            (snap.get("last_decision", {}) or {}).get("act"),
+        )
+
+    @staticmethod
+    def _format_comm(evt: dict) -> str:
+        """Formate un événement talk / need_help borné (moteur seul)."""
+        if not isinstance(evt, dict) or not evt:
+            return "—"
+        topic = evt.get("topic", evt.get("kind", "?"))
+        tick = evt.get("tick", "—")
+        if evt.get("kind") == "need_help":
+            return (f"need_help de #{evt.get('requester_eid', '?')} "
+                    f"(tick {tick})")
+        speaker = evt.get("speaker_eid", "?")
+        listener = evt.get("listener_eid", "?")
+        return f"{topic} #{speaker} → #{listener} (tick {tick})"
+
+    def _fill_decision_trace(self, snap):
+        """Remplit la section compacte « Decision Trace » (10 éléments).
+
+        Lecture seule du snapshot : aucune recomputation moteur.
+        1 besoin · 2 émotion · 3 but · 4 activité · 5 candidats ·
+        6 choix · 7 raison · 8 échec · 9 reçu · 10 envoyé.
         """
+        deliberation = snap.get("deliberation", {}) or {}
+        trace = snap.get("decision_trace", {}) or {}
+        activity = snap.get("activity", {}) or {}
+        goal = snap.get("goal", {}) or {}
+        possibilities = snap.get("possibilities", []) or []
+        said = snap.get("last_said", {}) or {}
+        heard = snap.get("last_heard", {}) or {}
+
+        # 1. Besoin dominant (fusion : nom le plus parlant des 2 sources)
+        need = deliberation.get("dominant_need", "") or "—"
+        nd = trace.get("dominant_need")
+        if isinstance(nd, dict):
+            nd_name = str(nd.get("name", "") or "")
+            nd_val = float(nd.get("value", 0.0) or 0.0)
+            if nd_name:
+                need = f"{nd_name} {nd_val:.0%}"
+            elif isinstance(need, dict):
+                need = "—"
+        self._dtrace_labels[0].setText(f"<b>1. Besoin :</b> {need}")
+
+        # 2. Émotion dominante
+        emo = deliberation.get("dominant_emotion", "") or "—"
+        ed = trace.get("dominant_emotion")
+        if isinstance(ed, dict):
+            ed_name = str(ed.get("name", "") or "")
+            ed_val = float(ed.get("value", 0.0) or 0.0)
+            if ed_name:
+                emo = f"{ed_name} {ed_val:.0%}"
+            elif isinstance(emo, dict):
+                emo = "—"
+        self._dtrace_labels[1].setText(f"<b>2. Émotion :</b> {emo}")
+
+        # 3. But courant / action / cible (snapshot goal, repli activité)
+        goal_snap = snap.get("goal", {}) or {}
+        action_text = ""
+        if goal_snap.get("action") is not None:
+            action_text = str(goal_snap.get("action_name") or "")
+        if not action_text and activity.get("goal_action") is not None:
+            action_text = action_name(self.controller.sim,
+                                      activity.get("goal_action")) or ""
+        if not action_text or action_text.lower() in ("—", "aucune", "aucun"):
+            action_text = "aucun"
+        gx, gy = goal_snap.get("target_x"), goal_snap.get("target_y")
+        if gx is None or gy is None:
+            gt = activity.get("goal_tile")
+            if gt:
+                gx, gy = gt[0], gt[1]
+        target_text = f"→ ({int(gx)},{int(gy)})" if gx is not None and gy is not None else ""
+        self._dtrace_labels[2].setText(
+            f"<b>3. But :</b> {action_text} {target_text}"
+        )
+
+        # 4. Activité persistante + étape
+        kind = activity.get("kind", "—")
+        stage = activity.get("stage", "—")
+        if kind and kind != "—":
+            self._dtrace_labels[3].setText(
+                f"<b>4. Activité :</b> {kind} · étape {stage}"
+            )
+        else:
+            self._dtrace_labels[3].setText("<b>4. Activité :</b> aucune")
+
+        # 5. Candidats évalués (jusqu'à 8).
+        #    Source de vérité = les actions notées par le cerveau à la
+        #    dernière délibération (c'est ce que le moteur évalue réellement
+        #    dans _decide). Les ActionCandidate (cibles concrètes) ne sont
+        #    produites que par le diagnostic : repli uniquement.
+        last_dec = snap.get("last_decision", {}) or {}
+        top = (last_dec.get("top") or [])[:8]
+        if top:
+            chosen_act = last_dec.get("act")
+            parts = []
+            for t in top:
+                name = str(t.get("name", "?"))
+                prob = float(t.get("prob", 0.0) or 0.0)
+                mark = "faisable" if t.get("feasible") else "non faisable"
+                arrow = "→ " if t.get("act") == chosen_act else ""
+                parts.append(f"{arrow}{name} {prob:.0%} ({mark})")
+            self._dtrace_labels[4].setText(
+                "<b>5. Candidats :</b> " + " · ".join(parts)
+            )
+        elif possibilities:
+            parts = []
+            for row in possibilities[:8]:
+                v = self.POSS_VERB.get(row.get("verb"), row.get("verb", "?"))
+                st = self.POSS_STATE.get(row.get("state", ""), row.get("state", ""))
+                sc = float(row.get("score", 0.0))
+                reason = row.get("reason")
+                entry = f"{v} ({st} {sc:.2f}"
+                entry += f" — {reason})" if reason else ")"
+                parts.append(entry)
+            self._dtrace_labels[4].setText(
+                "<b>5. Candidats (cibles) :</b> " + " · ".join(parts)
+            )
+        else:
+            self._dtrace_labels[4].setText("<b>5. Candidats :</b> aucun")
+
+        # 6. Candidat sélectionné — ordre de vérité :
+        #    a) activité en cours = aucune délibération ce tick (le moteur
+        #       sort avant _decide) ; on l'explique et on rappelle le
+        #       dernier choix historique s'il existe ;
+        #    b) décision réellement retenue par _decide ;
+        #    c) pick du diagnostic = hypothèse, jamais présenté comme réel.
+        sel = next((r for r in possibilities
+                    if r.get("state") == "selected"), None)
+        sel_desc = deliberation.get("selected") or {}
+        has_dec = bool(last_dec.get("act_name")
+                       and last_dec.get("act_name") != "—")
+
+        def _decision_text(prefix):
+            prob = float(last_dec.get("prob", 0.0) or 0.0)
+            tick = last_dec.get("tick", "?")
+            repli = (last_dec.get("initial_act_name")
+                     and last_dec.get("initial_act") != last_dec.get("act"))
+            if repli:
+                # Après repli, la prob de l'action retenue est souvent ~0 :
+                # on affiche celle de l'action initiale, bien plus parlante.
+                ip = float(last_dec.get("initial_prob", 0.0) or 0.0)
+                return (f"{prefix}{last_dec['act_name']} (repli, tick {tick})"
+                        f" — « {last_dec['initial_act_name']} » à {ip:.0%}"
+                        f" non faisable")
+            # Les alternatives complètes sont déjà en ligne 5.
+            return (f"{prefix}{last_dec['act_name']} "
+                    f"({prob:.0%}, tick {tick})")
+
+        if activity.get("kind"):
+            if has_dec:
+                text = _decision_text("")
+                text = (f"<b>6. Choix :</b> aucun — délibération en attente "
+                        f"(activité « {activity.get('kind')} » en cours)"
+                        f" · dernier choix : {text}")
+            else:
+                text = (f"<b>6. Choix :</b> aucun — délibération en attente "
+                        f"(activité « {activity.get('kind')} » en cours)")
+            self._dtrace_labels[5].setText(text)
+        elif has_dec:
+            self._dtrace_labels[5].setText(_decision_text(
+                "<b>6. Choix :</b> "))
+        elif sel:
+            verb_t = self.POSS_VERB.get(sel.get("verb"), sel.get("verb", "?"))
+            kind_t = self.POSS_TARGET.get(
+                sel.get("target_kind"), sel.get("target_kind", "?"))
+            tid = sel.get("target_id")
+            cible = f"{kind_t} #{tid}" if tid is not None else (
+                f"{kind_t} ({sel.get('tx')},{sel.get('ty')})")
+            self._dtrace_labels[5].setText(
+                f"<b>6. Choix :</b> {verb_t} → {cible} "
+                f"(hypothèse — pas encore délibéré)"
+            )
+        elif sel_desc:
+            self._dtrace_labels[5].setText(
+                f"<b>6. Choix :</b> {sel_desc.get('verb','?')}"
+            )
+        else:
+            self._dtrace_labels[5].setText("<b>6. Choix :</b> aucun")
+
+        # 7. Raison : l'activité explique l'absence de délibération, sinon
+        #    la raison réelle du choix moteur, sinon le diagnostic.
+        if activity.get("kind"):
+            reason = (f"l'activité « {activity.get('kind')} » pilote l'agent "
+                      f"(étape {activity.get('stage', '?')}) — pas de "
+                      f"délibération ce tick")
+        else:
+            reason = (last_dec.get("reason", "")
+                      or deliberation.get("reason", ""))
+        self._dtrace_labels[6].setText(
+            f"<b>7. Raison :</b> {reason}" if reason
+            else "<b>7. Raison :</b> —"
+        )
+
+        # 8. Dernier échec / interruption
+        failure = (trace.get("failure_reason", "")
+                   or deliberation.get("failure_reason", ""))
+        self._dtrace_labels[7].setText(
+            f"<b>8. Échec :</b> {failure}" if failure
+            else "<b>8. Échec :</b> aucun"
+        )
+
+        # 9. Dernière communication reçue
+        if heard:
+            topic = heard.get("topic") or heard.get("kind", "?")
+            tick = heard.get("tick", "?")
+            who = heard.get("speaker_name") or heard.get("requester_eid", "")
+            suffix = f" de {who}" if who not in ("", None) else ""
+            self._dtrace_labels[8].setText(
+                f"<b>9. Reçu :</b> {topic}{suffix} (tick {tick})"
+            )
+        else:
+            self._dtrace_labels[8].setText("<b>9. Reçu :</b> —")
+
+        # 10. Dernière communication envoyée
+        if said:
+            topic = said.get("topic") or said.get("kind", "?")
+            tick = said.get("tick", "?")
+            who = said.get("listener_name") or said.get("listener_eid", "")
+            suffix = f" → {who}" if who not in ("", None) else ""
+            self._dtrace_labels[9].setText(
+                f"<b>10. Envoyé :</b> {topic}{suffix} (tick {tick})"
+            )
+        else:
+            self._dtrace_labels[9].setText("<b>10. Envoyé :</b> —")
+
+        self._dtrace_group.setVisible(True)
+
+    def _fill_possibilities(self, snap):
+        """Affiche la trace de décision : Action | Cible | Distance | Risque |
+        Score | État. ``snap`` provient du snapshot (déjà évalué par le
+        moteur) ; cette méthode ne fait que le mettre en forme.
+
+        Deux sources, par ordre de vérité :
+        1. les ``ActionCandidate`` (cibles concrètes) quand le diagnostic en
+           a produit — c'est la forme historique de cette grille ;
+        2. à défaut, les actions notées par le cerveau à la dernière
+           délibération : elles sont presque toujours disponibles, alors que
+           les cibles sont vides dans un monde sans objet/voisin proche.
+        """
+        rows = snap.get("possibilities", []) or []
+        last_dec = snap.get("last_decision", {}) or {}
+        top = (last_dec.get("top") or [])[:8]
         grid = self._possibilities_grid
         self._clear_grid(grid)
         self._possibilities_group.setVisible(True)
-        if not rows:
+        if not rows and not top:
             self._possibilities_empty.setVisible(True)
             return
         self._possibilities_empty.setVisible(False)
@@ -826,36 +1212,64 @@ class InspectorDock(QDockWidget):
             lbl.setStyleSheet("font-size: 10px; color: #697281;")
             grid.addWidget(lbl, 0, col)
 
-        for r, row in enumerate(rows[:8], start=1):
-            verb = self.POSS_VERB.get(row.get("verb"), row.get("verb", "—"))
-            kind = self.POSS_TARGET.get(
-                row.get("target_kind"), row.get("target_kind", ""))
-            tid = row.get("target_id")
-            if tid is not None:
-                cible = f"{kind} #{tid}"
-            else:
-                cible = f"{kind} ({row.get('tx')},{row.get('ty')})"
-            state_raw = row.get("state", "—")
-            state = self.POSS_STATE.get(state_raw, state_raw)
-            reason = row.get("reason")
-            state_text = f"{state} — {reason}" if reason else state
+        if rows:
+            for r, row in enumerate(rows[:8], start=1):
+                verb = self.POSS_VERB.get(row.get("verb"), row.get("verb", "—"))
+                kind = self.POSS_TARGET.get(
+                    row.get("target_kind"), row.get("target_kind", ""))
+                tid = row.get("target_id")
+                if tid is not None:
+                    cible = f"{kind} #{tid}"
+                else:
+                    cible = f"{kind} ({row.get('tx')},{row.get('ty')})"
+                state_raw = row.get("state", "—")
+                state = self.POSS_STATE.get(state_raw, state_raw)
+                reason = row.get("reason")
+                state_text = f"{state} — {reason}" if reason else state
+                cells = (
+                    str(verb),
+                    str(cible),
+                    str(row.get("distance", 0)),
+                    f"{float(row.get('estimated_risk', 0.0)):.2f}",
+                    f"{float(row.get('score', 0.0)):.2f}",
+                    str(state_text),
+                )
+                selected = state_raw == "selected"
+                for col, text in enumerate(cells):
+                    lbl = QLabel(text)
+                    if selected and col == 5:
+                        lbl.setStyleSheet(
+                            "font-size: 10px; color: #62D394; font-weight: bold;")
+                    else:
+                        lbl.setStyleSheet("font-size: 10px;")
+                    grid.addWidget(lbl, r, col)
+            return
+
+        # Source 2 : actions notées par le cerveau (pas de cible concrète).
+        chosen_act = last_dec.get("act")
+        tick = last_dec.get("tick", "?")
+        for r, t in enumerate(top, start=1):
+            is_choice = t.get("act") == chosen_act
+            prob = float(t.get("prob", 0.0) or 0.0)
+            feasible = bool(t.get("feasible"))
+            state_text = "faisable" if feasible else "non faisable"
             cells = (
-                str(verb),
-                str(cible),
-                str(row.get("distance", 0)),
-                f"{float(row.get('estimated_risk', 0.0)):.2f}",
-                f"{float(row.get('score', 0.0)):.2f}",
-                str(state_text),
+                f"{'→ ' if is_choice else ''}{t.get('name', '?')}",
+                "—", "—", "—",
+                f"{prob:.2f}",
+                state_text,
             )
-            selected = state_raw == "selected"
             for col, text in enumerate(cells):
                 lbl = QLabel(text)
-                if selected and col == 5:
+                if is_choice and col in (0, 5):
                     lbl.setStyleSheet(
                         "font-size: 10px; color: #62D394; font-weight: bold;")
                 else:
                     lbl.setStyleSheet("font-size: 10px;")
                 grid.addWidget(lbl, r, col)
+        note = QLabel(f"Actions notées par le cerveau — délibération tick {tick}.")
+        note.setStyleSheet("font-size: 10px; color: #697281;")
+        grid.addWidget(note, len(top) + 1, 0, 1, 6)
 
     def _agent_label(self, eid):
         """Libelle lisible d'un habitant par son eid (vivant ou defunt)."""
