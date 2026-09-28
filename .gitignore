@@ -34,21 +34,18 @@ data/tmp_*
 data/t2.txt
 data/t3.txt
 data/test_out.txt
-# Scratch / debug outputs
-data/tmp_*
-data/t2.txt
-data/t3.txt
-data/test_out.txt
-# Scratch / debug outputs
-data/tmp_*
-data/t2.txt
-data/t3.txt
-data/test_out.txt
-# Scratch / debug outputs
-data/tmp_*
-data/t2.txt
-data/t3.txt
-data/test_out.txt
-
+# Live profiling reports & speed profiles (machine-local)
+data/profiling/
 # Soak test output (root)
 _soak_out.txt
+# One-off scratch scripts & their outputs (root)
+/fix_*.py
+/test_output*.txt
+/temp_method.*
+/read_test.py
+/write_test.py
+/find_text.py
+/final_report.py
+/generate_project_md.py
+/profilage_complet_performance.py
+/plan_corrections_ciblees_opencode.md

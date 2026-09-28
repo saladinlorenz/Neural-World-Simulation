@@ -197,6 +197,11 @@ class Being:
         # faim energie soif sommeil securite appartenance estime
         self.energy = float(self.needs[1])
         self.hunger = float(self.needs[0])
+        # ---- Anti-passivity: pression de vie ----
+        self.passive_ticks = 0
+        self.life_drive = 0.0
+        self.last_meaningful_tick = 0
+        self.last_meaningful_kind = ""
         # ---- Personnalite (predispositions, pas programmations)
         self.personality = (personality if personality is not None
                             else np.clip(rng.random(12) * 0.7 + 0.15, 0, 1))
@@ -277,6 +282,11 @@ class Being:
             "route_danger": 0.0,
         }
         self.prev_wellbeing = 0.0
+
+        # Perception cache for local density (same tile + same tick)
+        self.context_tick = -1
+        self.context_tx = -1
+        self.context_ty = -1
         self.mood_phase = float(rng.uniform(0, math.tau))
         self.mood_freq = float(rng.uniform(0.004, 0.02))
         self.home = None
@@ -414,6 +424,12 @@ class Being:
         if len(lst) > 40:
             lst.sort(key=lambda t: -t[2])
             del lst[40:]
+
+    def record_meaningful(self, tick: int, kind: str) -> None:
+        self.last_meaningful_tick = int(tick)
+        self.last_meaningful_kind = str(kind)
+        self.passive_ticks = 0
+        self.life_drive = max(0.0, self.life_drive - 0.30)
 
     def recall(self, cat, tx, ty):
         """Se souvenir : (x,y,dist) le plus proche dans ma memoire, ou None."""
@@ -722,22 +738,40 @@ class Being:
 
 
 class Sheep:
-    __slots__ = ("eid", "x", "y", "vx", "vy", "energy", "health", "brain", "state",
-                 "alive", "anim_t", "frame", "fear")
+    __slots__ = ("eid", "x", "y", "vx", "vy", "energy", "health", "state",
+                 "alive", "anim_t", "frame", "fear", "next_decision_tick",
+                 "graze_until_tick", "wander_dx", "wander_dy",
+                 "reproduction_cooldown",
+                 "next_update_tick", "next_neighbor_scan_tick",
+                 "cached_threat_dx", "cached_threat_dy",
+                 "cached_herd_dx", "cached_herd_dy",
+                 "herd_scan_tick")
 
-    def __init__(self, eid, x, y, brain=None):
+    def __init__(self, eid, x, y):
         rng = np.random.default_rng(eid * 104729 + 7)
         self.eid = eid
         self.x, self.y = x, y
         self.vx = self.vy = 0.0
         self.energy = 0.6
         self.health = 1.0
-        self.brain = brain or Brain(n_hid=64, rng=rng)
-        self.state = "idle"
+        self.state = "graze"
         self.alive = True
         self.anim_t = 0
         self.frame = 0
         self.fear = 0.0
+        self.next_decision_tick = 0
+        self.graze_until_tick = 0
+        self.wander_dx = 0.0
+        self.wander_dy = 0.0
+        self.reproduction_cooldown = 0
+        # Cadence / caching fields
+        self.next_update_tick = 0
+        self.next_neighbor_scan_tick = 0
+        self.cached_threat_dx = 0.0
+        self.cached_threat_dy = 0.0
+        self.cached_herd_dx = 0.0
+        self.cached_herd_dy = 0.0
+        self.herd_scan_tick = 0
 
     @property
     def tx(self):

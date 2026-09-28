@@ -70,9 +70,9 @@ def main():
         else:
             world, sim = build_world(am, args.seed,
                                      procedural=bool(args.procedural),
-                                     start_paused=False)
-            seed_life(world, sim, sim.rng, n_agents=args.agents,
-                      n_sheep=args.sheep)
+                                     start_paused=False,
+                                     n_agents=args.agents,
+                                     n_sheep=args.sheep)
         print("[BOOT] monde construit", world.g, "x", world.g,
               "habitants:", len(sim.agents), "moutons:", len(sim.sheep))
 

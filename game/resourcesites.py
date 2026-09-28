@@ -3,6 +3,9 @@
 Chaque site représente une poche de ressources (nourriture, bois, pierre, etc.)
 avec une capacité finie, une régénération lente, et un index régional pour
 accès local efficace.
+
+Cycle de vie: découverte → partage → expédition → vérification → récolte →
+épuisement → retour → stockage → événement diagnostique véridique.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -25,6 +28,10 @@ class ResourceSite:
     region: tuple[int, int]
     visible_cap: int = 18
     last_update_tick: int = 0
+    discovered_by: list[int] = field(default_factory=list)  # eids qui ont découvert
+    last_harvest_tick: int = 0
+    last_harvest_by: int = -1
+    depletion_count: int = 0
     # Cache des tuiles appartenant au site (calculé une fois)
     _tiles: list[tuple[int, int]] = field(default_factory=list, repr=False)
 
@@ -52,6 +59,40 @@ class ResourceSite:
     def regrow(self, ticks: int) -> None:
         """Régénère le stock selon le temps écoulé."""
         self.remaining = min(self.capacity, self.remaining + self.regrowth_per_tick * ticks)
+
+    def record_discovery(self, eid: int, tick: int) -> None:
+        """Enregistre la découverte par un habitant."""
+        if eid not in self.discovered_by:
+            self.discovered_by.append(eid)
+        self.last_update_tick = tick
+
+    def record_harvest(self, amount: float, eid: int, tick: int) -> float:
+        """Enregistre la récolte et retourne la quantité prise."""
+        taken = self.harvest(amount)
+        self.last_harvest_tick = tick
+        self.last_harvest_by = eid
+        if self.remaining <= 0:
+            self.depletion_count += 1
+        return taken
+
+    def is_depleted(self) -> bool:
+        return self.remaining <= 0
+
+    def get_info(self) -> dict:
+        """Retourne les infos pour l'UI/diagnostics."""
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "tx": self.tx, "ty": self.ty,
+            "radius": self.radius,
+            "capacity": self.capacity,
+            "remaining": self.remaining,
+            "depletion_count": self.depletion_count,
+            "discovered_by": list(self.discovered_by),
+            "last_harvest_by": self.last_harvest_by,
+            "last_harvest_tick": self.last_harvest_tick,
+            "is_depleted": self.is_depleted(),
+        }
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -104,3 +145,16 @@ def update_resource_sites(world, interval: int = 200) -> None:
         return
     for site in world.resource_sites.values():
         site.regrow(interval)
+
+
+def discover_resource_sites_near(world, tx: int, ty: int, max_dist: int = 80) -> list[ResourceSite]:
+    """Découvre les sites de ressources à proximité (utilisé par la perception)."""
+    found = []
+    for site in nearby_resource_sites(world, tx, ty, radius_regions=2):
+        dx = site.tx - tx
+        dy = site.ty - ty
+        dist = max(abs(dx), abs(dy))
+        if dist <= max_dist and site.remaining > 0:
+            found.append(site)
+    found.sort(key=lambda s: max(abs(s.tx - tx), abs(s.ty - ty)))
+    return found

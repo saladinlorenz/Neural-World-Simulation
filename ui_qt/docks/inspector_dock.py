@@ -2,13 +2,13 @@
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                               QTableView, QLabel, QScrollArea, QFrame,
                               QGroupBox, QGridLayout, QSlider,
-                              QStackedWidget)
+                              QStackedWidget, QPushButton, QPlainTextEdit)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 
 from game.ui_snapshots import selected_agent_snapshot, anima_snapshot
 from game.ui_registry import C_CORPS, C_COG, C_PERSO, C_EMO, C_BESOIN, C_EXP, C_MEM
-from game.diagnostics import action_name
+from game.diagnostics import action_name, agent_narrative
 from ui_qt.models.anima_model import AnimaModel
 from ui_qt.widgets.empty_state import EmptyState
 from ui_qt.widgets.stat_card import StatCard
@@ -42,12 +42,19 @@ class InspectorDock(QDockWidget):
                   "rejected": "rejeté", "invalid": "invalide",
                   "expired": "périmé"}
 
+    #: Historique narratif : nombre maximal de phrases conservées (liste
+    #: ET édition). Le dépassement recadre la liste sur les N dernières.
+    NARR_HISTORY_MAX = 40
+
     def __init__(self, controller, parent=None):
         super().__init__("Inspecteur", parent)
         self.controller = controller
         self._anima_model = AnimaModel()
         # Cache UI-only : évite de reconstruire la grille à l'identique.
         self._decision_revision = None
+        # Historique narratif [(tick, phrase)] : jamais vidé par un
+        # changement de sélection, seul le bouton « Effacer » l'efface.
+        self._narr_history = []
         self._setup_ui()
 
     def _setup_ui(self):
@@ -80,6 +87,69 @@ class InspectorDock(QDockWidget):
         self._state_label = QLabel("")
         self._state_label.setWordWrap(True)
         head_texts.addWidget(self._state_label)
+
+        # === Lecture narrative (WORLD ALIVE : esprit intérieur en premier) ===
+        # Texte construit par game.diagnostics.agent_narrative sur le
+        # snapshot réel : besoin dominant, intention, mémoire, dernier
+        # résultat causal. Les tableaux détaillés restent en dessous.
+        self._narrative_label = QLabel("")
+        self._narrative_label.setWordWrap(True)
+        self._narrative_label.setStyleSheet(
+            "font-size: 12px; color: #d0d8e0; font-style: italic;"
+        )
+        head_texts.addWidget(self._narrative_label)
+
+        # === Seconde narration : délibération + dernier échange ===
+        self._narrative2_label = QLabel("")
+        self._narrative2_label.setWordWrap(True)
+        self._narrative2_label.setStyleSheet(
+            "font-size: 11px; color: #9fb0c0; font-style: italic;"
+        )
+        head_texts.addWidget(self._narrative2_label)
+
+        # === Historique narratif (phrases déjà affichées, repliable) ===
+        # Le titre et les boutons restent lisibles ; seule l'édition se
+        # masque. La sélection ne vide JAMAIS cet historique (on peut le
+        # relire après un clic ailleurs) : « Effacer » est le seul purge.
+        hist_row = QHBoxLayout()
+        hist_row.setSpacing(6)
+        hist_title = QLabel("Historique narratif")
+        hist_title.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #d0d8e0;"
+        )
+        hist_row.addWidget(hist_title)
+        hist_row.addStretch(1)
+        self._hist_toggle = QPushButton("Masquer")
+        self._hist_toggle.setCheckable(True)
+        self._hist_toggle.setChecked(True)
+        self._hist_toggle.setFixedHeight(18)
+        self._hist_toggle.setStyleSheet(
+            "font-size: 10px; padding: 0px 6px; color: #aeb7c2;"
+        )
+        self._hist_toggle.toggled.connect(
+            lambda on: (self._narr_hist_edit.setVisible(on),
+                        self._hist_toggle.setText(
+                            "Masquer" if on else "Afficher")))
+        hist_row.addWidget(self._hist_toggle)
+        self._hist_clear_btn = QPushButton("Effacer")
+        self._hist_clear_btn.setFixedHeight(18)
+        self._hist_clear_btn.setStyleSheet(
+            "font-size: 10px; padding: 0px 6px; color: #ff9f9f;"
+        )
+        self._hist_clear_btn.clicked.connect(self._clear_narr_history)
+        hist_row.addWidget(self._hist_clear_btn)
+        head_texts.addLayout(hist_row)
+
+        self._narr_hist_edit = QPlainTextEdit()
+        self._narr_hist_edit.setReadOnly(True)
+        self._narr_hist_edit.setMaximumHeight(120)
+        self._narr_hist_edit.setPlaceholderText("Aucune narration enregistrée.")
+        self._narr_hist_edit.setStyleSheet(
+            "font-family: Consolas, 'Courier New', monospace; "
+            "font-size: 10px; background-color: #141b26; color: #aeb7c2; "
+            "border: 1px solid #39424f;"
+        )
+        head_texts.addWidget(self._narr_hist_edit)
 
         # === Position (monde + tuile) ===
         self._position_label = QLabel("")
@@ -197,6 +267,43 @@ class InspectorDock(QDockWidget):
         self._life_label.setWordWrap(True)
         self._life_label.setStyleSheet("font-size: 11px;")
         mem_layout.addWidget(self._life_label)
+
+        # === Épisodes (carte « Evenements » du CARD_REGISTRY) ===
+        # Les deux labels ci-dessus ne montrent que les 5/8 dernières
+        # entrées : cette édition repliable donne la liste complète
+        # (bornée) sans créer un second groupe qui la dupliquerait.
+        epi_row = QHBoxLayout()
+        epi_row.setSpacing(6)
+        epi_title = QLabel("Épisodes")
+        epi_title.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #d0d8e0;"
+        )
+        epi_row.addWidget(epi_title)
+        epi_row.addStretch(1)
+        self._episodes_toggle = QPushButton("Afficher")
+        self._episodes_toggle.setCheckable(True)
+        self._episodes_toggle.setFixedHeight(18)
+        self._episodes_toggle.setStyleSheet(
+            "font-size: 10px; padding: 0px 6px; color: #aeb7c2;"
+        )
+        self._episodes_toggle.toggled.connect(
+            lambda on: (self._episodes_edit.setVisible(on),
+                        self._episodes_toggle.setText(
+                            "Masquer" if on else "Afficher")))
+        epi_row.addWidget(self._episodes_toggle)
+        mem_layout.addLayout(epi_row)
+
+        self._episodes_edit = QPlainTextEdit()
+        self._episodes_edit.setReadOnly(True)
+        self._episodes_edit.setMaximumHeight(120)
+        self._episodes_edit.setVisible(False)
+        self._episodes_edit.setPlaceholderText("Aucun épisode.")
+        self._episodes_edit.setStyleSheet(
+            "font-family: Consolas, 'Courier New', monospace; "
+            "font-size: 10px; background-color: #141b26; color: #aeb7c2; "
+            "border: 1px solid #39424f;"
+        )
+        mem_layout.addWidget(self._episodes_edit)
         self._layout.addWidget(self._memory_group)
 
         # === Relations ===
@@ -216,8 +323,14 @@ class InspectorDock(QDockWidget):
         self._activity_action_label = QLabel("")
         self._activity_target_label = QLabel("")
         self._activity_stuck_label = QLabel("")
+        # WORLD ALIVE : intention réelle (kind/stage) + trace causale ML
+        # (dernier essai : attente → résultat → conséquence mémoire).
+        self._activity_intention_label = QLabel("")
+        self._activity_causal_label = QLabel("")
         for act_lbl in (self._activity_state_label, self._activity_action_label,
-                        self._activity_target_label, self._activity_stuck_label):
+                        self._activity_target_label, self._activity_stuck_label,
+                        self._activity_intention_label,
+                        self._activity_causal_label):
             act_lbl.setWordWrap(True)
             act_lbl.setStyleSheet("font-size: 11px;")
             act_layout.addWidget(act_lbl)
@@ -409,6 +522,31 @@ class InspectorDock(QDockWidget):
         self._layout.addWidget(family_group)
         self._groups["family"] = (family_group, None)
 
+        # === Gabarit (carte « gabarit » du CARD_REGISTRY) ===
+        # Template de spawn de l'habitant : lu dans le snapshot s'il le
+        # porte (clés template / gabarit / tpl_*), sinon message explicite.
+        # Aucune donnée inventée, aucun snapshot modifié. Replié par défaut :
+        # Qt6 ne masque pas les enfants d'une case à cocher décochée, donc
+        # le signal ``toggled`` fait le travail de visibilité.
+        self._gabarit_group = QGroupBox("Gabarit")
+        self._gabarit_group.setStyleSheet(
+            f"QGroupBox {{ font-weight: bold; color: {_hex(C_PERSO)}; }}"
+        )
+        gabarit_layout = QVBoxLayout(self._gabarit_group)
+        gabarit_layout.setContentsMargins(8, 16, 8, 8)
+        gabarit_layout.setSpacing(2)
+        self._gabarit_label = QLabel("")
+        self._gabarit_label.setWordWrap(True)
+        self._gabarit_label.setStyleSheet("font-size: 11px;")
+        gabarit_layout.addWidget(self._gabarit_label)
+        self._gabarit_group.setCheckable(True)
+        self._gabarit_group.setChecked(False)
+        self._gabarit_group.toggled.connect(self._gabarit_label.setVisible)
+        # ``setChecked(False)`` avant connexion : on masque explicitement.
+        self._gabarit_label.setVisible(False)
+        self._layout.addWidget(self._gabarit_group)
+        self._groups["gabarit"] = (self._gabarit_group, None)
+
     def _on_set_stat(self, stat_key, slider):
         result = self.controller.execute({
             "kind": "set_agent_stat",
@@ -431,6 +569,10 @@ class InspectorDock(QDockWidget):
             self._clear_cards()
             self._identity_label.setText("Aucun agent selectionne")
             self._state_label.setText("")
+            self._narrative_label.setText("")
+            self._narrative2_label.setText("")
+            # L'historique narratif n'est PAS vidé ici : on garde les
+            # dernières phrases lisibles même après un clic ailleurs.
             self._position_label.setText("")
             self._meta_label.setText("")
             self._portrait.clear()
@@ -440,6 +582,7 @@ class InspectorDock(QDockWidget):
             self._inventory_label.setText("")
             self._tool_label.setText("")
             self._family_label.setText("")
+            self._gabarit_label.setText("")
             for key, slider in self._needs_sliders.items():
                 slider.blockSignals(True)
                 slider.setValue(0)
@@ -449,6 +592,7 @@ class InspectorDock(QDockWidget):
             self._spatial_label.setText("")
             self._autobio_label.setText("")
             self._life_label.setText("")
+            self._episodes_edit.clear()
             self._anima_model.set_snapshot(None)
             for group, _ in self._groups.values():
                 group.setVisible(False)
@@ -463,6 +607,8 @@ class InspectorDock(QDockWidget):
             self._activity_action_label.setText("")
             self._activity_target_label.setText("")
             self._activity_stuck_label.setText("")
+            self._activity_intention_label.setText("")
+            self._activity_causal_label.setText("")
             self._possibilities_group.setVisible(False)
             self._clear_grid(self._possibilities_grid)
             self._possibilities_empty.setVisible(False)
@@ -502,6 +648,15 @@ class InspectorDock(QDockWidget):
             f"clan {clan}, gen {gen}"
         )
 
+        # Gabarit : template de spawn porté par le snapshot, sinon
+        # message explicite (aucune invention, snapshot non modifié).
+        try:
+            self._fill_gabarit(snap)
+        except Exception:
+            self._gabarit_label.setText(
+                "Gabarit non disponible pour cet habitant.")
+            self._gabarit_group.setVisible(True)
+
         # Portrait (avatar PIL -> QPixmap, meme source que le dock Habitants)
         try:
             from ui_qt.qtimage import pil_to_pixmap
@@ -522,6 +677,25 @@ class InspectorDock(QDockWidget):
             f"Energie: {energy:.0%} | Faim: {hunger:.0%} | "
             f"Douleur: {pain:.1f}"
         )
+
+        # Lecture narrative (WORLD ALIVE) : jamais de dump ici, le texte
+        # vient du snapshot réel via agent_narrative (pur, testé).
+        # Ligne 2 : délibération + dernier échange. L'historique n'est
+        # alimenté que si la phrase a réellement changé (pas de doublon
+        # d'affilée), et jamais si le calcul lève.
+        try:
+            narr_text = agent_narrative(snap)
+        except Exception:
+            narr_text = ""
+        self._narrative_label.setText(narr_text)
+        try:
+            self._narrative2_label.setText(self._extra_narrative(snap))
+        except Exception:
+            self._narrative2_label.setText("")
+        try:
+            self._record_narrative(snap, narr_text)
+        except Exception:
+            pass
 
         # Position (change pendant le deplacement)
         position = snap.get("position", {})
@@ -691,6 +865,13 @@ class InspectorDock(QDockWidget):
             self._autobio_label.setText("")
             self._life_label.setText("")
 
+        # Épisodes : liste complète dans l'édition repliable de la
+        # mémoire (les labels ci-dessus ne gardent que les 5/8 derniers).
+        try:
+            self._fill_episodes(snap)
+        except Exception:
+            self._episodes_edit.clear()
+
         # Anima
         self._anima_model.set_snapshot(anima_snap or snap)
 
@@ -729,25 +910,74 @@ class InspectorDock(QDockWidget):
             self._relations_label.setText("<b>Relations:</b> aucune")
 
         # === Activite (donnees reelles du bloc « activity ») ===
+        # WORLD ALIVE : le snapshot contient soit le whitelist
+        # kind/stage/target_tx (expédition en cours), soit le fallback
+        # state/goal_action/goal_tile (action primitive). Les deux sont
+        # affichés sans invention, plus la trace causale ML.
         activity = snap.get("activity", {}) or {}
-        goal_action = activity.get("goal_action")
-        if goal_action is None:
-            action_text = "Aucun but"
+        kind = activity.get("kind")
+        stage = activity.get("stage", "")
+        if isinstance(kind, str) and kind:
+            from ui_qt.map.map_view import ACTIVITY_LABELS
+            intention = ACTIVITY_LABELS.get(kind, kind)
+            if stage:
+                intention = f"{intention} · {stage}"
+            reason = activity.get("reason", "")
+            if reason:
+                intention = f"{intention} ({reason})"
+            self._activity_intention_label.setText(f"Intention : {intention}")
+            tgt_tx, tgt_ty = activity.get("target_tx"), activity.get("target_ty")
+            if tgt_tx is not None and tgt_ty is not None:
+                try:
+                    target_text = f"({int(tgt_tx)}, {int(tgt_ty)})"
+                except (TypeError, ValueError):
+                    target_text = "—"
+            else:
+                target_text = "—"
+            self._activity_state_label.setText(
+                f"État : {activity.get('stage', activity.get('state', '—'))}"
+            )
+            self._activity_action_label.setText(f"Activité : {kind}")
+            self._activity_target_label.setText(f"Cible : {target_text}")
         else:
-            action_text = action_name(self.controller.sim, goal_action)
-        goal_tile = activity.get("goal_tile")
-        if goal_tile:
-            target_text = f"({goal_tile[0]}, {goal_tile[1]})"
+            self._activity_intention_label.setText("Intention : —")
+            goal_action = activity.get("goal_action")
+            if goal_action is None:
+                action_text = "Aucun but"
+            else:
+                action_text = action_name(self.controller.sim, goal_action)
+            goal_tile = activity.get("goal_tile")
+            if goal_tile:
+                target_text = f"({goal_tile[0]}, {goal_tile[1]})"
+            else:
+                target_text = "—"
+            self._activity_state_label.setText(
+                f"État : {activity.get('state', '—')}"
+            )
+            self._activity_action_label.setText(f"Action : {action_text}")
+            self._activity_target_label.setText(f"Cible : {target_text}")
+        try:
+            stuck_val = int(activity.get("stuck", 0))
+        except (TypeError, ValueError):
+            stuck_val = 0
+        self._activity_stuck_label.setText(f"Bloqué : {stuck_val}")
+        # Trace causale ML : Action → Attente → Résultat → Conséquence.
+        last = snap.get("last_activity_result", {}) or {}
+        if isinstance(last, dict) and last:
+            lkind = last.get("kind", "?")
+            outcome = last.get("outcome", "?")
+            detail = (last.get("reason", "") or last.get("failure_reason", "")
+                      or last.get("reward", ""))
+            if detail != "":
+                self._activity_causal_label.setText(
+                    f"Dernier essai : {lkind} → {outcome} ({detail})"
+                )
+            else:
+                self._activity_causal_label.setText(
+                    f"Dernier essai : {lkind} → {outcome}"
+                )
         else:
-            target_text = "—"
-        self._activity_state_label.setText(
-            f"État : {activity.get('state', '—')}"
-        )
-        self._activity_action_label.setText(f"Action : {action_text}")
-        self._activity_target_label.setText(f"Cible : {target_text}")
-        self._activity_stuck_label.setText(
-            f"Bloqué : {int(activity.get('stuck', 0))}"
-        )
+            self._activity_causal_label.setText("Dernier essai : —")
         self._activity_group.setVisible(True)
 
         # === Délibération (pensée sélectionnée visible) ===
@@ -933,6 +1163,200 @@ class InspectorDock(QDockWidget):
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
+
+    # ════════════════════════════════════════════════════════════════
+    #  Narration : 2e ligne, historique, gabarit, épisodes
+    # ════════════════════════════════════════════════════════════════
+    def _extra_narrative(self, snap: dict) -> str:
+        """Une à deux phrases FR : hésitation (délibération) + échange.
+
+        Lecture seule du snapshot : l'UI met en forme les clés
+        ``deliberation`` (candidates / selected), ``last_decision``,
+        ``last_said`` et ``last_heard`` — jamais recalculées. Retourne
+        ``""`` quand aucune de ces clés n'est exploitable.
+        """
+        if not isinstance(snap, dict):
+            return ""
+        lines = []
+        name = str(snap.get("name") or "").strip() or "L'habitant"
+
+        def _cand_label(cand):
+            """« verb → cible » d'un candidat, libellés FR du registre."""
+            if not isinstance(cand, dict):
+                return ""
+            verb = self.POSS_VERB.get(cand.get("verb"),
+                                      cand.get("verb") or "?")
+            kind = self.POSS_TARGET.get(cand.get("target_kind"),
+                                        cand.get("target_kind") or "")
+            tid = cand.get("target_id")
+            if tid is not None:
+                cible = f"{kind} #{tid}"
+            elif cand.get("tx") is not None:
+                cible = f"{kind} ({cand.get('tx')},{cand.get('ty')})"
+            else:
+                cible = kind or "cible inconnue"
+            return f"{verb} → {cible}"
+
+        deliberation = snap.get("deliberation") or {}
+        if not isinstance(deliberation, dict):
+            deliberation = {}
+        candidates = [c for c in (deliberation.get("candidates") or [])
+                      if isinstance(c, dict)]
+        count = len(candidates)
+        if not count:
+            count = len([c for c in (snap.get("possibilities") or [])
+                         if isinstance(c, dict)])
+
+        choice = _cand_label(deliberation.get("selected"))
+        if not choice:
+            last_dec = snap.get("last_decision") or {}
+            act_name = str(last_dec.get("act_name") or "") if isinstance(
+                last_dec, dict) else ""
+            if act_name and act_name != "—":
+                choice = act_name
+        if not choice and candidates:
+            choice = _cand_label(candidates[0])
+
+        plural = "s" if count > 1 else ""
+        if choice and count:
+            lines.append(
+                f"{name} hésite entre {count} action{plural}, "
+                f"penche pour {choice}."
+            )
+        elif choice:
+            lines.append(f"{name} penche pour {choice}.")
+        elif count:
+            lines.append(
+                f"{name} hésite entre {count} action{plural}, "
+                f"sans choix retenu pour l'instant."
+            )
+
+        parts = []
+        heard = snap.get("last_heard") or {}
+        if isinstance(heard, dict) and heard:
+            parts.append(f"entendu : {self._format_comm(heard)}")
+        said = snap.get("last_said") or {}
+        if isinstance(said, dict) and said:
+            parts.append(f"dit : {self._format_comm(said)}")
+        if parts:
+            lines.append("Dernier échange : " + " ; ".join(parts) + ".")
+
+        return " ".join(lines[:2])
+
+    def _narrative_tick(self, snap) -> int:
+        """Tick de la phrase : snapshot, délibération, trace, puis moteur."""
+        tick = None
+        if isinstance(snap, dict):
+            tick = snap.get("tick")
+            for key in ("deliberation", "decision_trace"):
+                if tick is None:
+                    block = snap.get(key)
+                    if isinstance(block, dict):
+                        tick = block.get("tick")
+        if tick is None:
+            try:
+                tick = int(getattr(self.controller.sim.w, "tick", -1))
+            except Exception:
+                tick = -1
+        try:
+            return int(tick)
+        except (TypeError, ValueError):
+            return -1
+
+    def _record_narrative(self, snap: dict, text: str) -> None:
+        """Pousse la phrase fraîche dans l'historique (max 40, sans doublon).
+
+        - jamais deux entrées identiques d'affilée (comparaison strip) ;
+        - ``self._narr_history`` borné à ``NARR_HISTORY_MAX`` ; l'édition
+          affiche exactement cette liste (recadrée seulement quand on
+          dépasse), donc le scroll n'est retouché qu'au débordement ;
+        - aucun effet de bord si le snapshot manque de clés.
+        """
+        text = str(text or "").strip()
+        if not text:
+            return
+        if self._narr_history and str(self._narr_history[-1][1]).strip() == text:
+            return
+        self._narr_history.append((self._narrative_tick(snap), text))
+        if len(self._narr_history) > self.NARR_HISTORY_MAX:
+            del self._narr_history[:len(self._narr_history)
+                                   - self.NARR_HISTORY_MAX]
+            bar = self._narr_hist_edit.verticalScrollBar()
+            pos = bar.value()
+            self._narr_hist_edit.setPlainText(
+                "\n\n".join(f"[t={tick}] {body}"
+                            for tick, body in self._narr_history))
+            bar.setValue(min(pos, bar.maximum()))
+            return
+        entry = f"[t={self._narr_history[-1][0]}] {text}"
+        if not self._narr_hist_edit.toPlainText():
+            self._narr_hist_edit.setPlainText(entry)
+        else:
+            # « \n » ouvre un bloc vide : une ligne blanche entre entrées.
+            self._narr_hist_edit.appendPlainText("\n" + entry)
+
+    def _clear_narr_history(self):
+        """Vide l'historique narratif (le seul effacement possible)."""
+        self._narr_history.clear()
+        self._narr_hist_edit.clear()
+
+    def _fill_gabarit(self, snap):
+        """Carte « Gabarit » : template de spawn déclaré par le snapshot.
+
+        Le snapshot d'habitant n'expose aujourd'hui aucune clé de
+        template : on affiche alors le message d'absence plutôt que de
+        deviner depuis les valeurs courantes de l'agent.
+        """
+        tpl = None
+        for key in ("gabarit", "template", "tpl"):
+            val = snap.get(key) if isinstance(snap, dict) else None
+            if isinstance(val, dict) and val:
+                tpl = val
+                break
+            if isinstance(val, (str, int, float)) and str(val).strip():
+                tpl = {key: val}
+                break
+        if tpl is None and isinstance(snap, dict):
+            tpl = {key: val for key, val in snap.items()
+                   if str(key).startswith("tpl_")
+                   and val not in (None, "", [], {})}
+        if not tpl:
+            self._gabarit_label.setText(
+                "Gabarit non disponible pour cet habitant.")
+        else:
+            lines = []
+            for key, val in tpl.items():
+                if isinstance(val, float):
+                    lines.append(f"{key} : {val:.2f}")
+                elif isinstance(val, (list, tuple)):
+                    lines.append(
+                        f"{key} : " + ", ".join(
+                            f"{v:.2f}" if isinstance(v, float) else str(v)
+                            for v in val)
+                    )
+                else:
+                    lines.append(f"{key} : {val}")
+            self._gabarit_label.setText("\n".join(lines))
+        self._gabarit_group.setVisible(True)
+
+    def _fill_episodes(self, snap):
+        """Édition repliable « Épisodes » : autobiographie + événements vie.
+
+        Sources réelles du snapshot : ``episodes`` (tuples tick/type/data)
+        et ``life`` (événements marquants), toutes deux déjà bornées par
+        ``agent_snapshot`` — on recadre encore à 40 par liste.
+        """
+        episodes = list(snap.get("episodes") or [])[:40]
+        life = list(snap.get("life") or [])[:40]
+        lines = []
+        if episodes:
+            lines.append("— Autobiographie —")
+            lines.extend(f"  {index}. {_format_episode(ep)}"
+                         for index, ep in enumerate(episodes, 1))
+        if life:
+            lines.append("— Événements de vie —")
+            lines.extend(f"  • {_format_event(ev)}" for ev in life)
+        self._episodes_edit.setPlainText("\n".join(lines))
 
     @staticmethod
     def _decision_revision_of(snap: dict) -> tuple:

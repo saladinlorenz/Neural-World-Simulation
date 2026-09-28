@@ -264,6 +264,10 @@ def save_game(sim, cam=None, slot=0, ui_state=None):
                 "region": tuple(int(v) for v in site.region),
                 "visible_cap": int(site.visible_cap),
                 "last_update_tick": int(site.last_update_tick),
+                "discovered_by": [int(eid) for eid in site.discovered_by],
+                "last_harvest_tick": int(site.last_harvest_tick),
+                "last_harvest_by": int(site.last_harvest_by),
+                "depletion_count": int(site.depletion_count),
             }
             for site in sorted(
                 getattr(w, "resource_sites", {}).values(),
@@ -504,6 +508,10 @@ def load_game(am, slot=0):
             region=tuple(int(v) for v in raw_site["region"]),
             visible_cap=int(raw_site.get("visible_cap", 18)),
             last_update_tick=int(raw_site.get("last_update_tick", 0)),
+            discovered_by=[int(eid) for eid in raw_site.get("discovered_by", [])],
+            last_harvest_tick=int(raw_site.get("last_harvest_tick", 0)),
+            last_harvest_by=int(raw_site.get("last_harvest_by", -1)),
+            depletion_count=int(raw_site.get("depletion_count", 0)),
         )
         add_resource_site(w, site)
     w.next_resource_site_id = max(
@@ -949,35 +957,44 @@ def _serialize_sheep(s):
         "energy": s.energy, "health": s.health,
         "state": s.state, "alive": s.alive,
         "fear": s.fear,
-        "brain_n": s.brain.n, "brain_p": s.brain.p.copy(),
-        "brain_h": s.brain.h.copy(),
+        "next_decision_tick": s.next_decision_tick,
+        "graze_until_tick": s.graze_until_tick,
+        "wander_dx": s.wander_dx,
+        "wander_dy": s.wander_dy,
+        "reproduction_cooldown": s.reproduction_cooldown,
+        "next_update_tick": s.next_update_tick,
+        "next_neighbor_scan_tick": s.next_neighbor_scan_tick,
+        "cached_threat_dx": s.cached_threat_dx,
+        "cached_threat_dy": s.cached_threat_dy,
+        "cached_herd_dx": s.cached_herd_dx,
+        "cached_herd_dy": s.cached_herd_dy,
+        "herd_scan_tick": s.herd_scan_tick,
     }
 
 
 def _deserialize_sheep(d):
-    from . import brain as _brain
-    n_hid = int(d["brain_n"])
-    # même politique que les agents : validation + migration 128→132 AVANT
-    # la construction du Brain (sinon unpack() plante sur l'ancien format)
-    brain_p = _prepare_brain_params(d["brain_p"], n_hid, kind="sheep")
-    if brain_p is None:
-        brain = _fresh_brain(n_hid, d["eid"])
-    else:
-        try:
-            brain = _brain.Brain(n_hid=n_hid, params=brain_p)
-        except (ValueError, TypeError):
-            _count_anomaly("sheep.brain_p")
-            brain = _fresh_brain(n_hid, d["eid"])
-    brain.h = _sanitize_finite(d["brain_h"], "sheep.brain_h", brain.h)
     x = _finite_scalar(d["x"], "sheep.x", _WORLD_CENTER_PX, 0.0, _WORLD_MAX_PX)
     y = _finite_scalar(d["y"], "sheep.y", _WORLD_CENTER_PX, 0.0, _WORLD_MAX_PX)
-    s = Sheep(d["eid"], x, y, brain=brain)
+    s = Sheep(d["eid"], x, y)
     s.vx = _finite_scalar(d["vx"], "sheep.vx", 0.0)
     s.vy = _finite_scalar(d["vy"], "sheep.vy", 0.0)
     s.energy = _finite_scalar(d["energy"], "sheep.energy", 0.6, 0.0, 1.0)
     s.health = _finite_scalar(d["health"], "sheep.health", 1.0, 0.0, 1.0)
-    s.state = d["state"]; s.alive = d["alive"]
+    s.state = d["state"]
+    s.alive = d["alive"]
     s.fear = _finite_scalar(d.get("fear", 0.0), "sheep.fear", 0.0, 0.0, 1.0)
+    s.next_decision_tick = d.get("next_decision_tick", 0)
+    s.graze_until_tick = d.get("graze_until_tick", 0)
+    s.wander_dx = _finite_scalar(d.get("wander_dx", 0.0), "sheep.wander_dx", 0.0, -1.0, 1.0)
+    s.wander_dy = _finite_scalar(d.get("wander_dy", 0.0), "sheep.wander_dy", 0.0, -1.0, 1.0)
+    s.reproduction_cooldown = d.get("reproduction_cooldown", 0)
+    s.next_update_tick = d.get("next_update_tick", 0)
+    s.next_neighbor_scan_tick = d.get("next_neighbor_scan_tick", 0)
+    s.cached_threat_dx = _finite_scalar(d.get("cached_threat_dx", 0.0), "sheep.cached_threat_dx", 0.0, -1.0, 1.0)
+    s.cached_threat_dy = _finite_scalar(d.get("cached_threat_dy", 0.0), "sheep.cached_threat_dy", 0.0, -1.0, 1.0)
+    s.cached_herd_dx = _finite_scalar(d.get("cached_herd_dx", 0.0), "sheep.cached_herd_dx", 0.0, -1.0, 1.0)
+    s.cached_herd_dy = _finite_scalar(d.get("cached_herd_dy", 0.0), "sheep.cached_herd_dy", 0.0, -1.0, 1.0)
+    s.herd_scan_tick = d.get("herd_scan_tick", 0)
     return s
 
 

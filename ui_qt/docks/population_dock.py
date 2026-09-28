@@ -62,6 +62,9 @@ class PopulationDock(QDockWidget):
         self._model = PopulationModel()
         self._proxy = _PopulationProxy()
         self._proxy.setSourceModel(self._model)
+        self._last_revision = -1
+        self._last_filter_signature = ""
+        self._refresh_timer = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -77,7 +80,7 @@ class PopulationDock(QDockWidget):
         search_layout = QHBoxLayout()
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filtrer par nom, clan, classe...")
-        self._search.textChanged.connect(self._proxy.set_search)
+        self._search.textChanged.connect(self._on_search_changed)
         search_layout.addWidget(self._search)
 
         clear_btn = QPushButton("X")
@@ -104,6 +107,16 @@ class PopulationDock(QDockWidget):
         filter_layout.addWidget(self._alive_filter)
 
         layout.addLayout(filter_layout)
+
+        # Un dock réaffiché repart d'un instantané frais : des habitants
+        # ont pu mourir pendant qu'il était caché, et le modèle ne doit
+        # jamais conserver de lignes « vivantes » périmées.
+        self.visibilityChanged.connect(
+            lambda visible: self.refresh() if visible else None)
+
+        # Periodic refresh during simulation (every 30 ticks max)
+        self._refresh_timer = None
+        self._start_periodic_refresh()
 
         # Bouton Supprimer
         self._remove_btn = QPushButton("Supprimer")
@@ -135,23 +148,37 @@ class PopulationDock(QDockWidget):
 
     def refresh(self):
         include_dead = (self._alive_filter.currentData() or "alive") == "all"
-        snap = population_snapshot(self.controller.sim, include_dead=include_dead)
+        stage_filter = self._stage_filter.currentData() or ""
+        search_text = (self._search.text() or "").strip().lower()
+        filter_signature = f"{include_dead}|{stage_filter}|{search_text}"
+
+        sim = self.controller.sim
+        revision = getattr(sim, 'population_revision', -1)
+
+        # Skip refresh if revision and filters unchanged and not forced
+        if (revision == self._last_revision and
+            filter_signature == self._last_filter_signature and
+            self._last_revision != -1):
+            return
+
+        self._last_revision = revision
+        self._last_filter_signature = filter_signature
+
+        snap = population_snapshot(sim, include_dead=include_dead)
         portraits = {}
         try:
-            am = self.controller.sim.am
+            am = sim.am
             for row in snap:
                 eid = row.get("eid")
                 if eid is None:
                     continue
                 try:
-                    # ``avatar`` renvoie une image PIL : Qt ne sait pas la
-                    # dessiner via DecorationRole, la conversion est obligatoire.
                     portraits[eid] = pil_to_pixmap(am.avatar(int(eid), size=24))
                 except Exception:
                     pass
         except Exception:
             pass
-        self._model.set_snapshot(snap, portraits)
+        self._model.set_snapshot(snap, portraits, revision=revision, filter_signature=filter_signature)
         alive = sum(1 for row in snap if row.get("alive", True))
         if include_dead:
             self._count_label.setText(f"{alive} vivants / {len(snap)} au total")
@@ -161,9 +188,14 @@ class PopulationDock(QDockWidget):
 
     def _on_stage_changed(self, *_args):
         self._proxy.set_stage(self._stage_filter.currentData() or "")
+        self.refresh()
 
     def _on_alive_changed(self, *_args):
         # « Vivants/Tous » change le jeu de données, pas seulement le filtre.
+        self.refresh()
+
+    def _on_search_changed(self):
+        self._proxy.set_search(self._search.text())
         self.refresh()
 
     def _selected_eid(self):
@@ -211,4 +243,20 @@ class PopulationDock(QDockWidget):
                     f"Impossible de supprimer l'habitant : {error}",
                     QMessageBox.StandardButton.Ok,
                 )
+
+    def _start_periodic_refresh(self):
+        """Start periodic refresh timer (every ~500ms = ~30 ticks at 60 TPS)."""
+        if self._refresh_timer is not None:
+            return
+        from PyQt6.QtCore import QTimer
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.setInterval(500)  # ~500ms
+        self._refresh_timer.timeout.connect(self._periodic_refresh)
+        self._refresh_timer.start()
+
+    def _periodic_refresh(self):
+        """Periodic refresh during simulation - only if revision changed."""
+        sim = self.controller.sim
+        revision = getattr(sim, 'population_revision', -1)
+        if revision != self._last_revision:
             self.refresh()

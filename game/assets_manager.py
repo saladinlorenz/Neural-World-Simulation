@@ -159,14 +159,14 @@ def _classify(rel, fname):
         if "/resources/gold" in t:
             return "ressources", "gold_pile", {"px": 14, "material": "or"}
         if "/resources/meat/meat resource" in t:
-            return "nourriture", "meat_res", {"px": 14, "edible": 55.0}
+            return "nourriture", "meat_res", {"px": 14, "edible": 80.0}
         if "/resources/meat/sheep" in t:
             state = "grass" if "grass" in f else ("move" if "move" in f else "idle")
             return "animaux", "sheep", {"px": 22, "meta": {"state": state}}
         if "/resources/tools" in t:
             return "outils", "tool", {"px": 12, "tool": True}
         if "/decorations/bushes" in t:
-            return "nourriture", "bush", {"px": 20, "edible": 14.0}
+            return "nourriture", "bush", {"px": 20, "edible": 25.0}
         if "/decorations/clouds" in t:
             return "decor", "cloud", {"px": 90}
         if "/decorations/rocks in the water" in t:
@@ -386,7 +386,7 @@ def _kenney(kit, f):
             return "props", "prop", {"px": 18, "solid": True}
         # poissons
         if name.startswith("fish"):
-            return "nourriture", "food", {"px": 14, "edible": 40.0}
+            return "nourriture", "food", {"px": 14, "edible": 60.0}
         # nature
         if name.startswith("rock") or name.startswith("patch") or name.startswith("grass"):
             return "decor", "decor", {"px": 16}

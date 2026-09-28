@@ -47,6 +47,18 @@ class UIState:
     brush_size: int = 3
     block_material: str = "bois"
 
+    # ── Paramètres terrain (pinceau) ──
+    #: Force du pinceau terrain (0.01 .. 0.50).
+    terrain_strength: float = 0.15
+    #: Atténuation / falloff du pinceau terrain (0.1 .. 2.0).
+    terrain_falloff: float = 1.0
+    #: True = glisser continu, False = un coup par clic.
+    brush_continuous: bool = True
+    #: Que faire des objets rencontrés : remove / skip / cancel.
+    object_policy: str = "remove"
+    #: Hauteur cible (0..1) ; None = hauteur auto.
+    target_height: float | None = None
+
     # ── Sections accordéon (inspecteur) ──
     open_sections: dict = field(default_factory=dict)
     open_cards: dict = field(default_factory=dict)
@@ -114,6 +126,12 @@ class UIState:
             "right_panel_open": self.right_panel_open,
             "brush_size": self.brush_size,
             "block_material": self.block_material,
+            # ── Paramètres terrain (pinceau) ──
+            "terrain_strength": float(self.terrain_strength),
+            "terrain_falloff": float(self.terrain_falloff),
+            "brush_continuous": bool(self.brush_continuous),
+            "object_policy": str(self.object_policy),
+            "target_height": self.target_height,
             "ghost_visible": self.ghost_visible,
             "ghost_tile": self.ghost_tile,
             "creator_open": self.creator_open,

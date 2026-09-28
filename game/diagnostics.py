@@ -40,6 +40,118 @@ def action_name(sim, action: int | None) -> str:
         return f"Action {action}"
 
 
+#: Libellés FR des activités composées (même source que la carte).
+#: Clés = ``Being.activity.kind`` réels ; l'UI traduit, jamais le moteur.
+ACTIVITY_FR = {
+    "food_expedition": "expédition de nourriture",
+    "water_search": "recherche d'eau",
+    "return_home": "retour au foyer",
+    "explore_region": "exploration de région",
+}
+
+
+def agent_narrative(snap: dict | None) -> str:
+    """Lecture narrative d'un snapshot habitant (WORLD ALIVE).
+
+    Pure et défensive : ne lit que le snapshot (jamais Being/Sim), ne
+    lève jamais. Retourne 3 à 5 phrases FR construites sur des données
+    réelles : besoin dominant, émotion, activité/intention en cours,
+    mémoire mobilisée (confiance), dernier résultat causal.
+    L'inspecteur affiche ce texte EN PREMIER, les tableaux ensuite.
+    """
+    if not isinstance(snap, dict):
+        return ""
+    name = str(snap.get("name", "L'habitant") or "L'habitant")
+    lines: list[str] = []
+
+    needs_named = snap.get("needs_named", {}) or {}
+    deliberation = snap.get("deliberation", {}) or {}
+    decision_trace = snap.get("decision_trace", {}) or {}
+    need_name = (deliberation.get("dominant_need")
+                 or (decision_trace.get("dominant_need", {}) or {}).get("name")
+                 if isinstance(decision_trace.get("dominant_need"), dict)
+                 else deliberation.get("dominant_need"))
+    need_val = None
+    if isinstance(decision_trace.get("dominant_need"), dict):
+        need_val = decision_trace["dominant_need"].get("value")
+    if not need_name:
+        # Fallback : besoin le plus élevé du snapshot (donnée réelle).
+        try:
+            need_name = max(needs_named, key=lambda k: float(needs_named[k]))
+            need_val = float(needs_named[need_name])
+        except (TypeError, ValueError):
+            need_name, need_val = None, None
+    if need_name:
+        if isinstance(need_val, (int, float)):
+            lines.append(f"{name} ressent surtout {need_name} ({need_val:.0%}).")
+        else:
+            lines.append(f"{name} ressent surtout {need_name}.")
+
+    emo_name = (deliberation.get("dominant_emotion") or "")
+    if not emo_name and isinstance(decision_trace.get("dominant_emotion"), dict):
+        emo_name = decision_trace["dominant_emotion"].get("name", "")
+    if emo_name and emo_name != "—":
+        lines.append(f"Émotion dominante : {emo_name}.")
+
+    activity = snap.get("activity", {}) or {}
+    kind = activity.get("kind")
+    stage = activity.get("stage", "")
+    if isinstance(kind, str) and kind in ACTIVITY_FR:
+        label = ACTIVITY_FR[kind]
+        tgt_tx, tgt_ty = activity.get("target_tx"), activity.get("target_ty")
+        if tgt_tx is not None and tgt_ty is not None:
+            try:
+                lines.append(
+                    f"Elle/il mène une {label} "
+                    f"(étape {stage or '—'}, cible {int(tgt_tx)},{int(tgt_ty)})."
+                )
+            except (TypeError, ValueError):
+                lines.append(f"Elle/il mène une {label} (étape {stage or '—'}).")
+        else:
+            lines.append(f"Elle/il mène une {label} (étape {stage or '—'}).")
+        reason = activity.get("reason", "")
+        if reason:
+            lines.append(f"Motif : {reason}.")
+    else:
+        state = activity.get("state", snap.get("state", ""))
+        goal_action = activity.get("goal_action")
+        if goal_action is not None:
+            lines.append(f"État : {state}, action en cours : {goal_action}.")
+        elif state:
+            lines.append(f"État : {state}.")
+
+    memories = snap.get("relevant_memories", []) or []
+    if memories:
+        try:
+            best = max(memories,
+                       key=lambda r: float(r.get("confidence", 0.0) or 0.0))
+            cat = best.get("category", "?")
+            conf = float(best.get("confidence", 0.0) or 0.0)
+            tx, ty = best.get("tx", "?"), best.get("ty", "?")
+            lines.append(
+                f"Mémoire mobilisée : {cat} en ({tx},{ty}), "
+                f"confiance {conf:.0%}."
+            )
+        except (TypeError, ValueError):
+            pass
+
+    last = snap.get("last_activity_result", {}) or {}
+    if isinstance(last, dict) and last:
+        lkind = last.get("kind", "?")
+        outcome = last.get("outcome", "?")
+        reason_l = last.get("reason", last.get("failure_reason", ""))
+        extra = f" ({reason_l})" if reason_l else ""
+        lines.append(f"Dernier essai ({lkind}) : {outcome}{extra}.")
+
+    stuck = activity.get("stuck", 0)
+    try:
+        if int(stuck) >= 20:
+            lines.append(f"⚠ Bloqué depuis {int(stuck)} ticks.")
+    except (TypeError, ValueError):
+        pass
+    return "\n".join(lines[:6])
+
+
 def asset_info(am, aid: int | None) -> dict | None:
     if aid is None or not (0 <= int(aid) < len(am.assets)):
         return None
@@ -115,14 +227,16 @@ def agent_snapshot(sim, agent) -> dict[str, Any] | None:
     # Besoins nommés : hunger/energy sont des miroirs lisibles de
     # needs[0]/needs[1] ; les cinq autres viennent directement du tableau.
     # Les libellés viennent de NEED_DEFS (source unique dans config).
+    # Bornage [0, 1] avant toute conversion en pourcentage : une santé ou
+    # un besoin hors bornes ne doit jamais fuiter tel quel dans l'UI.
     needs_named = {
-        NEED_DEFS[0]: float(agent.hunger),
-        NEED_DEFS[1]: float(agent.energy),
-        NEED_DEFS[2]: float(agent.needs[2]),
-        NEED_DEFS[3]: float(agent.needs[3]),
-        NEED_DEFS[4]: float(agent.needs[4]),
-        NEED_DEFS[5]: float(agent.needs[5]),
-        NEED_DEFS[6]: float(agent.needs[6]),
+        NEED_DEFS[0]: clamp01(agent.hunger),
+        NEED_DEFS[1]: clamp01(agent.energy),
+        NEED_DEFS[2]: clamp01(agent.needs[2]),
+        NEED_DEFS[3]: clamp01(agent.needs[3]),
+        NEED_DEFS[4]: clamp01(agent.needs[4]),
+        NEED_DEFS[5]: clamp01(agent.needs[5]),
+        NEED_DEFS[6]: clamp01(agent.needs[6]),
     }
 
     return {
@@ -141,7 +255,7 @@ def agent_snapshot(sim, agent) -> dict[str, Any] | None:
         "position": {"x": float(agent.x), "y": float(agent.y),
                      "tx": int(agent.tx), "ty": int(agent.ty)},
         "state": getattr(agent, "state", "idle"),
-        "health": float(agent.health),
+        "health": clamp01(agent.health),
         "pain": float(agent.pain),
         "temperature": float(agent.temp),
         "needs_named": needs_named,

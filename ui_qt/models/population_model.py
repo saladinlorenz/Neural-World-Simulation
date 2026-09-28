@@ -5,6 +5,21 @@ from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen
 from game.config import CLAN_COLORS
 
 
+def _pct(value) -> float:
+    """Pourcentage sûr : la valeur est bornée à [0, 1] avant mise en forme.
+
+    Une santé ou un besoin hors bornes (négatif, > 1) ne doit jamais
+    s'afficher comme « -386 % » ou « 140 % ».
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if v != v:  # NaN
+        return 0.0
+    return max(0.0, min(1.0, v))
+
+
 def _make_placeholder(clan):
     pm = QPixmap(24, 24)
     pm.fill(QColor(0, 0, 0, 0))
@@ -26,12 +41,24 @@ class PopulationModel(QAbstractTableModel):
         super().__init__(parent)
         self._rows = []
         self._portraits = {}
+        self._current_revision = -1
+        self._filter_signature = ""
 
-    def set_snapshot(self, rows, portraits=None):
-        self.beginResetModel()
-        self._rows = list(rows)
-        self._portraits = portraits or {}
-        self.endResetModel()
+    def set_snapshot(self, rows, portraits=None, revision=-1, filter_signature=""):
+        # Only reset if revision changed or filter signature changed
+        if revision != self._current_revision or filter_signature != self._filter_signature:
+            self.beginResetModel()
+            self._rows = list(rows)
+            self._portraits = portraits or {}
+            self._current_revision = revision
+            self._filter_signature = filter_signature
+            self.endResetModel()
+        else:
+            # Data changed but revision same - update in place if possible
+            if len(self._rows) == len(rows):
+                self._rows = list(rows)
+                self._portraits = portraits or {}
+                self.dataChanged.emit(self.index(0, 0), self.index(len(rows) - 1, 9))
 
     def rowCount(self, parent=None):
         return len(self._rows)
@@ -71,11 +98,11 @@ class PopulationModel(QAbstractTableModel):
             elif col == 3:
                 return f"{row.get('age_years', 0):.1f}"
             elif col == 4:
-                return f"{row.get('health', 0):.0%}"
+                return f"{_pct(row.get('health', 0)):.0%}"
             elif col == 5:
-                return f"{needs.get('énergie', 0):.0%}"
+                return f"{_pct(needs.get('énergie', 0)):.0%}"
             elif col == 6:
-                return f"{needs.get('faim', 0):.0%}"
+                return f"{_pct(needs.get('faim', 0)):.0%}"
             elif col == 7:
                 return row.get("class", "")
             elif col == 8:

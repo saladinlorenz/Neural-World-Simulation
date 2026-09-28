@@ -14,6 +14,7 @@ from PyQt6.QtGui import (
     QFont,
     QFontMetrics,
     QImage,
+    QPolygonF,
     QPainter,
     QPen,
     QPixmap,
@@ -72,6 +73,98 @@ STATUS_COLORS = {
     "sleep": QColor("#B8C4FF"),
     "work": QColor("#F8E16C"),
 }
+
+#: Activité moteur réelle -> glyphe carte (WORLD ALIVE VISUALIZATION).
+#: Source de vérité : ``Being.activity.kind`` (food_expedition, water_search,
+#: return_home, explore_region) + ``Being.state`` pour les actions primitives
+#: visibles (talk, fuite, récolte, construction). Texte seul, pas de sprite :
+#: coût nul, lisible à zoom intermédiaire. Affiché UNIQUEMENT si l'activité
+#: correspond à un vrai état moteur (jamais inventé).
+ACTIVITY_GLYPHS = {
+    "food_expedition": "◉",
+    "water_search": "◈",
+    "return_home": "⌂",
+    "explore_region": "◎",
+    "talk": "…",
+    "flee": "!",
+    "harvest": "⚒",
+    "build": "⚒",
+    "sleep": "Zz",
+}
+
+ACTIVITY_COLORS = {
+    "food_expedition": QColor("#F6BD60"),
+    "water_search": QColor("#4CC9F0"),
+    "return_home": QColor("#B8C4FF"),
+    "explore_region": QColor("#A78BFA"),
+    "talk": QColor("#D0D8E0"),
+    "flee": QColor("#FF8C6B"),
+    "harvest": QColor("#F8E16C"),
+    "build": QColor("#F8E16C"),
+    "sleep": QColor("#B8C4FF"),
+}
+
+#: Libellés FR des activités (carte + infobulle + inspecteur partagent
+#: ces libellés ; l'UI traduit, le moteur garde les kinds anglais).
+ACTIVITY_LABELS = {
+    "food_expedition": "Expédition nourriture",
+    "water_search": "Recherche d'eau",
+    "return_home": "Retour au foyer",
+    "explore_region": "Exploration",
+    "talk": "Discussion",
+    "flee": "Fuite",
+    "harvest": "Récolte",
+    "build": "Construction",
+    "sleep": "Sommeil",
+}
+
+
+def agent_activity_icon(agent) -> Optional[str]:
+    """Activité réelle de l'habitant, ou ``None`` (WORLD ALIVE).
+
+    Priorité : ``activity.kind`` (expéditions composées) puis ``state``
+    primitif visible (talk/fuite/récolte/construction/sommeil). Retourne
+    une clé de ``ACTIVITY_GLYPHS``. ``getattr`` défensif : un attribut
+    absent rend ``None`` au lieu d'une erreur.
+    """
+    activity = getattr(agent, "activity", None)
+    kind = None
+    if activity is not None:
+        if isinstance(activity, dict):
+            kind = activity.get("kind")
+        else:
+            kind = getattr(activity, "kind", None)
+    if isinstance(kind, str) and kind in ACTIVITY_GLYPHS:
+        return kind
+    try:
+        state = str(getattr(agent, "state", "") or "")
+    except Exception:
+        return None
+    _STATE_TO_ACTIVITY = {
+        "talk": "talk",
+        "run": None,  # course = déplacement, pas une activité à icôner
+        "eat": None,
+        "drink": None,
+        "rest": None,
+        "sleep": "sleep",
+        "work": "harvest",
+        "build": "build",
+        "attack": "flee",
+    }
+    # Fuite explicite : state flee/run + peur haute ou goal FLEE.
+    if state == "run":
+        try:
+            emotions = getattr(agent, "emotions", None)
+            fear = float(emotions[0]) if emotions is not None and len(emotions) > 0 else 0.0
+        except (TypeError, ValueError, IndexError):
+            fear = 0.0
+        goal = getattr(agent, "goal", None)
+        goal_act = goal.get("act") if isinstance(goal, dict) else None
+        # act==10 → Fuir (brain.py). On ne recâble pas : comparaison tolérante.
+        if fear > 0.65 or goal_act == 10:
+            return "flee"
+        return None
+    return _STATE_TO_ACTIVITY.get(state)
 
 
 def agent_status_icon(agent) -> Optional[str]:
@@ -160,6 +253,19 @@ SITE_STAGE_COLORS = {
     "complete": QColor(90, 150, 100, 180),
 }
 
+#: Outils de peinture de tuiles (kind « paint_tile », mode transmis tel quel).
+PAINT_MODES = frozenset({
+    "water", "land", "wall", "paint_grass", "paint_sand", "paint_dirt",
+    "paint_water", "paint_rock",
+})
+#: Outils de relief (kind = mode, sauf « raise » → « raise_terrain »).
+HEIGHT_MODES = frozenset({
+    "flatten", "raise", "carve", "restore", "restore_mountain",
+})
+HEIGHT_KINDS = {"raise": "raise_terrain"}
+#: Tous les outils qui modifient le terrain (aperçu + pinceau non continu).
+TERRAIN_MODES = PAINT_MODES | HEIGHT_MODES
+
 
 class MapView(QWidget):
     """Carte Qt réactive avec terrain mis en cache.
@@ -195,6 +301,10 @@ class MapView(QWidget):
         #: Identifiant du glisser en cours : une seule entrée d'historique
         #: par coup de pinceau, pas une par tuile traversée.
         self._stroke_group = 0
+        #: Aperçu de pinceau non mutatif (dict) — survol terrain uniquement.
+        self._brush_preview: Optional[dict] = None
+        #: True si la brosse en cours a réellement modifié le monde.
+        self._stroke_changed = False
         self.data = None
 
         self.overlay = WorldOverlay()
@@ -220,7 +330,23 @@ class MapView(QWidget):
         self.terrain_qkey = None
         self.minimap_qimage: Optional[QImage] = None
         self.minimap_qkey = None
+        # Legend cache (nom distinct de la méthode _legend_pixmap(kind))
+        self._legend_cache: Optional[QPixmap] = None
+        self._legend_cache_key: Optional[str] = None
+        # Légende d'overlay (pastilles de couleurs) — même principe.
+        self._overlay_legend_cache: Optional[QPixmap] = None
+        self._overlay_legend_cache_key: Optional[str] = None
+        # Minimap dynamic cache
+        self._last_minimap_update_tick = -1
+        self._minimap_dynamic_dirty = True
+        self.MINIMAP_UPDATE_TICKS = 30
+        # Static/dynamic layer separation
+        self._static_terrain_pixmap: Optional[QPixmap] = None
+        self._static_terrain_key: Optional[str] = None
         self.show_legend = True
+        #: Légende des couleurs de l'overlay (dialogue « Configurer
+        #: l'overlay »). Non persistée (ui_state appartient à un autre lot).
+        self.show_overlay_legend = True
 
         self.debug_no_minimap = False
         self.debug_no_overlay = False
@@ -240,6 +366,11 @@ class MapView(QWidget):
         #: Incrémenté en fin de paintEvent seulement si le rendu est allé à
         #: terme ; utilisé par MainWindow pour mesurer les FPS.
         self.rendered_frames = 0
+
+        #: Intervalle minimum entre deux demandes de rendu (secondes).
+        #: 25 FPS maximum. Réglé par rapport au zoom (plus loin = moins souvent).
+        self._next_render_time = 0.0
+        self._render_interval = 0.04  # 25 FPS par défaut
 
     # ------------------------------------------------------------------
     # Caméra
@@ -263,6 +394,38 @@ class MapView(QWidget):
             if hasattr(camera, name) and hasattr(self.transform, name):
                 setattr(camera, name, float(getattr(self.transform, name)))
 
+    # ---------------------------------------------------------------
+    # Rendu adaptatif en fonction du zoom et du cadence
+    # ---------------------------------------------------------------
+
+    def render_interval_seconds(self) -> float:
+        """Retourne l'intervalle minimum entre deux frames (secondes).
+        Plus le zoom est faible (loin), plus l'intervalle est long.
+        """
+        zoom = self.transform.zoom
+        if zoom < 0.3:
+            return 0.12   # 8 FPS très loin
+        if zoom < 0.5:
+            return 0.067  # 15 FPS moyen
+        return 0.04       # 25 FPS proche
+
+    def request_render(self):
+        """Demande un rendu dans l'intervalle cadencé.
+        N'appelle self.update() que si suffisamment de temps s'est écoulé.
+        """
+        now = time.perf_counter()
+        if now - self._next_render_time >= 0:
+            self._next_render_time = now + self.render_interval_seconds()
+            self.update()
+        else:
+            # Report next allowed render time
+            self._next_render_time = now + self.render_interval_seconds()
+
+    def request_render_now(self):
+        """Force un rendu immédiat (défilement, interaction utilisateur)."""
+        self._next_render_time = time.perf_counter()
+        self.update()
+
     def _visible(self, sx: float, sy: float, margin: float = 64.0) -> bool:
         """Vérifie si un point écran est dans la zone visible (+ marge)."""
         return (-margin <= sx <= self.width() + margin and
@@ -281,6 +444,16 @@ class MapView(QWidget):
         self.terrain_qkey = None
         self.minimap_qimage = None
         self.minimap_qkey = None
+        self._legend_cache = None
+        self._legend_cache_key = None
+        self._minimap_dynamic_dirty = True
+        self._last_minimap_update_tick = -1
+        self.update()
+
+    def invalidate_legend_cache(self):
+        """Invalide le cache de la légende (changement de thème, taille, etc.)."""
+        self._legend_cache = None
+        self._legend_cache_key = None
         self.update()
 
     def _terrain_qkey_for_world(self):
@@ -317,6 +490,17 @@ class MapView(QWidget):
         cached = self.terrain_cache.build_minimap(self.controller.sim.w, 192)
         self.minimap_qimage = self._pil_to_qimage(cached.image)
         self.minimap_qkey = key
+        # Reset dynamic cache when terrain changes
+        self._last_minimap_update_tick = -1
+        self._minimap_dynamic_dirty = True
+
+    def _should_update_minimap_dynamic(self) -> bool:
+        """Check if minimap dynamic elements should be updated (every 30 ticks)."""
+        sim_tick = self.controller.sim.w.tick
+        if sim_tick - self._last_minimap_update_tick >= self.MINIMAP_UPDATE_TICKS:
+            self._last_minimap_update_tick = sim_tick
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # Peinture principale
@@ -343,6 +527,7 @@ class MapView(QWidget):
 
             painter.fillRect(self.rect(), DARK)
 
+            # Static terrain layer (cached)
             if self.transform.zoom >= CHUNK_ZOOM:
                 self.draw_chunk_terrain(painter)
             else:
@@ -350,6 +535,7 @@ class MapView(QWidget):
                 self.draw_cached_terrain(painter)
             self.draw_entities(painter)
             self.draw_ghost(painter)
+            self.draw_brush_preview(painter)
             if self.debug_show_grid:
                 self.draw_grid(painter)
 
@@ -367,6 +553,10 @@ class MapView(QWidget):
 
             if self.show_legend:
                 self.draw_legend(painter)
+
+            if (not self.debug_no_overlay and self.overlaymode != "normal"
+                    and getattr(self, "show_overlay_legend", True)):
+                self.draw_overlay_legend(painter)
 
             if not self.debug_no_minimap:
                 self.ensure_minimap_qimage()
@@ -471,10 +661,11 @@ class MapView(QWidget):
     }
 
     def draw_entities(self, painter: QPainter):
-        """Dessine le monde vivant en vrais sprites, triés par profondeur.
+        """Dessine le monde vivant avec LOD adaptatif selon le zoom.
 
-        Le tri est ``(world_y, layer)`` : un habitant au nord d'un arbre passe
-        derrière lui, au sud il passe devant.
+        - Zoom très faible (< 0.3) : points agrégés seulement, pas d'objets.
+        - Zoom moyen (0.3–0.85) : ≤100 agents simplifiés, pas d'objets.
+        - Zoom élevé (≥ 0.85) : détail complet.
         """
         sim = self.controller.sim
         w = sim.w
@@ -483,6 +674,68 @@ class MapView(QWidget):
 
         x0, y0, x1, y1 = self.transform.visible_tiles(TILE, GRID,
                                                         self.width(), self.height())
+
+        # --- Déterminer le budget d'agents selon le zoom ---
+        if zoom < 0.30:
+            agent_budget = 30   # très lointain : points agrégés
+        elif zoom < 0.85:
+            agent_budget = 100  # moyen : simplifié
+        else:
+            agent_budget = int((sim.runtime or {}).get("max_agents_rendered", 200))
+
+        # --- Far zoom : points agrégés seulement, pas d'objets ---
+        if zoom < 0.30:
+            # Utiliser les buckets spatiaux existants (grid_bucket) au lieu de
+            # scanner tous les agents pour chaque cellule visible.
+            # Complexité : proportionnelle aux buckets visibles + entités visibles.
+            selected_eid = getattr(self.controller.ui_state,
+                                   "selected_agent_eid", None)
+
+            # Convertir les tuiles visibles (64px) en buckets (32px)
+            # 1 tuile = 2 buckets
+            bx0 = x0 * 2
+            bx1 = x1 * 2 + 1
+            by0 = y0 * 2
+            by1 = y1 * 2 + 1
+
+            grid_bucket = getattr(sim, "grid_bucket", {})
+            for (bx, by), entities in grid_bucket.items():
+                if not (bx0 <= bx <= bx1 and by0 <= by <= by1):
+                    continue
+                # Compter les agents vivants dans ce bucket
+                count = 0
+                selected_seen = False
+                for e in entities:
+                    if not getattr(e, "alive", False):
+                        continue
+                    # Vérifier que c'est bien un habitant (pas mouton/monstre)
+                    if not hasattr(e, "hunger"):
+                        continue
+                    count += 1
+                    if e.eid == selected_eid:
+                        selected_seen = True
+                if count > 0:
+                    # Position centrale du bucket en coordonnées monde
+                    world_x = (bx + 0.5) * 32
+                    world_y = (by + 0.5) * 32
+                    rgb = (100, 100, 100) if not selected_seen else (200, 200, 0)
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.setBrush(QBrush(QColor(*rgb)))
+                    sx, sy = self.transform.to_screen(world_x, world_y)
+                    radius = max(1.0, 2.0 / math.sqrt(max(count, 1)))
+                    painter.drawEllipse(QPointF(sx, sy), radius, radius)
+
+            # Sélection : halo au centre si l'agent sélectionné est dans la zone
+            if selected_eid is not None:
+                for a in sim.agents:
+                    if a.eid == selected_eid and a.alive:
+                        sx, sy = self.transform.to_screen(a.x, a.y)
+                        if self._visible(sx, sy, 60):
+                            self.draw_selected_agent_marker(painter, a, sx, sy)
+            # Rien d'autre n'est dessiné en zoom très lointain
+            return
+
+        # --- Zoom moyen ou proche : on collecte les entités ---
         drawables = []
 
         # 2 — assets posés : arbres, rochers, structures, cultures, blocs
@@ -511,15 +764,14 @@ class MapView(QWidget):
                 if self._visible(sx, sy, margin=48):
                     drawables.append((float(monster.y), 3, "monster", monster))
 
-        # 4 — habitants (budget de rendu : performance.max_agents) + culling visibilité
+        # 4 — habitants (budget de rendu) + culling visibilité
         selected_eid = getattr(self.controller.ui_state,
                                "selected_agent_eid", None)
-        budget = int((sim.runtime or {}).get("max_agents_rendered", 200))
         agents_alive = [a for a in sim.agents if a.alive]
-        if len(agents_alive) > budget:
+        if len(agents_alive) > agent_budget:
             head = [a for a in agents_alive if a.eid == selected_eid]
             rest = [a for a in agents_alive if a.eid != selected_eid]
-            agents_alive = head + rest[: max(0, budget - len(head))]
+            agents_alive = head + rest[: max(0, agent_budget - len(head))]
         for agent in agents_alive:
             sx, sy = self.transform.to_screen(agent.x, agent.y)
             if self._visible(sx, sy, margin=48):
@@ -708,12 +960,19 @@ class MapView(QWidget):
     # ------------------------------------------------------------------
 
     def _draw_grounded_sprite(self, painter, pixmap, wx, wy, zoom,
-                              shadow=None, alpha=1.0):
-        """Billboard ancré au sol.
+                              shadow=None, alpha=1.0, h_px=0.0):
+        """Billboard ancré au sol (2.5D légère : hauteur VISUELLE seule).
 
         Le sol est écrasé verticalement par ``cos(tilt)`` ; les sprites, eux,
         restent debout. Leur hauteur ne doit donc PAS être multipliée par
         ``transform.ys``.
+
+        ``h_px`` = élévation visuelle en pixels natifs (avant zoom) :
+        l'ombre reste au sol (``sy``), seul le sprite est lifté
+        (``sy - h_px * zoom``). Le moteur reste en coordonnées sol
+        (pathfinding, mémoire, collisions, sauvegarde inchangés) et le
+        tri Y reste sur ``wy`` sol — le picking ``agent_at`` aussi.
+        Coût : 1 soustraction.
         """
         if pixmap is None or pixmap.isNull():
             return False
@@ -723,7 +982,7 @@ class MapView(QWidget):
             return False
 
         sx, sy = self.transform.to_screen(wx, wy)
-        margin = int(max(64.0, ph))
+        margin = int(max(64.0, ph + float(h_px) * zoom))
         if not self._visible(sx, sy, margin):
             return False
 
@@ -735,7 +994,8 @@ class MapView(QWidget):
                                shadow, QRectF(shadow.rect()))
             painter.setOpacity(1.0)
 
-        target = QRectF(sx - pw / 2.0, sy - ph, pw, ph)
+        lift = float(h_px) * zoom
+        target = QRectF(sx - pw / 2.0, sy - lift - ph, pw, ph)
         if alpha < 1.0:
             painter.setOpacity(alpha)
         painter.drawPixmap(target, pixmap, QRectF(pixmap.rect()))
@@ -752,9 +1012,20 @@ class MapView(QWidget):
     def draw_content(self, painter, am, payload, zoom):
         tx, ty, aid, size, frame = payload
         pixmap = self.asset_cache.pixmap(am, aid, frame)
+        # 2.5D légère : arbres/bâtiments (size >= 2) liftés de 10 px natifs
+        # + ombre portée au zoom détaillé ; le reste reste au sol (h=0).
+        # Tri Y et coordonnées monde inchangés (visuel seul).
+        tall = int(size) >= 2
+        shadow = None
+        if tall and zoom >= MEDIUM_DETAIL_ZOOM and not self.low_detail_mode:
+            try:
+                shadow = self.asset_cache.shadow(am)
+            except Exception:
+                shadow = None
         self._draw_grounded_sprite(
             painter, pixmap,
-            (tx + size / 2.0) * TILE, (ty + size) * TILE, zoom)
+            (tx + size / 2.0) * TILE, (ty + size) * TILE, zoom,
+            shadow=shadow, h_px=10.0 if tall else 0.0)
 
     def draw_fire(self, painter, am, payload, zoom):
         tx, ty, aid, frame = payload
@@ -802,7 +1073,7 @@ class MapView(QWidget):
         self._draw_grounded_sprite(
             painter, self.asset_cache.pixmap(am, aid, 0),
             (tx + 0.5) * TILE, (ty + 1.0) * TILE, zoom,
-            shadow=self.asset_cache.shadow(am))
+            shadow=self.asset_cache.shadow(am), h_px=6.0)
 
     def draw_crop(self, painter, payload):
         tx, ty, plot = payload
@@ -969,28 +1240,46 @@ class MapView(QWidget):
         painter.drawEllipse(QPointF(sx, sy), radius * 0.62, radius * 0.22)
 
     def draw_agent_status(self, painter, agent, sx, sy, zoom):
-        """Une seule icône d'état au-dessus de l'habitant (Lot D).
+        """Icônes au-dessus de l'habitant (Lot D + WORLD ALIVE).
 
         ``sy`` est la ligne de base : le sommet de la tête du sprite (le sol
         si le skin est absent). Invisible sous ``STATUS_ZOOM``, contour sombre
         pour rester lisible sur n'importe quel terrain.
+
+        WORLD ALIVE : jusqu'à DEUX glyphes — 1 état urgent (besoins/santé,
+        ``agent_status_icon``) + 1 activité réelle (``agent_activity_icon``,
+        expédition ou action primitive). L'activité n'apparaît qu'au zoom
+        intermédiaire/rapproché et seulement si elle correspond à un vrai
+        ``activity.kind`` / ``state`` moteur. Coût borné : 2 drawText max.
         """
         if zoom < STATUS_ZOOM:
             return
-        key = agent_status_icon(agent)
-        if key is None:
-            return
-        glyph = STATUS_GLYPHS.get(key)
-        color = STATUS_COLORS.get(key)
-        if not glyph or color is None:
+        status_key = agent_status_icon(agent)
+        activity_key = agent_activity_icon(agent)
+        # Évite le doublon (ex: sleep dans les deux tables).
+        if activity_key is not None and activity_key == status_key:
+            activity_key = None
+        keys = [(status_key, STATUS_GLYPHS, STATUS_COLORS),
+                (activity_key, ACTIVITY_GLYPHS, ACTIVITY_COLORS)]
+        keys = [(k, g, c) for k, g, c in keys if k is not None]
+        if not keys:
             return
         font = QFont("Segoe UI Symbol", max(8, int(11 * zoom)))
         painter.setFont(font)
-        x = sx - QFontMetrics(font).horizontalAdvance(glyph) / 2.0
-        painter.setPen(QPen(QColor(0, 0, 0, 180), 3))
-        painter.drawText(QPointF(x + 1.0, sy + 1.0), glyph)
-        painter.setPen(QPen(color, 1))
-        painter.drawText(QPointF(x, sy), glyph)
+        metrics = QFontMetrics(font)
+        total_w = sum(metrics.horizontalAdvance(g.get(k, "")) for k, g, _ in keys)
+        total_w += max(0, len(keys) - 1) * 4.0
+        x = sx - total_w / 2.0
+        for key, glyphs, colors in keys:
+            glyph = glyphs.get(key)
+            color = colors.get(key)
+            if not glyph or color is None:
+                continue
+            painter.setPen(QPen(QColor(0, 0, 0, 180), 3))
+            painter.drawText(QPointF(x + 1.0, sy + 1.0), glyph)
+            painter.setPen(QPen(color, 1))
+            painter.drawText(QPointF(x, sy), glyph)
+            x += metrics.horizontalAdvance(glyph) + 4.0
 
     def _draw_agent_name(self, painter, agent, sx, head_y, zoom, selected):
         """Nom de l'habitant au-dessus de sa tête, zoom >= 0.9 (Lot C)."""
@@ -1011,18 +1300,34 @@ class MapView(QWidget):
         painter.drawText(QPointF(x, y), name)
 
     def _draw_goal_line(self, painter, agent, sx, sy, zoom):
-        """Ligne discrète vers la cible du but courant (Lot C).
+        """Ligne discrète vers la cible du but courant (Lot C + WORLD ALIVE).
 
         ``Being.goal`` est un dict ``{"act", "x", "y", …}`` où ``x``/``y``
         sont des coordonnées en TUILES : la ligne n'a de sens que si la
         cible diffère de la tuile occupée par l'habitant.
+
+        WORLD ALIVE : les expéditions composées (food_expedition, …)
+        mettent ``goal`` à ``None`` et portent leur cible dans
+        ``activity.target_tx/ty`` — on dessine alors la ligne vers la
+        cible d'activité (même style pointillé, alpha légèrement plus
+        faible pour distinguer but primitif / expédition).
         """
         if zoom < 0.45:
             return
+        gx, gy, is_activity = None, None, False
         goal = getattr(agent, "goal", None)
-        if not isinstance(goal, dict):
-            return
-        gx, gy = goal.get("x"), goal.get("y")
+        if isinstance(goal, dict):
+            gx, gy = goal.get("x"), goal.get("y")
+        if gx is None or gy is None:
+            activity = getattr(agent, "activity", None)
+            if activity is not None:
+                if isinstance(activity, dict):
+                    gx, gy = activity.get("target_tx"), activity.get("target_ty")
+                else:
+                    gx, gy = (getattr(activity, "target_tx", None),
+                              getattr(activity, "target_ty", None))
+                if gx is not None and gy is not None:
+                    is_activity = True
         if gx is None or gy is None:
             return
         try:
@@ -1036,10 +1341,14 @@ class MapView(QWidget):
                                             (gy + 0.5) * TILE)
         if not self._visible(gxs, gys, 40):
             return
-        painter.setPen(QPen(QColor(248, 225, 108, 120), 1,
+        alpha = 90 if is_activity else 120
+        painter.setPen(QPen(QColor(248, 225, 108, alpha), 1,
                             Qt.PenStyle.DashLine))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawLine(QPointF(sx, sy), QPointF(gxs, gys))
+        # Marqueur de destination : petit cercle (coût 1 ellipse).
+        painter.setPen(QPen(QColor(248, 225, 108, alpha + 40), 1))
+        painter.drawEllipse(QPointF(gxs, gys), 4.0, 4.0)
 
     def _agent_pixmap(self, am, agent):
         states = am.skin_states(str(getattr(agent, "color", "blue")),
@@ -1194,6 +1503,62 @@ class MapView(QWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(QRectF(sx0, sy0, sx1 - sx0, sy1 - sy0))
 
+    def draw_brush_preview(self, painter: QPainter):
+        """Cercle + etiquette du pinceau de terrain (strictement lecture)."""
+        prev = self._brush_preview
+        if not prev:
+            return
+        tx, ty = int(prev["tx"]), int(prev["ty"])
+        radius = int(prev["radius"])
+        policy = getattr(self.controller.ui_state, "object_policy", "remove")
+        ambre = int(prev.get("objects", 0)) > 0 and policy == "cancel"
+        couleur = (QColor(255, 170, 40, 210) if ambre
+                   else QColor(255, 255, 255, 160))
+        pts = []
+        r = radius + 0.5
+        for i in range(32):
+            a = 2.0 * math.pi * i / 32.0
+            sx, sy = self.transform.to_screen(
+                (tx + 0.5 + r * math.cos(a)) * TILE,
+                (ty + 0.5 + r * math.sin(a)) * TILE)
+            pts.append(QPointF(sx, sy))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(couleur, 1))
+        painter.drawPolyline(QPolygonF(pts))
+
+        label = self._brush_preview_label(prev)
+        if not label:
+            return
+        font = QFont(self.font())
+        font.setPointSize(8)
+        painter.setFont(font)
+        metrics = QFontMetrics(font)
+        w_px = metrics.horizontalAdvance(label)
+        h_px = metrics.height()
+        sx, sy = self.transform.to_screen((tx + 0.5) * TILE, (ty + 0.5) * TILE)
+        x = min(max(sx + 12.0, 4.0), max(4.0, self.width() - w_px - 12.0))
+        rect = QRectF(x, sy - 12.0 - h_px, w_px + 8.0, h_px + 4.0)
+        painter.fillRect(rect, QColor(10, 12, 18, 190))
+        painter.setPen(QPen(QColor(235, 240, 248, 235), 1))
+        painter.drawText(rect.adjusted(4.0, 0.0, -4.0, 0.0),
+                         Qt.AlignmentFlag.AlignLeft
+                         | Qt.AlignmentFlag.AlignVCenter,
+                         label)
+
+    def _brush_preview_label(self, prev: dict) -> str:
+        parts = []
+        h, h_pred = prev.get("h"), prev.get("h_pred")
+        if h is not None:
+            if h_pred is None or abs(h_pred - h) < 1e-6:
+                parts.append("h %.2f" % h)
+            else:
+                parts.append("h %.2f → %.2f" % (h, h_pred))
+        biome = str(prev.get("biome") or "")
+        if biome:
+            parts.append(biome[:1].upper() + biome[1:])
+        parts.append("%d obj." % int(prev.get("objects", 0)))
+        return " · ".join(parts)
+
     def _tinted_red(self, pixmap: QPixmap) -> QPixmap:
         cache = getattr(self, "_ghost_tints", None)
         if cache is None:
@@ -1221,19 +1586,44 @@ class MapView(QWidget):
     def draw_legend(self, painter: QPainter):
         from ui_qt.theme.theme import panel_palette
 
+        # Clé de cache sur les dépendances visuelles réelles : la palette
+        # rend des chaînes hex (pas des QColor), la taille et le ratio.
+        # Le cache évite de reconstruire police + 8 lignes à chaque frame.
+        # NOTE : l'attribut s'appelle ``_legend_cache`` (pas ``_legend_pixmap``)
+        # pour ne pas masquer la méthode ``_legend_pixmap(kind)`` ci-dessous.
+        palette = panel_palette("panel")
+        cache_key = "legend|%s|%s|%s|%d|%d|%.2f" % (
+            palette["bg"], palette["text"], palette["border"],
+            self.width(), self.height(), self.devicePixelRatioF())
+
+        # Check cache
+        if (getattr(self, "_legend_cache", None) is not None
+                and getattr(self, "_legend_cache_key", None) == cache_key):
+            # Cache hit - just draw the cached pixmap
+            rect = QRectF(16, self.height() - 170, 200, 150)
+            painter.drawPixmap(rect, self._legend_cache,
+                               QRectF(self._legend_cache.rect()))
+            return
+
+        # Cache miss - build legend pixmap
         font = QFont(self.font())
         font.setPointSize(9)
-        painter.setFont(font)
         rect = QRectF(16, self.height() - 170, 200, 150)
 
-        # Fond/texte du thème actif : en thème clair, la boîte sombre
-        # codée en dur restait un bloc illisible sur la carte.
+        # Create offscreen pixmap
+        cached = QPixmap(int(rect.width() * self.devicePixelRatioF()), int(rect.height() * self.devicePixelRatioF()))
+        cached.setDevicePixelRatio(self.devicePixelRatioF())
+        cached.fill(Qt.GlobalColor.transparent)
+
+        legend_painter = QPainter(cached)
+        legend_painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
         c = panel_palette("panel")
         bg = QColor(c["bg"])
         bg.setAlpha(235)
-        painter.setPen(QPen(QColor(c["border"]), 1))
-        painter.setBrush(QBrush(bg))
-        painter.drawRoundedRect(rect, 8, 8)
+        legend_painter.setPen(QPen(QColor(c["border"]), 1))
+        legend_painter.setBrush(QBrush(bg))
+        legend_painter.drawRoundedRect(QRectF(0, 0, rect.width(), rect.height()), 8, 8)
 
         rows = [
             ("Terrain", TERRAINGREEN, None),
@@ -1246,20 +1636,201 @@ class MapView(QWidget):
             ("Tombe", None, "grave"),
         ]
 
-        y = rect.top() + 20
+        y = 20
         for label, color, sprite in rows:
-            box = QRectF(rect.left() + 12, y - 12, 16, 16)
-            pixmap = None if sprite is None else self._legend_pixmap(sprite)
-            if pixmap is None:
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QBrush(color if sprite is None
-                                        else QColor(120, 120, 120)))
-                painter.drawRect(box)
+            box = QRectF(12, y - 12, 16, 16)
+            sprite_pm = None if sprite is None else self._legend_pixmap(sprite)
+            if sprite_pm is None:
+                legend_painter.setPen(Qt.PenStyle.NoPen)
+                legend_painter.setBrush(QBrush(color if sprite is None
+                                              else QColor(120, 120, 120)))
+                legend_painter.drawRect(QRectF(12, y - 12, 16, 16))
             else:
-                painter.drawPixmap(box, pixmap, QRectF(pixmap.rect()))
-            painter.setPen(QPen(QColor(c["text"]), 1))
-            painter.drawText(QPointF(rect.left() + 36, y + 2), label)
+                legend_painter.drawPixmap(
+                    QRectF(12, y - 12, 16, 16), sprite_pm,
+                    QRectF(sprite_pm.rect()))
+            legend_painter.setPen(QPen(QColor(c["text"]), 1))
+            legend_painter.drawText(QPointF(36, y + 2), label)
             y += 17
+
+        legend_painter.end()
+
+        # Cache the pixmap
+        self._legend_cache = cached
+        self._legend_cache_key = cache_key
+
+        # Draw to screen
+        painter.drawPixmap(QRectF(16, self.height() - 170, 200, 150),
+                           self._legend_cache,
+                           QRectF(self._legend_cache.rect()))
+
+    def _overlay_legend_items(self, mode):
+        """Pastilles de la légende d'overlay : couleurs EXACTES tirées des
+        peintures ``_paint_*`` de world_overlay (rampes, alphas, clans)."""
+        from game.config import CLAN_COLORS
+        from game.studio_text import level_color
+        from ui_qt.studio.world_overlay import _IDENTITY_COLORS
+
+        ramp = [QColor(level_color(v))
+                for v in (0.10, 0.30, 0.50, 0.75, 0.95)]
+        if mode == "danger":
+            return list(zip(("Faible", "Modéré", "Elevé", "Fort",
+                             "Critique"), ramp))
+        if mode == "resources":
+            return list(zip(("Rare", "Peu", "Moyen", "Abondant",
+                             "Dense"), ramp))
+        if mode == "memory":
+            return [
+                ("Croyance danger", QColor(255, 255, 100)),
+                ("Nourriture", QColor(246, 189, 96)),
+                ("Eau", QColor(76, 201, 240)),
+                ("Autre lieu", QColor(160, 220, 160)),
+                ("Habitant", QColor(255, 255, 100, 60)),
+            ]
+        if mode == "relations":
+            # alpha = 70 + 130 * score dans _paint_relations.
+            return [
+                ("Lien + fort", QColor(90, 200, 120, 200)),
+                ("Lien + faible", QColor(90, 200, 120, 70)),
+                ("Lien - faible", QColor(230, 90, 90, 70)),
+                ("Lien - fort", QColor(230, 90, 90, 200)),
+            ]
+        if mode == "needs":
+            return [
+                ("Faim", QColor(246, 189, 96)),
+                ("Soif", QColor(76, 201, 240)),
+                ("Fatigue", QColor(167, 139, 250)),
+                ("Blessure", QColor(255, 107, 107)),
+            ]
+        if mode == "anima":
+            labels = {"builder": "Constructeur", "provider": "Pourvoyeur",
+                      "fighter": "Combattant", "explorer": "Explorateur",
+                      "caretaker": "Protecteur", "survivor": "Survivant"}
+            return [(labels.get(k, k), c)
+                    for k, c in _IDENTITY_COLORS.items()]
+        if mode == "culture":
+            return [
+                ("Culture (confiance haute)", QColor(200, 150, 50, 145)),
+                ("Culture (confiance basse)", QColor(200, 150, 50, 45)),
+                ("Savoir universel", QColor(120, 200, 230, 150)),
+                ("Lieu connu", QColor(120, 200, 230, 90)),
+            ]
+        if mode == "institutions":
+            return [
+                ("Institution (confiance)", QColor(180, 80, 200, 170)),
+                ("Institution (naissante)", QColor(180, 80, 200, 45)),
+                ("Membres reliés", QColor(200, 130, 230, 110)),
+                ("Noyau de confiance", QColor(180, 80, 200, 85)),
+            ]
+        if mode == "territories":
+            names = {"blue": "Clan bleu", "red": "Clan rouge",
+                     "yellow": "Clan jaune", "purple": "Clan violet",
+                     "black": "Clan noir"}
+            items = [(names.get(k, k), QColor(*v))
+                     for k, v in CLAN_COLORS.items()]
+            items.append(("Sans clan", QColor(150, 150, 150)))
+            return items
+        return []
+
+    def draw_overlay_legend(self, painter: QPainter):
+        """Légende de l'overlay actif : petit panneau au-dessus de la
+        légende terrain, reconstruit uniquement quand la clé de cache
+        change (mode + couleurs + tailles + DPR)."""
+        from ui_qt.theme.theme import panel_palette
+        from ui_qt.studio.world_overlay import WorldOverlay, CONTEXT_MODES
+
+        mode = self.overlaymode
+        if mode == "normal":
+            return
+        try:
+            overlay = WorldOverlay()
+            title = overlay.mode_label(mode)
+            items = self._overlay_legend_items(mode)
+            hint = None
+            if mode in CONTEXT_MODES:
+                agent = getattr(self.controller.sim, "selected", None)
+                if agent is None or not getattr(agent, "alive", False):
+                    # Texte identique à celui du peintre world_overlay.
+                    hint = "Sélectionnez un habitant pour cet overlay"
+        except Exception:
+            return
+        if not items and not hint:
+            # Mode inconnu (ou non illustré) : le message du peintre suffit.
+            return
+
+        palette = panel_palette("panel")
+        pad, title_h, row_h, hint_h = 10, 22, 17, 34
+        panel_w = 210
+        panel_h = pad * 2 + title_h + (hint_h if hint
+                                        else len(items) * row_h)
+        colors = ",".join("%s#%02X%02X%02X%02X" % (
+            label, c.red(), c.green(), c.blue(), c.alpha())
+            for label, c in items)
+        dpr = self.devicePixelRatioF()
+        cache_key = "overlaylegend|%s|%s|%s|%s|%s|%s|%d|%d|%d|%d|%.2f" % (
+            mode, hint or "", colors,
+            palette["bg"], palette["text"], palette["border"],
+            panel_w, panel_h, self.width(), self.height(), dpr)
+
+        # Au-dessus du panneau terrain (rect y = height - 170).
+        x = 16.0
+        y = max(8.0, float(self.height() - 170 - panel_h - 8))
+        target = QRectF(x, y, panel_w, panel_h)
+
+        if (getattr(self, "_overlay_legend_cache", None) is not None
+                and getattr(self, "_overlay_legend_cache_key", None)
+                == cache_key):
+            painter.drawPixmap(target, self._overlay_legend_cache,
+                               QRectF(self._overlay_legend_cache.rect()))
+            return
+
+        cached = QPixmap(int(panel_w * dpr), int(panel_h * dpr))
+        cached.setDevicePixelRatio(dpr)
+        cached.fill(Qt.GlobalColor.transparent)
+
+        legend_painter = QPainter(cached)
+        legend_painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        bg = QColor(palette["bg"])
+        bg.setAlpha(235)
+        legend_painter.setPen(QPen(QColor(palette["border"]), 1))
+        legend_painter.setBrush(QBrush(bg))
+        legend_painter.drawRoundedRect(QRectF(0, 0, panel_w, panel_h), 8, 8)
+
+        font = QFont(self.font())
+        font.setPointSize(9)
+        text_pen = QPen(QColor(palette["text"]), 1)
+
+        title_font = QFont(font)
+        title_font.setBold(True)
+        legend_painter.setFont(title_font)
+        legend_painter.setPen(text_pen)
+        legend_painter.drawText(
+            QRectF(0, pad, panel_w, title_h),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            "  " + title)
+
+        legend_painter.setFont(font)
+        row_y = float(pad + title_h)
+        if hint:
+            legend_painter.drawText(
+                QRectF(12, row_y, panel_w - 24, hint_h),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+                | Qt.TextFlag.TextWordWrap,
+                hint)
+        else:
+            for label, color in items:
+                legend_painter.setPen(Qt.PenStyle.NoPen)
+                legend_painter.setBrush(QBrush(color))
+                legend_painter.drawRect(QRectF(12, row_y + 1, 14, 14))
+                legend_painter.setPen(text_pen)
+                legend_painter.drawText(QPointF(34, row_y + 13), label)
+                row_y += row_h
+        legend_painter.end()
+
+        self._overlay_legend_cache = cached
+        self._overlay_legend_cache_key = cache_key
+        painter.drawPixmap(target, cached, QRectF(cached.rect()))
 
     def _legend_pixmap(self, kind):
         am = self.controller.sim.am
@@ -1303,6 +1874,10 @@ class MapView(QWidget):
     def draw_minimap(self, painter: QPainter):
         if self.minimap_qimage is None:
             return
+
+        # Update dynamic layer at most every 30 ticks
+        if self._minimap_dynamic_dirty or self._should_update_minimap_dynamic():
+            self._minimap_dynamic_dirty = False
 
         rect = self._minimap_rect()
         x0, y0 = rect.x(), rect.y()
@@ -1428,6 +2003,7 @@ class MapView(QWidget):
 
         else:
             self._stroke_group += 1
+            self._stroke_changed = False
             self.painting = (tx, ty)
             self.apply_tool(tx, ty, group=self._stroke_group)
 
@@ -1462,8 +2038,8 @@ class MapView(QWidget):
         mode = getattr(self.controller.ui_state, "active_mode", "inspect")
         radius = getattr(self.controller.ui_state, "brush_size", 3)
 
-        if mode in {"water", "land", "wall"}:
-            self._run({
+        if mode in PAINT_MODES:
+            self._run_terrain({
                 "kind": "paint_tile",
                 "tx": tx,
                 "ty": ty,
@@ -1472,9 +2048,10 @@ class MapView(QWidget):
                 "group": group,
             })
 
-        elif mode in {"carve", "restore"}:
-            self._run({"kind": mode, "tx": tx, "ty": ty, "radius": radius,
-                       "group": group})
+        elif mode in HEIGHT_MODES:
+            self._run_terrain({"kind": HEIGHT_KINDS.get(mode, mode),
+                               "tx": tx, "ty": ty, "radius": radius,
+                               "group": group})
 
         elif mode == "erase":
             self._run({"kind": "erase_tile", "tx": tx, "ty": ty,
@@ -1516,6 +2093,31 @@ class MapView(QWidget):
                 "group": group,
             })
 
+    def _terrain_params(self):
+        """Paramètres de pinceau lus dans l'UIState (lecture seule ici)."""
+        ui_state = self.controller.ui_state
+        return {
+            "strength": getattr(ui_state, "terrain_strength", 0.15),
+            "falloff": getattr(ui_state, "terrain_falloff", 1.0),
+            "target_height": getattr(ui_state, "target_height", None),
+            "object_policy": getattr(ui_state, "object_policy", "remove"),
+        }
+
+    def _run_terrain(self, command):
+        """Commande de terrain : params + trace « la brosse a changé »."""
+        command.update(self._terrain_params())
+        result = self._run(command)
+        if result.get("ok") and result.get("changed"):
+            self._stroke_changed = True
+        return result
+
+    def _drag_applies(self) -> bool:
+        """False si un pinceau non continu ne doit viser que le clic initial."""
+        if getattr(self.controller.ui_state, "brush_continuous", True):
+            return True
+        mode = getattr(self.controller.ui_state, "active_mode", "inspect")
+        return mode not in TERRAIN_MODES
+
     def _run(self, command, invalidate=True):
         """Exécute une commande et publie son résultat.
 
@@ -1542,6 +2144,7 @@ class MapView(QWidget):
     def mouseMoveEvent(self, event):
         if self._minimap_drag:
             self._center_from_minimap(event.position())
+            self._brush_preview = None
             return
 
         if self.panstart is not None:
@@ -1562,6 +2165,7 @@ class MapView(QWidget):
             self.transform.clamp(GRID * TILE, self.width(), self.height())
             self._sync_controller_from_transform()
             self.panstart = current
+            self._brush_preview = None
             self.update()
             return
 
@@ -1573,14 +2177,17 @@ class MapView(QWidget):
             tx, ty = int(wx // TILE), int(wy // TILE)
             if (tx, ty) != self.painting:
                 self.painting = (tx, ty)
-                self.apply_tool(tx, ty, group=self._stroke_group)
+                if self._drag_applies():
+                    self.apply_tool(tx, ty, group=self._stroke_group)
                 self.update()
             return
 
         # Tuile survolée → barre d'état (Lot E.6)
         wx, wy = self.transform.to_world(
             event.position().x(), event.position().y())
-        self.hover_changed.emit(int(wx // TILE), int(wy // TILE))
+        tx, ty = int(wx // TILE), int(wy // TILE)
+        self.hover_changed.emit(tx, ty)
+        self._update_brush_preview(tx, ty)
 
         self._update_ghost(event.position())
         self._update_agent_tooltip(event.position())
@@ -1635,7 +2242,24 @@ class MapView(QWidget):
                 except (TypeError, ValueError):
                     pass
         else:
-            but = "Repos"
+            # WORLD ALIVE : les expéditions portent leur intention dans
+            # activity (goal=None) — l'infobulle reste truthful.
+            activity = getattr(agent, "activity", None)
+            kind = None
+            stage_txt = ""
+            if activity is not None:
+                if isinstance(activity, dict):
+                    kind = activity.get("kind")
+                    stage_txt = str(activity.get("stage", "") or "")
+                else:
+                    kind = getattr(activity, "kind", None)
+                    stage_txt = str(getattr(activity, "stage", "") or "")
+            if isinstance(kind, str) and kind in ACTIVITY_LABELS:
+                but = ACTIVITY_LABELS[kind]
+                if stage_txt:
+                    but = f"{but} · {escape(stage_txt)}"
+            else:
+                but = "Repos"
 
         lines = [f"<b>{name}</b>"]
         lines.append(f"{cls} · {escape(stage)}" if stage else cls)
@@ -1674,12 +2298,77 @@ class MapView(QWidget):
             ui_state.ghost_visible = True
             self.update()
 
+    def _update_brush_preview(self, tx, ty):
+        """Aperçu du pinceau de terrain — lecture seule du monde."""
+        mode = getattr(self.controller.ui_state, "active_mode", "inspect")
+        if mode not in TERRAIN_MODES:
+            self._brush_preview = None
+            return
+        ui_state = self.controller.ui_state
+        w = self.controller.sim.w
+        grid = int(w.g)
+        if not (0 <= tx < grid and 0 <= ty < grid):
+            self._brush_preview = None
+            return
+        radius = max(1, min(15, int(getattr(ui_state, "brush_size", 3))))
+        y0, y1 = max(0, ty - radius), min(grid, ty + radius + 1)
+        x0, x1 = max(0, tx - radius), min(grid, tx + radius + 1)
+        yy = np.arange(y0, y1, dtype=np.float32)[:, None] - ty
+        xx = np.arange(x0, x1, dtype=np.float32)[None, :] - tx
+        disque = yy * yy + xx * xx <= radius * radius + 1
+        count = int(np.count_nonzero(
+            (w.content[y0:y1, x0:x1] >= 0) & disque))
+
+        gen = getattr(w, "gen", None)
+        h = h_pred = None
+        if gen is not None:
+            h = float(gen.height_current[ty, tx])
+            strength = max(0.01, min(
+                0.50, float(getattr(ui_state, "terrain_strength", 0.15))))
+            falloff = max(0.1, min(
+                2.0, float(getattr(ui_state, "terrain_falloff", 1.0))))
+            s = strength * falloff
+            target = getattr(ui_state, "target_height", None)
+            if mode == "raise":
+                h_pred = min(1.0, h + s)
+            elif mode == "carve":
+                h_pred = max(0.0, h - s)
+            elif mode == "flatten":
+                if target is None:
+                    patch = gen.height_current[y0:y1, x0:x1]
+                    target = float(patch[disque].mean()) if disque.any() \
+                        else float(patch.mean())
+                k = max(0.0, min(1.0, s))
+                h_pred = max(0.0, min(1.0, h + k * (float(target) - h)))
+            elif mode in ("restore", "restore_mountain"):
+                base = float(gen.height_base[ty, tx])
+                h_pred = max(0.0, min(1.0, h + (base - h) * min(1.0, s)))
+            else:
+                # Peinture de biome : la hauteur ne bouge pas.
+                h_pred = h
+
+        if gen is not None:
+            from game.worldgen import biome_name
+            biome = biome_name(gen, tx, ty)
+        else:
+            biome = "eau" if w.water[ty, tx] else "terre"
+
+        preview = {"tx": int(tx), "ty": int(ty), "radius": radius,
+                   "h": h, "h_pred": h_pred, "biome": biome,
+                   "objects": count}
+        if preview != self._brush_preview:
+            self._brush_preview = preview
+            self.update()
+
     def leaveEvent(self, event):
         if self._tooltip_eid is not None:
             self._tooltip_eid = None
             self.setToolTip("")
         if getattr(self.controller.ui_state, "ghost_visible", False):
             self.controller.ui_state.ghost_visible = False
+            self.update()
+        if self._brush_preview is not None:
+            self._brush_preview = None
             self.update()
         super().leaveEvent(event)
 
@@ -1692,7 +2381,25 @@ class MapView(QWidget):
                 # Clôt l'entrée d'historique du glisser : un coup de
                 # pinceau = une annulation, pas une par tuile.
                 self.controller.execute({"kind": "end_stroke"})
+                if self._stroke_changed:
+                    self._show_undo_status()
+                self._stroke_changed = False
             self._minimap_drag = False
+
+    def _show_undo_status(self):
+        """Barre d'état : « Annuler : <libellé outil> » après un coup réussi."""
+        mode = getattr(self.controller.ui_state, "active_mode", "inspect")
+        if mode not in TERRAIN_MODES:
+            return
+        try:
+            from game.ui_registry import MODES
+            window = self.window()
+            status = window.statusBar() if window is not None else None
+            if status is not None:
+                status.showMessage(
+                    "Annuler : %s" % dict(MODES).get(mode, mode), 4000)
+        except (AttributeError, TypeError):
+            pass
 
     def wheelEvent(self, event):
         delta = event.angleDelta().y()

@@ -79,7 +79,13 @@ MODES = [
     ("agent", "Etre"), ("sheep", "Mouton"), ("monster", "Monstre"),
     ("inspect", "Examiner"),
     ("water", "Eau"), ("land", "Terre"), ("wall", "Mur"),
-    ("carve", "Sculpter"), ("restore", "Restaurer"),
+    ("carve", "Creuser"), ("restore", "Restaurer"),
+    # Outils de terrain professionnels
+    ("flatten", "Aplanir"), ("raise", "Elever"),
+    ("restore_mountain", "Restaurer terrain"),
+    ("paint_grass", "Prairie verte"), ("paint_sand", "Sable"),
+    ("paint_dirt", "Terre"), ("paint_water", "Eau peinte"),
+    ("paint_rock", "Roche"),
 ]
 
 SEX_CLASSES = {
@@ -92,8 +98,13 @@ TAB_MODES = {
         ("place", "Poser"), ("erase", "Gommer"), ("floor", "Sol"),
         ("block", "Bloc"),
         ("water", "Eau"), ("land", "Terre"), ("wall", "Mur"),
-        ("carve", "Sculpter"), ("restore", "Restaurer"),
         ("inspect", "Examiner"),
+        # Outils de terrain professionnels
+        ("flatten", "Aplanir"), ("raise", "Elever"),
+        ("carve", "Creuser"), ("restore_mountain", "Restaurer terrain"),
+        ("paint_grass", "Prairie verte"), ("paint_sand", "Sable"),
+        ("paint_dirt", "Terre"), ("paint_water", "Eau peinte"),
+        ("paint_rock", "Roche"),
     ],
     "etre":     [("agent", "Etre"), ("sheep", "Mouton"),
                  ("monster", "Monstre"), ("inspect", "Examiner")],
@@ -127,6 +138,15 @@ TAB_HINTS = {
     "wall":    "glisser = placer des rochers solides (pinceau)",
     "carve":   "glisser = creuser les montagnes (pinceau)",
     "restore": "glisser = restaurer le terrain procedural (pinceau)",
+    # Nouveaux outils de terrain
+    "flatten": "clic/glisser = aplanir le terrain vers la moyenne locale",
+    "raise":   "clic/glisser = elever le terrain (montagne)",
+    "restore_mountain": "clic/glisser = restaurer le terrain vers sa forme naturelle",
+    "paint_grass": "clic/glisser = peindre prairie verte (sol, biome herbe)",
+    "paint_sand": "clic/glisser = peindre sable (sol, biome desert)",
+    "paint_dirt": "clic/glisser = peindre terre nue (sol, biome terre)",
+    "paint_water": "clic/glisser = peindre eau (sol, biome eau)",
+    "paint_rock": "clic/glisser = peindre rocher (sol, biome roche)",
 }
 
 # ══════════════════════════════════════════════════════════════════════

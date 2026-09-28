@@ -56,15 +56,20 @@ def simulation_snapshot(sim, ui_state=None) -> dict[str, Any]:
 def population_snapshot(sim, include_dead: bool = False) -> list[dict[str, Any]]:
     """Liste d'habitants, pour le tableau de population.
 
+    « Vivants » = vivant ET santé > 0 : un habitant dont la santé est
+    tombée à 0 (ou en dessous) n'appartient plus au jeu de données des
+    vivants, même si le moteur n'a pas encore purgé son entrée.
+
     ``include_dead`` ajoute les fiches allégées des décédés récents
     (``Sim.deceased``) : le moteur purge les cadavres à chaque tick, donc
     sans ce tampon l'option « Tous » du dock serait identique à « Vivants ».
+    Les décédés n'existent QUE dans « Tous ».
     """
     from .diagnostics import agent_snapshot
 
     rows = []
     for agent in sim.agents:
-        if not agent.alive:
+        if not agent.alive or float(getattr(agent, "health", 0.0)) <= 0.0:
             continue
         snap = agent_snapshot(sim, agent)
         if snap is not None:

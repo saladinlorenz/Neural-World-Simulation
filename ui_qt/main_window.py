@@ -65,6 +65,9 @@ class MainWindow(QMainWindow):
         self._tools_dock.refresh()
         self._setup_timer()
         self._restore_settings()
+        # main_qt applique ui_state sauvegarde AVANT la creation de la
+        # fenetre : l'overlay restaure doit rejoindre combo + carte ici.
+        self._apply_active_overlay()
 
     def add_menu_action(self, menu, text, slot, shortcut=None, tooltip=None):
         """Ajoute une entree de menu (Lot B) avec raccourci optionnel.
@@ -264,9 +267,24 @@ class MainWindow(QMainWindow):
                 Qt.ItemDataRole.ToolTipRole,
             )
         self._overlay_combo.currentIndexChanged.connect(self._on_overlay_change)
-        self._overlay_combo.setToolTip(overlay.mode_help("normal"))
+        self._overlay_combo.setToolTip(
+            "Vue normale = monde vivant. Overlay = réponse à UNE seule "
+            "question scientifique (jamais cumulés).")
         tb.addWidget(QLabel("Vue: "))
         tb.addWidget(self._overlay_combo)
+
+        # ── Alertes WORLD ALIVE : rares, significatives, actionnables ──
+        # Un seul bouton : libellé = alerte la plus grave (+N autres).
+        # Clic = sélectionne l'habitant concerné + centre la caméra.
+        # Calcul pur O(n) dans _refresh_status (~5 Hz), jamais de spam.
+        self._alert_btn = QPushButton("✓ Calme")
+        self._alert_btn.setToolTip(
+            "Alertes monde vivant : famine, soif, blocage, blessé, "
+            "simulation lente. Clic = aller voir.")
+        self._alert_btn.setFlat(True)
+        self._alert_btn.clicked.connect(self._on_alert_click)
+        tb.addWidget(self._alert_btn)
+        self._current_alerts = []
 
         tb.addSeparator()
         # Curseur de vitesse (complement des presets : 1 a 8)
@@ -285,6 +303,14 @@ class MainWindow(QMainWindow):
             "Mode détail faible : points au zoom loin, pas d'ombres/halos/effets")
         self._low_detail_action.toggled.connect(self._toggle_low_detail)
         tb.addAction(self._low_detail_action)
+
+        # Bascule mode performance maximum
+        self._perf_mode_action = QAction("Mode performance maximal (M)", self, checkable=True)
+        self._perf_mode_action.setShortcut("M")
+        self._perf_mode_action.setToolTip(
+            "Mode performance : réduit la charge visuelle pour maintenir 60 FPS simulation")
+        self._perf_mode_action.toggled.connect(self._toggle_performance_mode)
+        tb.addAction(self._perf_mode_action)
 
         # Raccourcis clavier 1..8 : une touche = une vitesse
         for speed in range(1, 9):
@@ -461,12 +487,14 @@ class MainWindow(QMainWindow):
         # showMessage (messages temporaires) reste libre a gauche.
         self._clock_pill = StatusPill("⏱ —", "#91A0B2")
         self._season_pill = StatusPill("🌱 —", "#62D394")
+        self._weather_pill = StatusPill("🌧 —", "#62D394")
         self._population_pill = StatusPill("◉ 0", "#4CC9F0")
         self._speed_pill = StatusPill("⚡ 1×", "#F6BD60")
         self._state_pill = StatusPill("▮▮ En pause", "#A78BFA")
         self._tile_pill = StatusPill("⌖ —", "#91A0B2")
         self._performance_pill = StatusPill("0 FPS · 0.0 TPS", "#91A0B2")
-        for pill in (self._clock_pill, self._season_pill, self._population_pill,
+        for pill in (self._clock_pill, self._season_pill, self._weather_pill,
+                     self._population_pill,
                      self._speed_pill, self._state_pill, self._tile_pill,
                      self._performance_pill):
             self._status.addPermanentWidget(pill)
@@ -548,7 +576,7 @@ class MainWindow(QMainWindow):
 
     def _toggle_grid(self, checked):
         self._map.debug_show_grid = bool(checked)
-        self._map.update()
+        self._map.request_render()
 
     def _toggle_legend(self, checked):
         self._map.show_legend = bool(checked)
@@ -671,7 +699,7 @@ class MainWindow(QMainWindow):
         # Mettre à jour la carte (tous les 3 ticks = ~6-7 Hz visuel à 20 FPS)
         MAP_REDRAW_EVERY = 3
         if self._tick_count % MAP_REDRAW_EVERY == 0:
-            self._map.update()
+            self._map.request_render()
 
         ui_ms = (time.perf_counter() - ui_started) * 1000.0
         total_ms = (time.perf_counter() - frame_started) * 1000.0
@@ -704,9 +732,13 @@ class MainWindow(QMainWindow):
 
         Ne rafraîchit que les docks visibles pour économiser l'UI.
         Fréquence par défaut augmentée à 8 ticks (Phase 4).
+        En mode performance, les rafraîchissements sont espacés à 25 ticks.
         """
+        perf_mode = getattr(self, '_perf_mode', False)
         snap_every = max(1, int(
             (self.controller.sim.runtime or {}).get("snapshot_frequency", 8)))
+        if perf_mode:
+            snap_every = max(snap_every, 25)
         if self._tick_count % snap_every == 0:
             if self._pop_dock.isVisible():
                 self._pop_dock.refresh()
@@ -716,12 +748,14 @@ class MainWindow(QMainWindow):
                 self._anima_dock.refresh()
             if self._journal_dock.isVisible():
                 self._journal_dock.refresh()
-            if self._society_dock.isVisible():
-                self._society_dock.refresh()
-            if self._tools_dock.isVisible():
-                self._tools_dock.refresh()
-            if self._tile_dock.isVisible():
-                self._tile_dock.refresh()
+            # Docks lourds sautés en mode performance sauf snapshot freq
+            if not perf_mode:
+                if self._society_dock.isVisible():
+                    self._society_dock.refresh()
+                if self._tools_dock.isVisible():
+                    self._tools_dock.refresh()
+                if self._tile_dock.isVisible():
+                    self._tile_dock.refresh()
         # Catalogue lourd : une fois par seconde, et seulement a l'ecran.
         if self._tick_count % 60 == 0 and self._assets_dock.isVisible():
             refresh = getattr(self._assets_dock, "refresh_if_dirty", None)
@@ -770,6 +804,11 @@ class MainWindow(QMainWindow):
         self._clock_pill.setText("⏱ %s" % label if label else "⏱ —")
         season = str(clock.get("season", "") or "")
         self._season_pill.setText("🌱 %s" % season if season else "🌱 —")
+        rain = float(clock.get("rain", 0.0))
+        wind = clock.get("wind", (0.0, 0.0))
+        wstr = "%.2f" % (float(wind[0]) if wind else 0.0)
+        self._weather_pill.setText("🌧 %.0f%% · 🌬 %s" % (
+            rain * 100, wstr))
         self._population_pill.setText("◉ %d" % snap["population"])
         self._speed_pill.setText("⚡ %d×" % snap["speed"])
 
@@ -813,6 +852,30 @@ class MainWindow(QMainWindow):
             self._performance_pill.set_pill_color("#91A0B2")  # default gray
 
         self._seed_label.setText("graine %s" % getattr(sim, "seed", "?"))
+        # ── Alertes WORLD ALIVE (5 Hz, O(n) borné, clic actionnable) ──
+        try:
+            from game.alerts import compute_alerts, alert_button_text
+            self._current_alerts = compute_alerts(
+                sim, tps=getattr(self, "actual_tps", None))
+            self._alert_btn.setText(alert_button_text(self._current_alerts))
+            if self._current_alerts:
+                top = self._current_alerts[0]
+                sev = top.get("severity", "info")
+                color = ("#E08A7A" if sev == "critical"
+                         else ("#F6BD60" if sev == "warn" else "#91A0B2"))
+                self._alert_btn.setStyleSheet("color: %s; font-weight: bold;" % color)
+                tip = "\n".join(
+                    "%s — %s" % (a.get("title", "?"), a.get("detail", ""))
+                    for a in self._current_alerts)
+                self._alert_btn.setToolTip(
+                    "Alertes (clic = aller voir) :\n" + tip)
+            else:
+                self._alert_btn.setStyleSheet("color: #62D394;")
+                self._alert_btn.setToolTip(
+                    "Alertes monde vivant : famine, soif, blocage, blessé, "
+                    "simulation lente. Clic = aller voir.")
+        except Exception:
+            pass
         # Indicateur LAB WORLD : état réel (mode labo + pause effective),
         # sinon le scénario actif de la fenêtre.
         if bool(getattr(sim, "blank_world", False)):
@@ -843,6 +906,23 @@ class MainWindow(QMainWindow):
         else:
             self._status.showMessage("Mode détail normal", 3000)
 
+    def _toggle_performance_mode(self, checked):
+        """Bascule le mode performance maximal.
+
+        En mode performance :
+        - La carte ne se rafraîchit que toutes les 25 ticks minimum
+        - Les docks lourds sont sautés
+        - La qualité des effets est réduite
+        """
+        self._perf_mode = checked
+        self._perf_mode_action.setChecked(checked)
+        if checked:
+            self._status.showMessage("Mode performance activé (M)", 3000)
+            # Forcer un rafraîchissement léger immédiat
+            self._map.request_render_now()
+        else:
+            self._status.showMessage("Mode performance désactivé", 3000)
+
     def _on_follow(self, checked):
         self.controller.ui_state.follow_selected = checked
 
@@ -859,6 +939,9 @@ class MainWindow(QMainWindow):
             self._map.invalidate_all_caches()
             self._active_scenario = "manual"
             self._refresh_all_docks()
+            # La commande « load » a restaure ui_state.active_overlay :
+            # reposer le combo Vue et le mode de la carte dessus.
+            self._apply_active_overlay()
             self._status.showMessage("Partie chargee", 3000)
 
     def _on_agent_selected(self, eid):
@@ -869,6 +952,33 @@ class MainWindow(QMainWindow):
         # setChecked n'émet pas triggered : pas de récursion vers _on_follow.
         self._follow_action.setChecked(True)
         self._inspector_dock.raise_()
+
+    def _on_alert_click(self):
+        """Clic alerte → sélectionne + centre (WORLD ALIVE actionnable)."""
+        alerts = list(getattr(self, "_current_alerts", []) or [])
+        target = next((a for a in alerts if a.get("eid") is not None), None)
+        if target is None:
+            self._status.showMessage("Aucune alerte localisée — monde calme", 3000)
+            return
+        try:
+            eid = int(target["eid"])
+        except (TypeError, ValueError):
+            return
+        self._on_agent_selected(eid)
+        # Centre la caméra sur l'habitant (coordonnées monde réelles).
+        try:
+            agent = next((a for a in self.controller.sim.agents
+                          if a.eid == eid and a.alive), None)
+            if agent is not None:
+                self._map.transform.center_on(
+                    float(agent.x), float(agent.y),
+                    self._map.width(), self._map.height())
+                self._map.update()
+            self._status.showMessage(
+                "%s — %s" % (target.get("title", "Alerte"),
+                             target.get("detail", "")), 5000)
+        except Exception:
+            pass
 
     def _on_map_clicked(self):
         """Un clic sur la carte prend la main : fin du suivi automatique."""
@@ -980,10 +1090,138 @@ class MainWindow(QMainWindow):
         )
         self._comparison_panel.show()
 
+    def _apply_active_overlay(self):
+        """Repose ``ui_state.active_overlay`` sur le combo Vue et la carte.
+
+        Appele au demarrage (main_qt restaure l'etat AVANT la fenetre) et
+        apres un chargement. Silencieux : un combo ou une carte manquant
+        ne doit jamais faire echouer un load.
+        """
+        try:
+            mode = str(getattr(self.controller.ui_state, "active_overlay",
+                               "") or "normal")
+            combo = getattr(self, "_overlay_combo", None)
+            if combo is not None:
+                index = combo.findData(mode)
+                if index >= 0 and index != combo.currentIndex():
+                    # setCurrentIndex emet currentIndexChanged : on bloque
+                    # pour ne pas rejouer la commande set_overlay.
+                    combo.blockSignals(True)
+                    try:
+                        combo.setCurrentIndex(index)
+                        combo.setToolTip(WorldOverlay().mode_help(mode))
+                    finally:
+                        combo.blockSignals(False)
+            if getattr(self, "_map", None) is not None:
+                self._map.set_overlay_mode(mode)
+        except Exception:
+            pass
+
     def _open_overlay_config(self):
-        from PyQt6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Overlay", 
-            "Utilisez le sélecteur 'Vue' dans la barre d'outils pour changer l'overlay de la carte.")
+        """Dialogue « Configurer l'overlay » : mode, légende sur la carte
+        et agent de contexte. Chaque changement est appliqué immédiatement
+        (rien n'est persisté hors de ui_state pour le mode)."""
+        from PyQt6.QtWidgets import (QDialog, QComboBox, QCheckBox,
+                                      QDialogButtonBox, QFormLayout,
+                                      QVBoxLayout)
+        from ui_qt.studio.world_overlay import MODES, CONTEXT_MODES, OVERLAY_HELP
+
+        overlay = WorldOverlay()
+        current = str(getattr(self.controller.ui_state, "active_overlay",
+                              "normal") or "normal")
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Configurer l'overlay")
+        layout = QVBoxLayout(dialog)
+        form = QFormLayout()
+
+        # ── Overlay : mêmes ids/labels que le sélecteur « Vue » ──
+        overlay_combo = QComboBox()
+        for m in MODES:
+            overlay_combo.addItem(overlay.mode_label(m), m)
+        index = overlay_combo.findData(current)
+        overlay_combo.setCurrentIndex(index if index >= 0 else 0)
+        form.addRow("Overlay", overlay_combo)
+
+        # ── Agent de contexte : « Aucun » + habitants vivants ──
+        agent_combo = QComboBox()
+        agent_combo.addItem("Aucun", None)
+        try:
+            from game.ui_snapshots import population_snapshot
+            for row in population_snapshot(self.controller.sim):
+                eid = row.get("eid")
+                name = str(row.get("name") or eid)
+                agent_combo.addItem(name, eid)
+        except Exception:
+            pass
+        selected = getattr(self.controller.sim, "selected", None)
+        sel_eid = getattr(selected, "eid", None) if selected is not None else None
+        if sel_eid is not None:
+            j = agent_combo.findData(sel_eid)
+            if j >= 0:
+                agent_combo.setCurrentIndex(j)
+        agent_combo.setToolTip(
+            "Habitant utilisé par les overlays exigeant une sélection : "
+            + ", ".join(sorted(CONTEXT_MODES)) + ".")
+        form.addRow("Agent de contexte", agent_combo)
+        layout.addLayout(form)
+
+        # ── Légende d'overlay sur la carte (attribut MapView, non persisté) ──
+        legend_check = QCheckBox("Afficher la légende de l'overlay sur la carte")
+        legend_check.setChecked(bool(getattr(self, "_map", None) is not None
+                                     and getattr(self._map,
+                                                 "show_overlay_legend", True)))
+        layout.addWidget(legend_check)
+
+        # ── Aide du mode choisi (OVERLAY_HELP) ──
+        help_label = QLabel(OVERLAY_HELP.get(current, ""))
+        help_label.setWordWrap(True)
+        layout.addWidget(help_label)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Close)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        def apply_mode(mode):
+            help_label.setText(OVERLAY_HELP.get(mode, ""))
+            bar = getattr(self, "_overlay_combo", None)
+            if bar is not None:
+                j = bar.findData(mode)
+                if j >= 0:
+                    # Même chemin que _on_overlay_change (commande + carte).
+                    bar.setCurrentIndex(j)
+                    return
+            result = self.controller.execute({"kind": "set_overlay",
+                                              "overlay": mode})
+            self.report_command_result(result)
+            if result.get("ok") and getattr(self, "_map", None) is not None:
+                self._map.set_overlay_mode(
+                    self.controller.ui_state.active_overlay)
+
+        def on_mode_changed(idx):
+            mode = overlay_combo.itemData(idx)
+            if mode:
+                apply_mode(str(mode))
+
+        def on_agent_changed(idx):
+            eid = agent_combo.itemData(idx)
+            command = ({"kind": "select_agent"} if eid is None
+                       else {"kind": "select_agent", "eid": eid})
+            self.report_command_result(self.controller.execute(command))
+
+        def on_legend_toggled(checked):
+            if getattr(self, "_map", None) is None:
+                return
+            self._map.show_overlay_legend = bool(checked)
+            self._map.update()
+
+        overlay_combo.currentIndexChanged.connect(on_mode_changed)
+        agent_combo.currentIndexChanged.connect(on_agent_changed)
+        legend_check.toggled.connect(on_legend_toggled)
+        dialog.exec()
 
     def _on_overlay_change(self, index):
         mode = self._overlay_combo.currentData()

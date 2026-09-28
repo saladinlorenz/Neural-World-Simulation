@@ -69,10 +69,11 @@ def export_full_report(result, timeline_events=None, directory="."):
 
     exports = {}
     exports["txt"] = export_txt(report, f"{directory}/{base}.txt")
-    exports["markdown"] = export_markdown(
-        report, timeline_events, result.get("metrics", {}),
-        f"{directory}/{base}.md"
+    md_path = f"{directory}/{base}.md"
+    export_markdown(
+        report, timeline_events, result.get("metrics", {}), md_path
     )
+    exports["markdown"] = md_path
     exports["csv"] = export_csv(result.get("metrics", {}), f"{directory}/{base}.metrics.csv")
     exports["json"] = export_json(result, f"{directory}/{base}.json")
 

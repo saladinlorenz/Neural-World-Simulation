@@ -63,16 +63,16 @@ A run can start with a tiny population for close behavioral debugging, a standar
 
 ```bash
 # Minimal behavior inspection
-python mainqt.py --agents 2 --sheep 2 --seed 7
+python main_qt.py --agents 2 --sheep 2 --seed 7
 
 # Standard living-world run
-python mainqt.py --agents 60 --sheep 40 --seed 7
+python main_qt.py --agents 60 --sheep 40 --seed 7
 
 # Larger experiment; practical limits depend on enabled systems and hardware
-python mainqt.py --agents 300 --sheep 120 --seed 7
+python main_qt.py --agents 300 --sheep 120 --seed 7
 
 # Empty world for manual setup and controlled experiments
-python mainqt.py --blank 1
+python main_qt.py --blank 1
 ```
 
 The population is not fixed. Screenshot commands may use a chosen population for demonstration, but the simulation itself is configurable.
@@ -214,6 +214,30 @@ Each `Being` combines several layers that are usually separate in smaller simula
 
 The ambition is not to claim human-level minds. The ambition is to make social and individual behavior structurally richer than a finite-state NPC loop while remaining inspectable.
 
+### Anti-passivity: the life drive
+
+Inhabitants do not idly rest at full energy. A `life_drive` pressure rises while a
+healthy inhabitant stays passive and falls after a meaningful action (eating,
+harvesting, drinking, building, depositing, talking):
+
+```text
+passive while healthy  → life_drive grows (personality-dependent)
+meaningful action      → life_drive drops, passive counter resets
+life_drive high        → REST is penalized, explore/harvest/social/build are boosted
+enough drive           → real opportunities are sought before any rest fallback
+```
+
+The drive decays over long horizons (thousands of ticks) and never overrides
+night sleep, pain, fear, rain, hunger or a child's needs.
+
+### Living-world progression
+
+- a causal activity loop records outcomes and credits actions to anima, intention and episodic memory;
+- inhabitants remember and rediscover resource sites (discovery, last harvest, depletion) and launch food expeditions toward known sites;
+- relationships progress through proposals, bonds (one man and one woman), betrayal records, trust/affection build-up and idle conversation;
+- children inherit skills, habits, memories, attachments and a blend of parental/champion traits at birth;
+- sheep are an ecological state machine (graze / wander / flee / flock) with no neural brain, keeping the brain budget for inhabitants.
+
 ---
 
 ## A large world with local knowledge
@@ -282,9 +306,15 @@ Neural World Simulation is also a desktop laboratory application. The Studio is 
 - inhabitants, sheep, predators, resources, storage, crops, construction, graves and effects;
 - day/night, rain, lightning, fire glow and social effects;
 - tile inspection;
-- terrain editing: water, land, walls, floors, blocks, carving, restoration, erase and asset placement;
+- terrain editing: water, land, walls, floors, blocks, erase and asset placement;
+- professional terrain sculpting: flatten, raise, carve and restore-to-procedural;
+- ground/biome painting: grass, sand, dirt, water and rock;
+- live brush preview (read-only): brush circle, current → predicted altitude, biome and affected object count;
+- terrain parameters: brush strength, falloff, target height, continuous/single-stroke mode and object policy (remove / skip / cancel);
+- one undo entry per stroke with an `Undo: <tool>` status message;
 - inhabitant, sheep and predator spawning;
 - custom tool creation and asset selection;
+- overlay color legend per mode (auto-hidden when no context agent is selected);
 - undo/redo for world edits.
 
 ## Population and inspection panels
@@ -309,7 +339,12 @@ The inspector is a diagnostic surface for a selected inhabitant. It can expose:
 - social relations, trust and affinity;
 - identity, values, trauma, episodic memory, plans and reputation;
 - neural size, decision frequency, action ranking, strategy and target data;
-- evaluated action possibilities and activity data where available.
+- evaluated action possibilities and activity data where available;
+- a plain-language narrative of the current situation plus a rolling
+  narrative history (last 40 entries with ticks);
+- a second narrative line for deliberation ("hesitates between N actions…")
+  and the last thing said or heard;
+- life episodes and spawn template cards.
 
 ### Anima
 
@@ -341,7 +376,10 @@ The Anima view provides a higher-level view of each inhabitant’s lived state:
 ### Timeline
 
 - normalized events across life, family, social, danger, construction, economy, culture, weather and death;
-- category and text filtering;
+- category labels with registry colors and aggregation counts;
+- category, text, tick-range and importance filters;
+- natural French event sentences generated from real journal messages;
+- double-click a row to select the actor or center the tile;
 - time-oriented investigation of a simulation run.
 
 ## Laboratory panels
@@ -350,11 +388,12 @@ The Anima view provides a higher-level view of each inhabitant’s lived state:
 |---|---|
 | **Parameters** | Edit runtime population, world, simulation, Anima, ecology and performance parameters |
 | **Scenarios** | Apply controlled presets such as calm, danger, famine, culture, trauma and social experiments |
-| **Laboratory report** | Build readable summaries and metrics from a run |
+| **Laboratory report** | Generate a report of the *current* world (population, weather, metrics, interpretation) or read A/B results |
+| **Exports** | One-click full report (TXT + MD + CSV + JSON) plus raw lab recorder data (JSONL/CSV) |
 | **Comparison** | Compare A/B experiment results, differences and interpretation |
 | **Timeline** | Inspect event sequences and history |
 | **Overlays** | Examine resources, danger, memory, relations, needs, Anima, culture, institutions and territories |
-| **Exports** | Produce JSON, CSV, TXT and report-friendly data |
+| **Overlay config** | Dialog to pick the overlay, its context agent and the on-map color legend |
 
 The laboratory is central to the project. A contributor should be able to ask:
 
@@ -418,25 +457,25 @@ pip install -r requirements.txt
 Run a small observation world:
 
 ```bash
-python mainqt.py --agents 2 --sheep 2 --seed 7
+python main_qt.py --agents 2 --sheep 2 --seed 7
 ```
 
 Run a populated world:
 
 ```bash
-python mainqt.py --agents 60 --sheep 40 --seed 7
+python main_qt.py --agents 60 --sheep 40 --seed 7
 ```
 
 Run an empty editable world:
 
 ```bash
-python mainqt.py --blank 1
+python main_qt.py --blank 1
 ```
 
 Set initial simulation speed:
 
 ```bash
-python mainqt.py --agents 60 --sheep 40 --seed 7 --speed 4
+python main_qt.py --agents 60 --sheep 40 --seed 7 --speed 4
 ```
 
 ### Headless screenshots
@@ -465,15 +504,25 @@ python -m pytest tests -x -q
 ```
 
 ```bash
-python -m compileall game uiqt tests mainqt.py
+python -m compileall game ui_qt tests main_qt.py
 ```
+
+### Live performance diagnosis
+
+```bash
+python tools/diagnose_live_app.py --seconds 20 --agents 8 --sheep 4 --seed 7
+```
+
+Profiles the real GUI (not a headless proxy) and writes
+`data/profiling/live_gui_diagnosis.txt` with measured FPS, TPS, sim/render
+milliseconds and the top slowest functions grouped by subsystem.
 
 ---
 
 ## Architecture
 
 ```text
-mainqt.py
+main_qt.py
 │   PyQt6 application entry point.
 │   Creates the world, seeds life, creates SimulationController and MainWindow.
 │
@@ -483,7 +532,7 @@ mainqt.py
 │   ├── simulation.py
 │   │   Core living-world contract: sensing, feasibility, goals, movement,
 │   │   actions, metabolism, rewards, social processes and world updates.
-│   ├── brain.py / brainapi.py / brainschema.py
+│   ├── brain.py / brain_api.py / brain_schema.py
 │   │   Elman RNN, REINFORCE, structured 132-input schema,
 │   │   action/strategy/target heads and explanation support.
 │   ├── entities.py
@@ -493,26 +542,31 @@ mainqt.py
 │   │   construction state and localized ecological sites.
 │   ├── actioncandidate.py
 │   │   Candidate variants derived from perception and memory.
-│   ├── affordancedefinitions.py / assetsmanager.py / assetsapi.py
+│   ├── affordance_definitions.py / assets_manager.py / assets_api.py
 │   │   Asset semantics, affordances, tools, resources and recipes.
-│   ├── construction.py / storage.py / socialmemory.py
+│   ├── construction.py / storage.py / social_memory.py
 │   │   Buildings, material storage and social records.
-│   ├── universalknowledge.py / academy.py
+│   ├── universal_knowledge.py / academy.py
 │   │   Verified shared knowledge and learned-brain/cultural support.
-│   ├── lab.py / history.py
-│   │   Event recording, experimental history and reporting data.
+│   ├── lab.py / history.py / diagnostics.py / alerts.py / perfmetrics.py
+│   │   Event recording, experimental history, readable diagnostics,
+│   │   live alerts and performance metrics.
 │   ├── mapapi.py / mapcache.py
 │   │   Map transforms, terrain caches and chunk rendering support.
 │   ├── save.py / invariants.py
 │   │   Persistence and world consistency support.
-│   └── simulationcontroller.py / uicommands.py / uistate.py / uisnapshots.py
+│   ├── studio_timeline.py / studio_reports.py / studio_export.py
+│   │   Timeline normalization, laboratory reports and multi-format exports.
+│   └── simulation_controller.py / ui_commands.py / ui_state.py
+│       / ui_snapshots.py / ui_registry.py
 │       Validated bridge between engine and Studio UI.
 │
-├── uiqt/
-│   ├── mainwindow.py
+├── ui_qt/
+│   ├── main_window.py
 │   │   Studio shell: toolbar, menus, docks, timers, status and theme.
 │   ├── map/
-│   │   Map view, terrain chunks, minimap, effects and overlay integration.
+│   │   Map view, terrain chunks, minimap, effects, brush preview
+│   │   and overlay integration.
 │   ├── docks/
 │   │   Inspector, population, journal, society, tile, tools and assets panels.
 │   ├── studio/
@@ -528,7 +582,8 @@ mainqt.py
 ├── tests/
 │   Behavior, activity, assets, terrain, save/load, overlays, UI and soak tests.
 ├── tools/
-│   Headless screenshot and documentation tooling.
+│   Headless screenshots, documentation tooling and the live GUI profiler
+│   (tools/diagnose_live_app.py).
 └── docs/img/
     README images: hero.png and interface.png.
 ```
@@ -546,10 +601,15 @@ Current foundations include:
 - entity spatial buckets;
 - terrain image cache and 64 × 64 chunks;
 - visible-region rendering;
-- rendering budgets for broad map views;
+- bounded render cadence by zoom (about 8 / 15 / 25 FPS depending on zoom level) instead of painting every frame;
+- far-zoom level of detail drawn from grid buckets (one representative per bucket, no per-tile loop);
+- single-pass perception: bounded density scans, staggered full perception and per-tick cached context;
+- revision-gated dock refreshes (population table only rebuilds when the population or its filters changed);
 - snapshot-driven Studio panels;
 - bounded event and memory structures;
-- headless execution for longer experiments.
+- headless execution for longer experiments;
+- a live GUI profiler that reports real FPS/TPS/sim/render numbers and the
+  dominant bottleneck: `python tools/diagnose_live_app.py --seconds 20`.
 
 High-impact contribution opportunities include:
 

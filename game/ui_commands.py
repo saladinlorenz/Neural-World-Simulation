@@ -279,21 +279,58 @@ def can_place(world, am, tx: int, ty: int, aid: int) -> tuple[bool, str]:
     return True, ""
 
 
+#: Mots-clés (chemin/nom d'asset, minuscules) servant à choisir le tileset
+#: de sol de chaque outil de peinture.
+_PAINT_FLOOR_KEYWORDS = {
+    "grass": ("grass", "prairie", "herbe"),
+    "sand": ("sand", "sable"),
+    "dirt": ("dirt", "terre", "mud", "ground"),
+    "rock": ("rock", "stone", "pierre", "roche"),
+}
+
+
 def _cmd_paint_tile(sim, cmd):
-    """Peint un mode sur une zone de tuiles (water, land, wall)."""
+    """Peint un mode sur une zone de tuiles (water, land, wall, paint_*)."""
     tx = int(cmd.get("tx", 0))
     ty = int(cmd.get("ty", 0))
-    mode = cmd.get("mode", "land")
+    mode = str(cmd.get("mode", "land"))
     radius = max(1, min(15, int(cmd.get("radius", 1))))
     w = sim.w
+    structured = mode.startswith("paint_")
+    key = mode[6:] if structured else mode
+    allowed = ("water", "grass", "sand", "dirt", "rock") if structured \
+        else ("water", "land", "wall")
 
-    if mode not in ("water", "land", "wall"):
+    if key not in allowed:
         return {"ok": False, "error": f"Mode de peinture inconnu: {mode}"}
     if not (0 <= tx < w.g and 0 <= ty < w.g):
         return {"ok": False, "error": "Coordonnees hors monde"}
 
+    gen = getattr(w, "gen", None)
+    biome_id = None
+    floor_tile = None
+    if key in ("grass", "sand", "dirt", "rock"):
+        from game import worldgen as _wg
+        # pas de biome "terre" : dirt ne touche que le sol
+        biome_id = {"grass": _wg.BIOME_GRASS, "sand": _wg.BIOME_SAND,
+                    "rock": _wg.BIOME_ROCK}.get(key)
+        sheet_idx = None
+        for i, fid in enumerate(sim.am.floors):
+            adef = sim.am.assets[fid]
+            hay = f"{getattr(adef, 'path', '')} {getattr(adef, 'name', '')}".lower()
+            if any(k in hay for k in _PAINT_FLOOR_KEYWORDS.get(key, ())):
+                sheet_idx = i
+                break
+        if sheet_idx is None and sim.am.floors:
+            sheet_idx = 0
+        if sheet_idx is not None:
+            floor_tile = sheet_idx * 216
+
     changed = False
     missing_pool = False
+    tiles = 0
+    objects_removed = 0
+    biome_changed = False
     for dy in range(-radius, radius + 1):
         for dx in range(-radius, radius + 1):
             if dx * dx + dy * dy > radius * radius + 1:
@@ -302,8 +339,10 @@ def _cmd_paint_tile(sim, cmd):
             if not (0 <= cx < w.g and 0 <= cy < w.g):
                 continue
 
-            if mode == "water":
+            if key == "water":
                 if w.land[cy, cx]:
+                    if w.content[cy, cx] >= 0:
+                        objects_removed += 1
                     w.remove(cx, cy, quiet=True)
                     w.land[cy, cx] = 0
                     w.water[cy, cx] = 1
@@ -311,7 +350,8 @@ def _cmd_paint_tile(sim, cmd):
                     w.floor[cy, cx] = -1
                     w.mark_dirty(cx, cy, 2)
                     changed = True
-            elif mode == "land":
+                    tiles += 1
+            elif key == "land":
                 if not w.land[cy, cx] or w.blocked[cy, cx]:
                     w.land[cy, cx] = 1
                     w.water[cy, cx] = 0
@@ -319,7 +359,7 @@ def _cmd_paint_tile(sim, cmd):
                     w.floor[cy, cx] = -1
                     w.mark_dirty(cx, cy, 2)
                     changed = True
-            elif mode == "wall":
+            elif key == "wall":
                 if w.land[cy, cx] and not w.blocked[cy, cx] and w.content_at(cx, cy) < 0:
                     stones = sim.am.pool("stone_res") or sim.am.pool("gold_stone")
                     if stones:
@@ -329,6 +369,29 @@ def _cmd_paint_tile(sim, cmd):
                         changed = True
                     else:
                         missing_pool = True
+            else:
+                if w.land[cy, cx] and not w.water[cy, cx]:
+                    if biome_id is not None and gen is not None:
+                        gen.biome[cy, cx] = biome_id
+                        biome_changed = True
+                    if floor_tile is not None:
+                        w.set_floor(cx, cy, floor_tile)
+                    w.mark_dirty(cx, cy, 2)
+                    changed = True
+                    tiles += 1
+
+    if biome_changed:
+        # pas de _sync_layers : il recalculerait le biome depuis la hauteur
+        y0, y1 = max(0, ty - radius), min(w.g, ty + radius + 1)
+        x0, x1 = max(0, tx - radius), min(w.g, tx + radius + 1)
+        gen.touch(y0, y1, x0, x1)
+
+    if structured:
+        result = {"ok": True, "changed": changed, "mode": mode,
+                  "tiles": tiles, "objects_removed": objects_removed}
+        if key == "dirt":
+            result["biome_unchanged"] = True
+        return result
 
     if not changed:
         if missing_pool:
@@ -411,6 +474,85 @@ def _cmd_set_floor(sim, cmd):
     return {"ok": True, "changed": changed}
 
 
+def _tool_strength(cmd, default: float) -> float:
+    """strength/falloff envoyes par la map-view, remis dans leurs bornes."""
+    try:
+        value = float(cmd["strength"]) if cmd.get("strength") is not None else None
+    except (TypeError, ValueError):
+        value = None
+    if value is None or not np.isfinite(value):
+        value = float(default)
+    else:
+        value = max(0.01, min(0.50, value))
+    falloff = cmd.get("falloff")
+    if falloff is not None:
+        try:
+            falloff = float(falloff)
+        except (TypeError, ValueError):
+            falloff = None
+        if falloff is not None and np.isfinite(falloff):
+            value *= max(0.1, min(2.0, falloff))
+    return value
+
+
+def _tool_policy(cmd) -> str:
+    """remove : les objets orphelins tombent ; skip : on sculpte quand meme
+    (les objets sont comptes dans le resultat) ; cancel : on refuse."""
+    policy = str(cmd.get("object_policy", "remove"))
+    return policy if policy in ("remove", "skip", "cancel") else "remove"
+
+
+def _tool_objects(w, gen, tx, ty, radius) -> int:
+    """Objets presents sous le pinceau (ancres sur cases terrestres)."""
+    from game import worldgen as _wg
+    br = _wg._brush(gen, tx, ty, radius)
+    if br is None:
+        return 0
+    y0, y1, x0, x1, falloff = br
+    content = getattr(w, "content", None)
+    if not isinstance(content, np.ndarray):
+        return 0
+    land = w.land[y0:y1, x0:x1] > 0
+    return int(((content[y0:y1, x0:x1] >= 0) & land & (falloff > 0)).sum())
+
+
+def _tool_cancel(objects: int, policy: str) -> dict | None:
+    if policy == "cancel" and objects > 0:
+        return {"ok": False,
+                "error": "Objets presents sous le pinceau (politique: annuler)",
+                "objects": objects, "policy": policy}
+    return None
+
+
+def _tool_target(cmd):
+    """target_height borné à [0,1], ou None."""
+    value = cmd.get("target_height")
+    if value is None:
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(value):
+        return None
+    return max(0.0, min(1.0, value))
+
+
+def _tool_apply_target(w, gen, tx, ty, radius, strength, target) -> bool:
+    """Ramène le patch de pinceau vers ``target`` puis resynchronise les couches."""
+    from game import worldgen as _wg
+    br = _wg._brush(gen, tx, ty, radius)
+    if br is None:
+        return False
+    y0, y1, x0, x1, falloff = br
+    patch = gen.height_current[y0:y1, x0:x1]
+    before = patch.copy()
+    patch += (target - patch) * np.clip(strength * falloff, 0.0, 1.0)
+    np.clip(patch, 0.0, 1.0, out=patch)
+    _wg._sync_layers(w, gen, y0, y1, x0, x1)
+    return not np.array_equal(before, patch)
+
+
 def _cmd_carve(sim, cmd):
     """Sculpte une montagne."""
     tx = int(cmd.get("tx", 0))
@@ -421,8 +563,19 @@ def _cmd_carve(sim, cmd):
     if gen is None:
         return {"ok": False, "error": "Pas de heightmap (monde plat)"}
     from game import worldgen as _wg
-    changed = _wg.carve_mountain(w, gen, tx, ty, radius=radius, strength=0.12)
-    return {"ok": True, "changed": bool(changed)}
+    strength = _tool_strength(cmd, 0.12)
+    policy = _tool_policy(cmd)
+    objects = _tool_objects(w, gen, tx, ty, radius)
+    refused = _tool_cancel(objects, policy)
+    if refused is not None:
+        return refused
+    changed = _wg.carve_mountain(w, gen, tx, ty, radius=radius, strength=strength)
+    target = _tool_target(cmd)
+    if target is not None:
+        changed = _tool_apply_target(w, gen, tx, ty, radius, strength,
+                                     target) or changed
+    return {"ok": True, "changed": bool(changed), "kind": "carve",
+            "objects": objects, "policy": policy}
 
 
 def _cmd_restore(sim, cmd):
@@ -435,8 +588,91 @@ def _cmd_restore(sim, cmd):
     if gen is None:
         return {"ok": False, "error": "Pas de heightmap (monde plat)"}
     from game import worldgen as _wg
-    changed = _wg.restore_mountain(w, gen, tx, ty, radius=radius, strength=0.18)
-    return {"ok": True, "changed": bool(changed)}
+    strength = _tool_strength(cmd, 0.18)
+    policy = _tool_policy(cmd)
+    objects = _tool_objects(w, gen, tx, ty, radius)
+    refused = _tool_cancel(objects, policy)
+    if refused is not None:
+        return refused
+    changed = _wg.restore_mountain(w, gen, tx, ty, radius=radius, strength=strength)
+    return {"ok": True, "changed": bool(changed), "kind": "restore",
+            "objects": objects, "policy": policy}
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Nouveaux outils de terrain professionnels
+# ══════════════════════════════════════════════════════════════════════════════════
+
+def _cmd_flatten(sim, cmd):
+    """Aplanit le terrain vers la moyenne locale."""
+    tx = int(cmd.get("tx", 0))
+    ty = int(cmd.get("ty", 0))
+    radius = max(1, min(15, int(cmd.get("radius", 3))))
+    w = sim.w
+    gen = getattr(w, "gen", None)
+    if gen is None:
+        return {"ok": False, "error": "Pas de heightmap (monde plat)"}
+    from game import worldgen as _wg
+    strength = _tool_strength(cmd, 0.25)
+    policy = _tool_policy(cmd)
+    objects = _tool_objects(w, gen, tx, ty, radius)
+    refused = _tool_cancel(objects, policy)
+    if refused is not None:
+        return refused
+    changed = _wg.flatten_terrain(w, gen, tx, ty, radius=radius, strength=strength)
+    target = _tool_target(cmd)
+    if target is not None:
+        changed = _tool_apply_target(w, gen, tx, ty, radius, strength,
+                                     target) or changed
+    return {"ok": True, "changed": bool(changed), "kind": "flatten",
+            "objects": objects, "policy": policy}
+
+
+def _cmd_raise_terrain(sim, cmd):
+    """Eleve le terrain (montagne)."""
+    tx = int(cmd.get("tx", 0))
+    ty = int(cmd.get("ty", 0))
+    radius = max(1, min(15, int(cmd.get("radius", 3))))
+    w = sim.w
+    gen = getattr(w, "gen", None)
+    if gen is None:
+        return {"ok": False, "error": "Pas de heightmap (monde plat)"}
+    from game import worldgen as _wg
+    strength = _tool_strength(cmd, 0.12)
+    policy = _tool_policy(cmd)
+    objects = _tool_objects(w, gen, tx, ty, radius)
+    refused = _tool_cancel(objects, policy)
+    if refused is not None:
+        return refused
+    changed = _wg.raise_terrain(w, gen, tx, ty, radius=radius, strength=strength)
+    target = _tool_target(cmd)
+    if target is not None:
+        changed = _tool_apply_target(w, gen, tx, ty, radius, strength,
+                                     target) or changed
+    return {"ok": True, "changed": bool(changed), "kind": "raise_terrain",
+            "objects": objects, "policy": policy}
+
+
+def _cmd_restore_mountain(sim, cmd):
+    """Restaure le terrain vers sa forme procedurale d'origine."""
+    tx = int(cmd.get("tx", 0))
+    ty = int(cmd.get("ty", 0))
+    radius = max(1, min(15, int(cmd.get("radius", 3))))
+    w = sim.w
+    gen = getattr(w, "gen", None)
+    if gen is None:
+        return {"ok": False, "error": "Pas de heightmap (monde plat)"}
+    from game import worldgen as _wg
+    strength = _tool_strength(cmd, 0.15)
+    policy = _tool_policy(cmd)
+    objects = _tool_objects(w, gen, tx, ty, radius)
+    refused = _tool_cancel(objects, policy)
+    if refused is not None:
+        return refused
+    changed = _wg.restore_mountain(w, gen, tx, ty, radius=radius,
+                                   strength=strength)
+    return {"ok": True, "changed": bool(changed), "kind": "restore_mountain",
+            "objects": objects, "policy": policy}
 
 
 def _cmd_build_block(sim, cmd):
@@ -493,6 +729,9 @@ _MUTATOR_RADIUS = {
     "carve": 15,
     "restore": 15,
     "build_block": 15,
+    "flatten": 15,
+    "raise_terrain": 15,
+    "restore_mountain": 15,
 }
 
 
@@ -689,6 +928,9 @@ _HANDLERS = {
     "set_floor": _cmd_set_floor,
     "carve": _cmd_carve,
     "restore": _cmd_restore,
+    "flatten": _cmd_flatten,
+    "raise_terrain": _cmd_raise_terrain,
+    "restore_mountain": _cmd_restore_mountain,
     "build_block": _cmd_build_block,
     # Historique et outils personnalisés
     "undo": _cmd_undo,
@@ -741,6 +983,24 @@ def _ui_set_overlay(ui_state, cmd):
     mode = str(cmd.get("overlay", cmd.get("mode", "")))
     if not mode:
         return {"ok": False, "error": "Overlay manquant"}
+    # Valide contre les ids EN du registre (migration FR) ET ceux de
+    # l'overlay Qt ; l'import Qt est paresseux avec repli statique pour
+    # que ce module reste utilisable sans PyQt6.
+    known = set()
+    try:
+        from .ui_registry import OVERLAY_MIGRATION
+        known.update(OVERLAY_MIGRATION.values())
+    except Exception:
+        pass
+    try:
+        from ui_qt.studio.world_overlay import MODES as _OM
+        known.update(_OM)
+    except Exception:
+        known.update(("normal", "resources", "danger", "memory", "relations",
+                      "needs", "anima", "culture", "institutions",
+                      "territories"))
+    if mode not in known:
+        return {"ok": False, "error": f"Overlay inconnu: {mode}"}
     ui_state.active_overlay = mode
     return {"ok": True, "overlay": mode}
 
@@ -749,6 +1009,52 @@ def _ui_set_brush_size(ui_state, cmd):
     size = max(1, min(15, int(cmd.get("size", cmd.get("radius", 1)))))
     ui_state.brush_size = size
     return {"ok": True, "brush_size": size}
+
+
+def _ui_set_terrain_strength(ui_state, cmd):
+    default = getattr(ui_state, "terrain_strength", 0.25)
+    value = max(0.01, min(0.50, float(cmd.get("value", default))))
+    setattr(ui_state, "terrain_strength", value)
+    return {"ok": True, "terrain_strength": value}
+
+
+def _ui_set_terrain_falloff(ui_state, cmd):
+    default = getattr(ui_state, "terrain_falloff", 1.0)
+    value = max(0.1, min(2.0, float(cmd.get("value", default))))
+    setattr(ui_state, "terrain_falloff", value)
+    return {"ok": True, "terrain_falloff": value}
+
+
+def _ui_set_brush_continuous(ui_state, cmd):
+    value = bool(cmd.get("continuous", cmd.get("value", True)))
+    setattr(ui_state, "brush_continuous", value)
+    return {"ok": True, "brush_continuous": value}
+
+
+def _ui_set_object_policy(ui_state, cmd):
+    policy = str(cmd.get("value", cmd.get("policy", "remove")))
+    if policy not in ("remove", "skip", "cancel"):
+        return {"ok": False,
+                "error": f"Politique d'objets inconnue: {policy} "
+                         "(attendu: remove, skip ou cancel)"}
+    setattr(ui_state, "object_policy", policy)
+    return {"ok": True, "object_policy": policy}
+
+
+def _ui_set_target_height(ui_state, cmd):
+    value = cmd.get("value")
+    if value is None:
+        setattr(ui_state, "target_height", None)
+        return {"ok": True, "target_height": None}
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "target_height : valeur numerique attendue"}
+    if not np.isfinite(value):
+        return {"ok": False, "error": "target_height : valeur non finie"}
+    value = max(0.0, min(1.0, value))
+    setattr(ui_state, "target_height", value)
+    return {"ok": True, "target_height": value}
 
 
 def _ui_set_block_material(ui_state, cmd):
@@ -783,6 +1089,11 @@ _UI_HANDLERS = {
     "set_mode": _ui_set_mode,
     "set_overlay": _ui_set_overlay,
     "set_brush_size": _ui_set_brush_size,
+    "set_terrain_strength": _ui_set_terrain_strength,
+    "set_terrain_falloff": _ui_set_terrain_falloff,
+    "set_brush_continuous": _ui_set_brush_continuous,
+    "set_object_policy": _ui_set_object_policy,
+    "set_target_height": _ui_set_target_height,
     "set_block_material": _ui_set_block_material,
     "set_monster_kind": _ui_set_monster_kind,
     "select_asset": _ui_select_asset,

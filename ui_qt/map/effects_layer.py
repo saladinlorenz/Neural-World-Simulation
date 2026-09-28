@@ -26,6 +26,21 @@ from game.config import GRID, TILE
 RAIN_BUDGET = 120
 FIRE_CELL_BUDGET = 400
 
+# : Qualité visuelle par défaut (tout activé). Mis à jour via set_quality().
+QUALITY_DEFAULT = {"rain": True, "lightning": True, "fire": True, "social": True}
+
+
+def set_quality(self, quality: dict):
+        """Configure la qualité visuelle des effets.
+
+        ``quality`` est un dictionnaire de booléens par clé :
+        - ``rain`` : effets de pluie
+        - ``lightning`` : éclairs
+        - ``fire`` : lueur du feu
+        - ``social`` : dons et paroles (Lot J)
+        """
+        self.quality = {**QUALITY_DEFAULT, **quality}
+
 
 def _night_table():
     """32 teintes : index 0 = nuit noire, 31 = plein jour (alpha nul)."""
@@ -86,7 +101,15 @@ def draw_talk_effect(painter: QPainter, effect, transform, tick: int):
 
 
 class EffectsLayer:
-    """Couche meteo/ambiance peinte apres les entites, avant la legende."""
+    """Couche meteo/ambiance peinte apres les entites, avant la legende.
+
+    ``rain_mode`` gouverne l'affichage visuel de la meteo :
+    * ``"normal"`` (defaut) — pas de pluie ni foudre a l'ecran ;
+    * ``"full"`` — pluie (120 traits), flash de foudre et halos
+      de feu proches.
+    Le moteur (pluie, vent, temperature, feu, croissance) reste
+    actif dans tous les modes.
+    """
 
     def __init__(self):
         self._night = _night_table()
@@ -97,6 +120,13 @@ class EffectsLayer:
         self._rain[:, 2] = rng.uniform(0.6, 1.4, RAIN_BUDGET)
         self._rain[:, 3] = rng.uniform(10.0, 22.0, RAIN_BUDGET)
         self._halo_pixmap: QPixmap | None = None
+        self.rain_mode = "normal"  # "normal" | "full"
+
+    def set_rain_mode(self, mode: str) -> None:
+        """Mode d'affichage visuel de la meteo : ``"normal"`` (defaut,
+        pas de pluie/foudre) ou ``"full"`` (pluie + foudre).
+        Le moteur reste acte dans les deux cas."""
+        self.rain_mode = "full" if mode == "full" else "normal"
 
     # ------------------------------------------------------------------ nuit
 
@@ -131,13 +161,16 @@ class EffectsLayer:
         return pixmap
 
     def paint_fire_glow(self, painter: QPainter, transform, sim, sw: int, sh: int):
+        """Halo de feu : desactive au zoom eloigne pour alleger le rendu."""
         fire = getattr(sim.w, "fire", None)
         if fire is None:
+            return
+        if transform.zoom < 0.6:
             return
         x0, y0, x1, y1 = transform.visible_tiles(TILE, GRID, sw, sh)
         x0, y0 = max(0, int(x0)), max(0, int(y0))
         x1, y1 = min(int(fire.shape[1]), int(x1)), min(int(fire.shape[0]), int(y1))
-        if x1 <= x0 or y1 <= y0:
+        if x1 <= 0 or y1 <= 0:
             return
         ys, xs = np.nonzero(fire[y0:y1, x0:x1] > 0)
         if ys.size == 0:
@@ -159,7 +192,7 @@ class EffectsLayer:
 
     def paint_rain(self, painter: QPainter, clock, tick: int, sw: int, sh: int,
                    zoom: float):
-        if clock is None or zoom < 0.4:
+        if self.rain_mode != "full" or clock is None or zoom < 0.4:
             return
         rain = float(getattr(clock, "rain", 0.0))
         if rain <= 0.05:
@@ -180,7 +213,7 @@ class EffectsLayer:
 
     def paint_lightning(self, painter: QPainter, clock, tick: int,
                         sw: int, sh: int):
-        if clock is None:
+        if self.rain_mode != "full" or clock is None:
             return
         last = int(getattr(clock, "lightning_tick", -10))
         if 0 <= tick - last < 3:
@@ -209,8 +242,18 @@ class EffectsLayer:
     def paint(self, painter: QPainter, transform, sim, sw: int, sh: int):
         clock = getattr(sim, "clock", None)
         tick = int(getattr(sim.w, "tick", 0))
-        self.paint_social_effects(painter, transform, sim, tick)
+        quality = getattr(self, "quality", QUALITY_DEFAULT)
+        # Nuit (toujours activé, pas de coût supplémentaire)
         self.paint_night(painter, clock, sw, sh)
-        self.paint_fire_glow(painter, transform, sim, sw, sh)
-        self.paint_rain(painter, clock, tick, sw, sh, transform.zoom)
-        self.paint_lightning(painter, clock, tick, sw, sh)
+        # Effets sociaux : respecter le drapeau de qualité
+        if quality.get("social", True):
+            self.paint_social_effects(painter, transform, sim, tick)
+        # Pluie : respecter le drapeau de qualité
+        if quality.get("rain", True):
+            self.paint_rain(painter, clock, tick, sw, sh, transform.zoom)
+        # Foudre : respecter le drapeau de qualité
+        if quality.get("lightning", True):
+            self.paint_lightning(painter, clock, tick, sw, sh)
+        # Lueur du feu : respecter le drapeau de qualité
+        if quality.get("fire", True):
+            self.paint_fire_glow(painter, transform, sim, sw, sh)

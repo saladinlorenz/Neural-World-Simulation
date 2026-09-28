@@ -292,7 +292,7 @@ def seed_life(w, sim, rng, *, n_agents=60, n_sheep=40, n_monsters=0):
 
 
 def build_world(am, seed, procedural=False, *, populate_dense=True,
-                n_agents=0, tile_period=None, ridge_width=None,
+                n_agents=0, n_sheep=0, n_monsters=0, tile_period=None, ridge_width=None,
                 water_frac=WATER_FRAC, mountain_frac=MOUNTAIN_FRAC,
                 start_paused=False, blank_world=False):
     """Construit le monde complet : heightmap, décor, simulation prête.
@@ -329,7 +329,7 @@ def build_world(am, seed, procedural=False, *, populate_dense=True,
     # ← la v1 sautait cette étape : le monde naissait stérile
     populate(w, am, rng, dense=populate_dense)
 
-    seed_life(w, sim, rng, n_agents=n_agents)
+    seed_life(w, sim, rng, n_agents=n_agents, n_sheep=n_sheep, n_monsters=n_monsters)
 
     sim.paused = bool(start_paused)
     if gen is not None:

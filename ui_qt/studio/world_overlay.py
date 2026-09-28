@@ -25,21 +25,24 @@ _MODE_LABELS = {
     "territories": "Territories",
 }
 
-#: Modes exigeant un habitant sélectionné (Lot G.1).
-CONTEXT_MODES = {"memory", "danger", "relations", "needs", "anima"}
+#: Modes exigeant un habitant sélectionné (Lot G.1 + WORLD ALIVE).
+#: « needs » est GLOBAL (qui est affamé/assoiffé/épuisé/blessé dans le
+#: monde ?) : il ne doit pas exiger de sélection. Règle UX :
+#: vue normale = monde vivant, overlay = UNE seule question.
+CONTEXT_MODES = {"memory", "danger", "relations", "anima"}
 
-#: Aide contextuelle (tooltip) des modes — plan original §11.1.
+#: Aide contextuelle (tooltip) des modes — une question précise par mode.
 OVERLAY_HELP = {
-    "normal": "Standard world rendering.",
-    "resources": "Resources and regrowth visible in the current area.",
-    "danger": "Perceived danger for the selected inhabitant.",
-    "memory": "Personal memory of the selected inhabitant.",
-    "relations": "Important relations of the selected inhabitant.",
-    "needs": "Needs of the selected inhabitant.",
-    "anima": "Identity, trauma and values of the selected inhabitant.",
-    "culture": "Shared cultural knowledge.",
-    "institutions": "Emergent social institutions.",
-    "territories": "Territories, districts and predator debug zones.",
+    "normal": "Monde vivant (faits importants uniquement).",
+    "resources": "Où sont les ressources réellement disponibles ?",
+    "danger": "Quelles zones sont dangereuses pour l'habitant sélectionné ?",
+    "memory": "Que connaît réellement l'habitant sélectionné ?",
+    "relations": "Qui fait confiance à qui (sélectionné) ?",
+    "needs": "Qui est affamé, assoiffé, blessé ou épuisé ?",
+    "anima": "Identité, trauma et valeurs du sélectionné.",
+    "culture": "Quelles connaissances sont partagées ?",
+    "institutions": "Quelles institutions émergent et où ?",
+    "territories": "Où les habitants vivent et reviennent ?",
 }
 
 _IDENTITY_COLORS = {
@@ -135,6 +138,10 @@ class WorldOverlay:
             self._paint_institutions(painter, map_transform, sim, screen_w, screen_h)
         elif active_mode == "territories":
             self._paint_territories(painter, map_transform, sim, screen_w, screen_h)
+        else:
+            # Mode inconnu (sauvegarde corrompue / commande non validee) :
+            # un silence complet donne l'impression d'un overlay casse.
+            self.paint_message(painter, f"Overlay inconnu: {active_mode}")
 
     def _paint_danger(self, painter, transform, sim, sw, sh):
         w = sim.w
@@ -184,10 +191,12 @@ class WorldOverlay:
                 painter.fillRect(int(sx), int(sy), ts, ts, c)
 
     def _paint_memory(self, painter, transform, sim, sw, sh):
-        """Cellules de croyance (danger mémorisé) + marqueurs d'habitants.
+        """Mémoire réelle du sélectionné : croyances danger + lieux connus.
 
-        ``Being.belief_places`` est indexé par cellule de 8 tuiles :
-        ``(tx // 8, ty // 8) -> danger 0..1``.
+        ``belief_places`` (cellules 8 tuiles → danger) en jaune + les
+        ``place_memories`` {(cat,tx,ty) → {confidence,…}} en vert/bleu
+        (nourriture/eau), alpha selon confiance. Borné : 24 cellules de
+        croyance + 40 lieux, sélectionné seul + pastille agents.
         """
         cell = 8 * TILE
         cs = max(2, int(cell * transform.zoom))
@@ -218,6 +227,36 @@ class WorldOverlay:
                     c = QColor(255, 255, 100, int(30 + 120 * val))
                     painter.setBrush(QBrush(c))
                     painter.drawRect(int(sx), int(sy), cs, cs)
+            # Lieux mémorisés du SÉLECTIONNÉ seul (confiance réelle).
+            if selected is not None and agent.eid == selected_eid:
+                places = getattr(agent, "place_memories", None) or {}
+                for i, (key, fact) in enumerate(places.items()):
+                    if i >= 40:
+                        break
+                    if not isinstance(key, (tuple, list)) or len(key) != 3:
+                        continue
+                    cat = key[0]
+                    try:
+                        tx, ty = int(key[1]), int(key[2])
+                        conf = float((fact or {}).get("confidence", 0.0))
+                    except (TypeError, ValueError):
+                        continue
+                    conf = min(1.0, max(0.0, conf))
+                    if conf < 0.15:
+                        continue
+                    sx, sy = transform.to_screen(
+                        tx * TILE + TILE / 2, ty * TILE + TILE / 2)
+                    if not (-20 < sx < sw + 20 and -20 < sy < sh + 20):
+                        continue
+                    if cat == "food":
+                        c = QColor(246, 189, 96, int(60 + 140 * conf))
+                    elif cat == "water":
+                        c = QColor(76, 201, 240, int(60 + 140 * conf))
+                    else:
+                        c = QColor(160, 220, 160, int(50 + 110 * conf))
+                    painter.setBrush(QBrush(c))
+                    painter.setPen(QPen(QColor(0, 0, 0, 90), 1))
+                    painter.drawEllipse(QPointF(sx, sy), 5, 5)
             sx, sy = transform.to_screen(agent.x, agent.y)
             if -20 < sx < sw + 20 and -20 < sy < sh + 20:
                 painter.setBrush(QBrush(QColor(255, 255, 100, 60)))
@@ -259,17 +298,48 @@ class WorldOverlay:
                 painter.drawLine(QPointF(sx1, sy1), QPointF(sx2, sy2))
 
     def _paint_needs(self, painter, transform, sim, sw, sh):
-        painter.setPen(QPen(QColor(0, 0, 0), 1))
+        """Besoins GLOBAL (population) : qui est affamé, assoiffé, blessé,
+        épuisé ? Couleur = besoin dominant (faim orange, soif bleue,
+        énergie violette, santé rouge), rayon = gravité. Calme (< 35 %)
+        = pas de pastille (lisibilité). Borné : agents à l'écran seuls.
+        """
+        painter.setPen(QPen(QColor(0, 0, 0, 120), 1))
         for a in sim.agents:
             if not a.alive:
+                continue
+            try:
+                hunger = min(1.0, max(0.0, float(getattr(a, "hunger", 0.0))))
+            except (TypeError, ValueError):
+                hunger = 0.0
+            try:
+                needs = getattr(a, "needs", None)
+                thirst = min(1.0, max(0.0, float(needs[2]))) \
+                    if needs is not None and len(needs) > 2 else 0.0
+                energy = min(1.0, max(0.0, float(getattr(a, "energy", 1.0))))
+            except (TypeError, ValueError, IndexError):
+                thirst, energy = 0.0, 1.0
+            try:
+                health = min(1.0, max(0.0, float(getattr(a, "health", 1.0))))
+            except (TypeError, ValueError):
+                health = 1.0
+            # Gravité par besoin : faim/soif directes, énergie inversée,
+            # santé inversée (1-santé). Dominant = max.
+            scores = (("hungry", hunger), ("thirsty", thirst),
+                      ("tired", 1.0 - energy), ("injured", 1.0 - health))
+            dom, sev = max(scores, key=lambda kv: kv[1])
+            if sev < 0.35:
                 continue
             sx, sy = transform.to_screen(a.x, a.y)
             if not (-20 < sx < sw + 20 and -20 < sy < sh + 20):
                 continue
-            faim = getattr(a, "hunger", 0.0)
-            c = _hex_to_qcolor(level_color(faim))
-            painter.setBrush(QBrush(c))
-            painter.drawEllipse(QPointF(sx, sy), 7, 7)
+            colors = {
+                "hungry": QColor(246, 189, 96, int(90 + 120 * sev)),
+                "thirsty": QColor(76, 201, 240, int(90 + 120 * sev)),
+                "tired": QColor(167, 139, 250, int(90 + 120 * sev)),
+                "injured": QColor(255, 107, 107, int(90 + 120 * sev)),
+            }
+            painter.setBrush(QBrush(colors[dom]))
+            painter.drawEllipse(QPointF(sx, sy), 4 + 5 * sev, 4 + 5 * sev)
 
     def _paint_anima(self, painter, transform, sim, sw, sh):
         painter.setPen(QPen(QColor(0, 0, 0), 1))

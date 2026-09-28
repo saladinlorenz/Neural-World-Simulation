@@ -32,6 +32,7 @@ class World:
         self.land = np.ones((g, g), dtype=np.uint8)   # masque continents (map.png)
         self.water = np.zeros((g, g), dtype=np.uint8)
         self.fire = np.zeros((g, g), dtype=np.int16)   # ticks de flamme restants
+        self._burning_cells = set()  # (y, x) tuples of cells with fire > 0
         self.smell = np.zeros((g, g), dtype=np.float32)  # champ d'odeurs (feu, nourriture, mort)
         self.heat = np.zeros((g, g), dtype=np.float32)   # traces de présence (exploration)
         self.cemetery = []  # list of (tx, ty, name, death_tick, color_rgb)
@@ -94,6 +95,8 @@ class World:
 
     def ignite(self, tx, ty, ticks=220):
         if self.inb(tx, ty) and not self.water[ty, tx]:
+            if self.fire[ty, tx] == 0:
+                self._burning_cells.add((ty, tx))
             self.fire[ty, tx] = max(self.fire[ty, tx], ticks)
             self.mark_dirty(tx, ty)
 
@@ -101,12 +104,15 @@ class World:
                   spread=1.0):
         """Feu = systeme physique : temperature, combustible, vent, eau.
         Il ne sait pas ce qu'est une maison — il sait seulement bruler."""
-        burning = np.nonzero(self.fire > 0)
-        if not burning[0].size:
+        if not self._burning_cells:
             return 0
         spread_chance = min(0.9, 0.16 * max(0.0, float(spread)))
-        for y, x in zip(*burning):
-            self.fire[y, x] -= 1 + int(rain * 6)
+        wind_x = int(wind[0] * 2)
+        wind_y = int(wind[1] * 2)
+        rain_decay = 1 + int(rain * 6)
+        new_burning = set()
+        for y, x in self._burning_cells:
+            self.fire[y, x] -= rain_decay
             if self.fire[y, x] <= 0:
                 self.fire[y, x] = 0
                 if self.content[y, x] >= 0 and flammable and int(self.content[y, x]) in flammable:
@@ -116,7 +122,7 @@ class World:
             if self.fire[y, x] % 4 == 0:
                 for dy in (-1, 0, 1):
                     for dx in (-1, 0, 1):
-                        nx, ny = x + dx + int(wind[0] * 2), y + dy + int(wind[1] * 2)
+                        nx, ny = x + dx + wind_x, y + dy + wind_y
                         if not self.inb(nx, ny) or self.water[ny, nx] or self.fire[ny, nx]:
                             continue
                         naid = self.content_at(nx, ny)
@@ -124,7 +130,10 @@ class World:
                            and naid in flammable \
                            and self.rng_fire.random() < spread_chance:
                             self.fire[ny, nx] = 200
-        return int(burning[0].size)
+                            new_burning.add((ny, nx))
+            new_burning.add((y, x))
+        self._burning_cells = new_burning
+        return len(self._burning_cells)
 
     def _kadd(self, cat, x, y):
         cell = (x // self._kcell, y // self._kcell)
@@ -170,19 +179,27 @@ class World:
     def px2t(v):
         return int(v // TILE)
 
-    def anchor_of(self, x, y):
-        if not self.inb(x, y):
-            return -1
-        a = self.owner[y, x]
-        return int(a)
-
     def content_at(self, x, y):
-        if not self.inb(x, y):
+        g = self.g
+        if x < 0 or y < 0 or x >= g or y >= g:
             return -1
-        a = self.anchor_of(x, y)
-        if a < 0:
+        flat = self.owner[y, x]
+        if flat < 0:
             return -1
-        return int(self.content[a // self.g, a % self.g])
+        ay = flat // g
+        ax = flat - ay * g
+        return int(self.content[ay, ax])
+
+    def anchor_of(self, x, y):
+        g = self.g
+        if x < 0 or y < 0 or x >= g or y >= g:
+            return -1
+        flat = self.owner[y, x]
+        if flat < 0:
+            return -1
+        ay = flat // g
+        ax = flat - ay * g
+        return int(self.content[ay, ax])
 
     def mark_dirty(self, tx, ty, r=2):
         self.mods_version += 1
@@ -279,31 +296,110 @@ class World:
     # ------------------------------------------------------------------ per tick
     def step(self, am, clock=None):
         self.tick += 1
+        perf = self._get_perf(am)
+
+        with perf.measure("world_items"):
+            self._step_items()
+
+        if self.tick % 3 == 0:
+            with perf.measure("world_markers"):
+                self._step_markers()
+            with perf.measure("world_smell"):
+                self._step_smell()
+            with perf.measure("world_heat"):
+                self._step_heat()
+
+        if self.tick % 30 == 0:
+            with perf.measure("world_regrowth"):
+                self._step_regrowth(am, clock)
+
+        with perf.measure("world_fire"):
+            self._step_fire(am, clock)
+
+    def _get_perf(self, am):
+        """Get PerfMetrics from simulation or asset manager."""
+        try:
+            if hasattr(am, 'sim') and hasattr(am.sim, 'perf'):
+                return am.sim.perf
+        except Exception:
+            pass
+        try:
+            from game.perfmetrics import PerfMetrics
+            return PerfMetrics._global_instance if hasattr(PerfMetrics, '_global_instance') else PerfMetrics()
+        except Exception:
+            pass
+        return PerfMetrics()
+
+    def _step_items(self):
         if self.tick % 30 == 0:
             self.items = [item for item in self.items
                           if item.life > 0 and (item.kind != "food" or self.tick < item.spoil_tick)]
-        if self.tick % 3 == 0:
-            self.marker *= 0.992
-            self.marker[self.marker < 0.01] = 0
-            self.smell *= 0.985
-            self.smell[self.smell < 0.01] = 0
-            self.heat *= 0.996
-            # repousse des souches -> arbre (la pluie et le froid ralentissent)
-            slow = 1.0 if clock is None else clock.growth_f
-            trees = am.pool("tree")
-            if trees:
-                mask = self.regrow > 0
-                if mask.any():
-                    self.regrow[mask] -= 3 * slow
-                    ripe = mask & (self.regrow <= 0)
-                    for y, x in zip(*np.nonzero(ripe)):
-                        if self.is_land(x, y) and not self.blocked[y, x] and self.content_at(x, y) < 0:
-                            aid = int(am.pick(trees, self._rng_regrow))
-                            self.place(int(x), int(y), aid, am, hp=6, solid=True,
-                                       size=am.assets[aid].size_tiles)
-                            self.regrow[y, x] = 0
-                        else:
-                            self.regrow[y, x] = 100.0
+
+    def _step_markers(self):
+        self.marker *= 0.992
+        self.marker[self.marker < 0.01] = 0
+
+    def _step_smell(self):
+        self.smell *= 0.985
+        self.smell[self.smell < 0.01] = 0
+
+    def _step_heat(self):
+        self.heat *= 0.996
+
+    def _step_regrowth(self, am, clock):
+        slow = 1.0 if clock is None else clock.growth_f
+        trees = am.pool("tree")
+        if trees:
+            mask = self.regrow > 0
+            if mask.any():
+                self.regrow[mask] -= 3 * slow
+                ripe = mask & (self.regrow <= 0)
+                for y, x in zip(*np.nonzero(ripe)):
+                    if self.is_land(x, y) and not self.blocked[y, x] and self.content_at(x, y) < 0:
+                        aid = int(am.pick(trees, self._rng_regrow))
+                        self.place(int(x), int(y), aid, am, hp=6, solid=True,
+                                   size=am.assets[aid].size_tiles)
+                        self.regrow[y, x] = 0
+                    else:
+                        self.regrow[y, x] = 100.0
+
+    def _step_fire(self, am, clock):
+        if not self._burning_cells:
+            return 0
+        spread_chance = min(0.9, 0.16 * max(0.0, 1.0))
+        wind_x = 0
+        wind_y = 0
+        rain = 0.0
+        if clock is not None:
+            wind_x = int(clock.wind[0] * 2)
+            wind_y = int(clock.wind[1] * 2)
+            rain = clock.rain
+        spread_chance = min(0.9, 0.16 * max(0.0, float(1.0)))
+        rain_decay = 1 + int(rain * 6)
+        new_burning = set()
+        for y, x in self._burning_cells:
+            self.fire[y, x] -= rain_decay
+            if self.fire[y, x] <= 0:
+                self.fire[y, x] = 0
+                if self.content[y, x] >= 0 and hasattr(am, 'flammable') and am.flammable and int(self.content[y, x]) in am.flammable:
+                    self.burn_out(am, y, x)
+                continue
+            self.smell[y, x] = min(1.0, self.smell[y, x] + 0.08)
+            if self.fire[y, x] % 4 == 0:
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        nx, ny = x + dx + wind_x, y + dy + wind_y
+                        if not self.inb(nx, ny) or self.water[ny, nx] or self.fire[ny, nx]:
+                            continue
+                        naid = self.content_at(nx, ny)
+                        if hasattr(am, 'flammable') and am.flammable and naid >= 0 \
+                           and naid in am.flammable \
+                           and self.rng_fire.random() < spread_chance:
+                            self.fire[ny, nx] = 200
+                            new_burning.add((ny, nx))
+            new_burning.add((y, x))
+        self._burning_cells = new_burning
+        return len(self._burning_cells)
 
     def find_cemetery_spot(self, rng=None):
         """Retourne une parcelle libre de cimetière dans le tiers supérieur."""
@@ -372,6 +468,7 @@ class World:
         self.marker_col[:] = 0
         self.regrow[:] = 0
         self.fire[:] = 0
+        self._burning_cells.clear()
         self.smell[:] = 0
         self.heat[:] = 0
         self.floor[:] = -1
